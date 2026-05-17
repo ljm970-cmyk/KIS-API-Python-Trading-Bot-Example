@@ -11,6 +11,8 @@
 # MODIFIED: [V61.00 숏(SOXS) 전면 소각 작전 지시서 적용]
 # VWAP_PROFILES 딕셔너리 내 SOXS 30분 압축 프로파일 영구 소각 및 get_active_tickers 반환 팩트 교정 완료.
 # 🚨 MODIFIED: [V7.4 Assassin Lock-on] 정점요격 스위치(APEX_MODE_CFG) 맵핑 및 락온 파일 입출력 전면 적출 완료
+# 🚨 MODIFIED: [V77.01 데이터 기아 방어 및 런타임 무결성 팩트 수술]
+# - 백테스트 수수료 환경과 100% 동기화하기 위해 DEFAULT_FEE 기본값을 0.07%로 하향 팩트 락온.
 # ==========================================================
 
 import json
@@ -83,7 +85,9 @@ class ConfigManager:
         self.DEFAULT_VERSION = {"SOXL": "V14", "TQQQ": "V14"}
         self.DEFAULT_COMPOUND = {"SOXL": 70.0, "TQQQ": 70.0}
         self.DEFAULT_SNIPER_MULTIPLIER = {"SOXL": 1.0, "TQQQ": 0.9}
-        self.DEFAULT_FEE = {"SOXL": 0.25, "TQQQ": 0.25} 
+        
+        # 🚨 MODIFIED: [V77.01 팩트 수술] 백테스트 환경과 100% 동기화 (0.07% 수수료율 하향 락온)
+        self.DEFAULT_FEE = {"SOXL": 0.07, "TQQQ": 0.07} 
         
         self._escrow_cache = {}
         self._locks_mutex = threading.Lock()
@@ -170,13 +174,13 @@ class ConfigManager:
         try:
             dir_name = os.path.dirname(filename) or '.'
             if not os.path.exists(dir_name):
-                 os.makedirs(dir_name, exist_ok=True)
+                os.makedirs(dir_name, exist_ok=True)
                 
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 fd = None
                 f.write(str(content))
-                f.flush()
+            f.flush()
             
             os.fsync(f.fileno()) 
             os.replace(temp_path, filename)
@@ -262,7 +266,7 @@ class ConfigManager:
             if is_locked:
                 locks[f"ORDER_LOCKED_{ticker}"] = True
             else:
-                 if f"ORDER_LOCKED_{ticker}" in locks:
+                if f"ORDER_LOCKED_{ticker}" in locks:
                      del locks[f"ORDER_LOCKED_{ticker}"]
         self._atomic_update_locks(_update)
 
@@ -408,7 +412,7 @@ class ConfigManager:
     def calibrate_ledger_prices(self, ticker, target_date_str, exec_history):
         if not exec_history:
             return 0
-            
+             
         buy_qty = 0
         buy_amt = 0.0
         sell_qty = 0
@@ -526,7 +530,7 @@ class ConfigManager:
                     new_day = state.get("day_count", 0) + 1
                     self.set_reverse_state(ticker, True, new_day, state.get("exit_target", 0.0), today_est_str)
                     return True
-            return False
+        return False
 
     def calculate_v14_state(self, ticker):
         ledger = self.get_ledger()
@@ -564,7 +568,7 @@ class ConfigManager:
                         total_invested -= (qty * avg_price)
                 holdings -= qty
                 rem_cash += amt
-                    
+             
         avg_price = total_invested / holdings if holdings > 0 else 0.0
         t_val = (holdings * avg_price) / base_portion if base_portion > 0 else 0.0
         
@@ -705,7 +709,8 @@ class ConfigManager:
         return self._load_json(self.FILES["PROFIT_CFG"], self.DEFAULT_TARGET).get(t, 10.0)
         
     def get_fee(self, t): 
-        return float(self._load_json(self.FILES["FEE_CFG"], self.DEFAULT_FEE).get(t, 0.25))
+        # 🚨 MODIFIED: [V77.01 팩트 수술] 폴백(Fallback) 값 0.07% 동기화 락온
+        return float(self._load_json(self.FILES["FEE_CFG"], self.DEFAULT_FEE).get(t, 0.07))
       
     def set_fee(self, t, v):
         with self._io_lock:
@@ -719,9 +724,9 @@ class ConfigManager:
         
     def set_sniper_multiplier(self, t, v):
         with self._io_lock:
-            d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
-            d[t] = float(v)
-            self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
+             d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
+             d[t] = float(v)
+             self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
 
     def get_upward_sniper_mode(self, ticker): 
         return self._load_json(self.FILES["UPWARD_SNIPER"], {}).get(ticker, False)
