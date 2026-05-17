@@ -36,11 +36,10 @@
 # 🚨 MODIFIED: [V75.09 스나이퍼 유령 체결 및 호가 이탈 원천 차단 (Operation No More Ghost)]
 # 🚨 MODIFIED: [V75.10 타점 정밀도 롤백 및 시장가성 지정가(Marketable Limit) 타격망 팩트 교체]
 # 🚨 NEW: [V7.4 Assassin Lock-on] 전투 사령부 엑시트 파이프라인 팩트 교정
-# - 낡은 Apex 상태 전이 영구 소각.
-# - 15:20 EST 기준 -180초 지터를 적용한 시간에 도달 시 잔여 미체결 덫 파기 및 전량 시장가성 덤핑 시퀀스 완벽 구축.
-# - 매도 1호가 스캔 기반 95% 딥매수 락온 및 매수 직후 +2.0% 익절 덫(Trap) 투트랙 자동 장전 이식.
 # 🚨 MODIFIED: [V76.01 ATR5 동적 하드스탑 렌더링 영구 소각 및 투트랙 엑시트 UI 동기화]
-# 🚨 MODIFIED: [순수익 2.0% 절대 보장 타점 공식] 수수료율 팩트 스캔 및 다이렉트 수혈 락온 완료
+# 🚨 NEW: [V77.00 V7.1 백테스트 절대 동기화 롤백]
+# - ATR5 의존성을 철거하고 순수 진폭(Amp) 5일 이동평균인 amp5를 코어 엔진에 주입하도록 배선 교체.
+# - 수수료 보전 타점 공식을 100% 소각하고 순수 1.02 고정 곱연산으로 전면 롤백 완료.
 # ==========================================================
 import logging
 import datetime
@@ -272,22 +271,23 @@ async def scheduled_sniper_monitor(context):
   
                     base_day_open = tracking_cache.get(f"AVWAP_DAY_OPEN_{target_base}", 0.0)
  
-                    prev_c, day_high, day_low, atr5, base_day_high, base_day_low = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+                    prev_c, day_high, day_low, amp5, base_day_high, base_day_low = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                     df_1min_t = None
                     df_1min_base = None
                     try:
                         prev_c_task = asyncio.to_thread(broker.get_previous_close, t)
-                        atr_task = asyncio.to_thread(broker.get_atr_data, t)
+                        # 🚨 MODIFIED: [V77.00 V7.1 백테스트 절대 동기화 롤백] ATR5 대신 순수 진폭 Amp 5MA 엔진 수혈
+                        amp_task = asyncio.to_thread(broker.get_amp_5d_data, t)
                         df_t_task = asyncio.to_thread(broker.get_1min_candles_df, t)
                         df_base_task = asyncio.to_thread(broker.get_1min_candles_df, target_base)
                    
-                        res_prev, res_atr, res_df_t, res_df_base = await asyncio.wait_for(
-                            asyncio.gather(prev_c_task, atr_task, df_t_task, df_base_task, return_exceptions=True),
+                        res_prev, res_amp, res_df_t, res_df_base = await asyncio.wait_for(
+                            asyncio.gather(prev_c_task, amp_task, df_t_task, df_base_task, return_exceptions=True),
                             timeout=10.0
                         )
    
                         prev_c = float(res_prev) if not isinstance(res_prev, Exception) and res_prev else 0.0
-                        atr5 = float(res_atr[0]) if not isinstance(res_atr, Exception) and res_atr else 0.0
+                        amp5 = float(res_amp) if not isinstance(res_amp, Exception) and res_amp else 0.0
                         df_1min_t = res_df_t if not isinstance(res_df_t, Exception) else None
                         df_1min_base = res_df_base if not isinstance(res_df_base, Exception) else None
               
@@ -332,18 +332,16 @@ async def scheduled_sniper_monitor(context):
                         "dump_jitter_sec": tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0)
                     }
              
-                    # 🚨 NEW: [V7.4 Assassin Lock-on] Apex 및 is_simulation 인자 전면 적출
-                    # 🚨 MODIFIED: [순수익 2.0% 절대 보장 타점 공식] 수수료율 팩트 스캔 및 코어 다이렉트 주입 락온
-                    fee_rate = await asyncio.to_thread(cfg.get_fee, t)
+                    # 🚨 MODIFIED: [V77.00 V7.1 백테스트 절대 동기화 롤백] 수수료 파라미터 적출 및 amp5 주입
                     decision = await asyncio.to_thread(
                         strategy.get_avwap_decision,
                         base_ticker=target_base, exec_ticker=t, base_curr_p=base_curr_p,
                         exec_curr_p=exec_curr_p, base_day_open=base_day_open, avg_price=avwap_avg,
                         qty=avwap_qty, alloc_cash=avwap_free_cash, context_data=ctx_data,
                         df_1min_base=df_1min_base, now_est=now_est, avwap_state=avwap_state_dict,
-                        regime_data=None, prev_close=prev_c, day_high=day_high, day_low=day_low, atr5=atr5,
+                        regime_data=None, prev_close=prev_c, day_high=day_high, day_low=day_low, amp5=amp5,
                         base_day_high=base_day_high, base_day_low=base_day_low,
-                        is_simulation=False, fee_rate=fee_rate
+                        is_simulation=False
                     )
          
                     action = decision.get("action")
@@ -425,9 +423,8 @@ async def scheduled_sniper_monitor(context):
                                     tracking_cache[f"AVWAP_QTY_{t}"] = new_qty
                                     tracking_cache[f"AVWAP_AVG_{t}"] = round(new_avg, 4)
                 
-                                    # 🚨 MODIFIED: [순수익 2.0% 절대 보장 타점 공식] 수수료율 기반 순수익 보장 타점으로 오버라이드
-                                    # 🚨 NEW: [V7.4 투트랙 자동 청산 파이프라인] 체결 직후 +2.0% 익절 덫 장전
-                                    trap_price = round(new_avg * (1.02 + (fee_rate / 100.0) * 2), 2)
+                                    # 🚨 MODIFIED: [V77.00 V7.1 백테스트 절대 동기화 롤백] 수수료 보전 공식 소각 및 순수 1.02 고정 곱연산 원복
+                                    trap_price = round(new_avg * 1.02, 2)
                                     trap_res = await asyncio.to_thread(broker.send_order, t, "SELL", ccld_qty, trap_price, "LIMIT")
                                     trap_odno = trap_res.get('odno', '') if isinstance(trap_res, dict) else ''
                                     
