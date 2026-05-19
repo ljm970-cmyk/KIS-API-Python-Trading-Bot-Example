@@ -21,6 +21,7 @@
 # 🚨 NEW: [V77.08] 백테스트 절대 동기화 - 3단 상태 표시기 개조 및 시각적 노이즈 100% 영구 소각 에디션
 # 🚨 MODIFIED: [V77.12] 순수 지정가(T_H) 절대 락온 타격 엔진 상태 렌더링 동기화
 # 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백 반영
+# 🚨 MODIFIED: [V77.15 관제탑 레이더 상시 가동 팩트 수술] 비활성(OFF) 상태 시 $0.00 렌더링 맹점 원천 차단
 # ==========================================================
 import logging
 import datetime
@@ -133,75 +134,75 @@ class AvwapConsolePlugin:
             offset = tracking_cache.get(f"AVWAP_OFFSET_{t}", 0.0)
             
             # 3. Action Scan & 3단 상태 표시기 무결성 가동 (시각적 노이즈 100% 소각)
-            # # MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분 지지 필터 소각에 따른 덫 장전 대기 상태 텍스트 팩트 교정
             status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
-            if not is_avwap_active:
-                status_txt = "⚪ 모드 비활성 (레이더 관측 중)"
-            elif is_shutdown: 
-                status_txt = "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
-            elif avwap_qty > 0:
-                if trap_odno:
-                    status_txt = "🎯 체결 완료 ➡️ [3.0% 지정가 익절 덫] 가동 중"
-                else:
-                    status_txt = "🎯 체결 완료 ➡️ (15:20 청산 지터 대기 중)"
-            elif limit_order_placed and placed_target_th > 0:
-                # MODIFIED: [V77.12] 지정가 매수 덫 장전 상태 렌더링 팩트 교정
-                status_txt = f"⚡ 요격 조건 100% 충족 ➡️ [지정가 매수 덫 장전 집행: ${placed_target_th:.2f}]"
-            else:
-                try:
-                    avwap_state_dict = {
-                        "strikes": tracking_cache.get(f"AVWAP_STRIKES_{t}", 0),
-                        "shutdown": is_shutdown,
-                        "qty": avwap_qty,
-                        "avg_price": avwap_avg,
-                        "bought": tracking_cache.get(f"AVWAP_BOUGHT_{t}", False),
-                        "daily_bought_qty": tracking_cache.get(f"AVWAP_DAILY_BOUGHT_{t}", 0),
-                        "daily_sold_qty": tracking_cache.get(f"AVWAP_DAILY_SOLD_{t}", 0),
-                        "trap_odno": trap_odno,
-                        "PM_H": pm_h,
-                        "PM_L": pm_l,
-                        "T_H": t_h,
-                        "T_L": t_l,
-                        "offset": offset,
-                        "limit_order_placed": limit_order_placed,
-                        "placed_target_th": placed_target_th,
-                        "dump_jitter_sec": tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0)
-                    }
-                    
-                    decision = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            self.strategy.v_avwap_plugin.get_decision,
-                            base_ticker=t, exec_ticker=t,
-                            base_curr_p=curr_p, exec_curr_p=curr_p,
-                            df_1min_base=None, df_1min_exec=df_1m, avwap_qty=avwap_qty,
-                            now_est=now_est, avwap_state=avwap_state_dict,
-                            context_data=None,
-                            is_simulation=True,
-                            amp5=amp5,
-                            prev_close=prev_c
-                        ),
-                        timeout=5.0
-                    )
-                    
-                    if decision:
-                        action = decision.get('action')
-                        reason = decision.get('reason', '')
-                        
-                        pm_h = decision.get('PM_H', pm_h)
-                        pm_l = decision.get('PM_L', pm_l)
-                        t_h = decision.get('T_H', t_h)
-                        t_l = decision.get('T_L', t_l)
-                        offset = decision.get('offset', offset)
-                        
-                        tracking_cache[f"AVWAP_PM_H_{t}"] = pm_h
-                        tracking_cache[f"AVWAP_PM_L_{t}"] = pm_l
-                        tracking_cache[f"AVWAP_T_H_{t}"] = t_h
-                        tracking_cache[f"AVWAP_T_L_{t}"] = t_l
-                        tracking_cache[f"AVWAP_OFFSET_{t}"] = offset
             
-                        # NEW: [V77.08] 백테스트 상태기계 기반 시각적 맵핑 동기화
+            # 🚨 MODIFIED: [V77.15 관제탑 레이더 상시 가동 팩트 수술] 
+            # 모드 비활성(OFF) 시에도 연산 코어를 100% 강제 가동하여 관측 데이터(PM_H, T_H 등) 렌더링 맹점 원천 차단
+            try:
+                avwap_state_dict = {
+                    "strikes": tracking_cache.get(f"AVWAP_STRIKES_{t}", 0),
+                    "shutdown": is_shutdown,
+                    "qty": avwap_qty,
+                    "avg_price": avwap_avg,
+                    "bought": tracking_cache.get(f"AVWAP_BOUGHT_{t}", False),
+                    "daily_bought_qty": tracking_cache.get(f"AVWAP_DAILY_BOUGHT_{t}", 0),
+                    "daily_sold_qty": tracking_cache.get(f"AVWAP_DAILY_SOLD_{t}", 0),
+                    "trap_odno": trap_odno,
+                    "PM_H": pm_h,
+                    "PM_L": pm_l,
+                    "T_H": t_h,
+                    "T_L": t_l,
+                    "offset": offset,
+                    "limit_order_placed": limit_order_placed,
+                    "placed_target_th": placed_target_th,
+                    "dump_jitter_sec": tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0)
+                }
+                
+                decision = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.strategy.v_avwap_plugin.get_decision,
+                        base_ticker=t, exec_ticker=t,
+                        base_curr_p=curr_p, exec_curr_p=curr_p,
+                        df_1min_base=None, df_1min_exec=df_1m, avwap_qty=avwap_qty,
+                        now_est=now_est, avwap_state=avwap_state_dict,
+                        context_data=None,
+                        is_simulation=True,
+                        amp5=amp5,
+                        prev_close=prev_c
+                    ),
+                    timeout=5.0
+                )
+                
+                if decision:
+                    action = decision.get('action')
+                    reason = decision.get('reason', '')
+                    
+                    pm_h = decision.get('PM_H', pm_h)
+                    pm_l = decision.get('PM_L', pm_l)
+                    t_h = decision.get('T_H', t_h)
+                    t_l = decision.get('T_L', t_l)
+                    offset = decision.get('offset', offset)
+                    
+                    tracking_cache[f"AVWAP_PM_H_{t}"] = pm_h
+                    tracking_cache[f"AVWAP_PM_L_{t}"] = pm_l
+                    tracking_cache[f"AVWAP_T_H_{t}"] = t_h
+                    tracking_cache[f"AVWAP_T_L_{t}"] = t_l
+                    tracking_cache[f"AVWAP_OFFSET_{t}"] = offset
+        
+                    # 🚨 팩트 스캔이 끝난 후 상태 텍스트 분기 처리
+                    if not is_avwap_active:
+                        status_txt = "⚪ 모드 비활성 (레이더 관측 중)"
+                    elif is_shutdown: 
+                        status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
+                    elif avwap_qty > 0:
+                        if trap_odno:
+                            status_txt = "🎯 체결 완료 ➡️ [3.0% 지정가 익절 덫] 가동 중"
+                        else:
+                            status_txt = "🎯 체결 완료 ➡️ (15:20 청산 지터 대기 중)"
+                    elif limit_order_placed and placed_target_th > 0:
+                        status_txt = f"⚡ 요격 조건 100% 충족 ➡️ [지정가 매수 덫 장전 집행: ${placed_target_th:.2f}]"
+                    else:
                         if action == "PLACE_TRAP":
-                            # MODIFIED: [V77.12]
                             status_txt = f"⚡ 요격 조건 100% 충족 ➡️ [지정가 매수 덫 장전 집행]"
                         elif action == "VERIFY_TRAP_FILL":
                             status_txt = f"🔥 덫 하향 관통 ➡️ [실체결 무결성 검증 격발]"
@@ -210,14 +211,15 @@ class AvwapConsolePlugin:
                         elif action == 'SHUTDOWN':
                             status_txt = f"🛑 셧다운 격발 ({reason})"
                         elif reason:
-                            # # MODIFIED: [V77.14 백테스트 절대기준 동기화] 코어 반환 대기 상태 팩트 오버라이드 텍스트 교정
                             if "동적_순수타격선_도달_감시중" in reason or "스캔" in status_txt:
                                 status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
                             else:
                                 status_txt = f"⏳ 대기 ({reason})"
                                 
-                except Exception as e:
-                    logging.debug(f"AVWAP 상태 텍스트 추출 에러: {e}")
+            except Exception as e:
+                logging.debug(f"AVWAP 상태 텍스트 추출 에러: {e}")
+                if not is_avwap_active:
+                    status_txt = "⚪ 모드 비활성 (레이더 관측 중)"
 
             # 4. Message Assembly (순수 50% 오프셋 및 3.0% 타점 압축 렌더링)
             msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
