@@ -18,6 +18,7 @@
 # 🚨 MODIFIED: [V77.06 3.0% 한계 돌파 팩트 롤백] 
 # 🚨 NEW: [V77.08] 백테스트 절대 동기화 - T_H 지정가 덫 선제 장전 및 상태기계 3.0% 청산 절대 락온
 # 🚨 MODIFIED: [V77.09] 타점 역전 패러독스 강제 캡핑(Clamping) 영구 소각 및 순수 수학적 교차(Cross-over) 허용
+# 🚨 MODIFIED: [V77.10] 덫 장전 조건 전면 개조: PM_L < 5분봉 저가 기준 팩트 롤백
 # ==========================================================
 import logging
 import datetime
@@ -32,8 +33,7 @@ import tempfile
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        # NEW: [V77.09 플러그인 닉네임 교체 - 캡핑 소각 및 지정가 덫 락온]
-        self.plugin_name = "AVWAP_V77.09_LIMIT_TRAP_3PCT"
+        self.plugin_name = "AVWAP_V77.10_LIMIT_TRAP_3PCT"
         self.leverage = 3.0       
 
     def _get_logical_date_str(self, now_est):
@@ -71,7 +71,6 @@ class VAvwapHybridPlugin:
                         data['daily_sold_qty'] = 0
                         data['executed_buy'] = False
                         
-                        # NEW: [V77.08] 날짜 변경 시 지정가 덫 상태기계 변수 완전 포맷
                         data['limit_order_placed'] = False
                         data['placed_target_th'] = 0.0
 
@@ -87,7 +86,6 @@ class VAvwapHybridPlugin:
                     data['date'] = today_str
                     self.save_state(ticker, now_est, data)
                 
-                # 안전 형변환 보장
                 data['PM_H'] = float(data.get('PM_H', 0.0))
                 data['PM_L'] = float(data.get('PM_L', 0.0))
                 data['T_H'] = float(data.get('T_H', 0.0))
@@ -95,7 +93,6 @@ class VAvwapHybridPlugin:
                 data['offset'] = float(data.get('offset', 0.0))
                 data['executed_buy'] = bool(data.get('executed_buy', False))
                 
-                # NEW: [V77.08] 덫 변수 영속성 형변환 가드
                 data['limit_order_placed'] = bool(data.get('limit_order_placed', False))
                 data['placed_target_th'] = float(data.get('placed_target_th', 0.0))
 
@@ -215,7 +212,6 @@ class VAvwapHybridPlugin:
             return None
 
     def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avwap_avg_price=0.0, avwap_qty=0, avwap_alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, regime_data=None, is_simulation=False, **kwargs):
-        # 제16 절대 헌법: 변수 스코프 최상단 전진 배치
         avwap_qty = avwap_qty if avwap_qty != 0 else kwargs.get('current_qty', 0)
         exec_curr_p = exec_curr_p if exec_curr_p > 0 else kwargs.get('exec_curr_p', 0.0)
         avwap_avg_price = avwap_avg_price if avwap_avg_price > 0 else kwargs.get('avwap_avg_price', kwargs.get('avg_price', 0.0))
@@ -227,6 +223,7 @@ class VAvwapHybridPlugin:
         curr_pm_l = 0.0
         curr_c = 0.0
         curr_l = 0.0
+        curr_5m_l = 0.0
         curr_offset = 0.0
         curr_t_h = 0.0
         curr_t_l = 0.0
@@ -241,7 +238,6 @@ class VAvwapHybridPlugin:
         is_shutdown = persistent_state.get('shutdown', False)
         executed_buy = persistent_state.get('executed_buy', False)
         
-        # NEW: [V77.08] 상태기계 덫 변수 추출
         limit_order_placed = persistent_state.get('limit_order_placed', False)
         placed_target_th = persistent_state.get('placed_target_th', 0.0)
         
@@ -274,9 +270,6 @@ class VAvwapHybridPlugin:
                 'placed_target_th': placed_target_th
             }
 
-        # ---------------------------------------------------------
-        # 1. 매도 (보유 중일 때) 로직 - V7.1 백테스트 투트랙 자동 청산
-        # ---------------------------------------------------------
         if avwap_qty > 0:
             safe_avg = avwap_avg_price if avwap_avg_price > 0 else exec_curr_p
 
@@ -289,16 +282,12 @@ class VAvwapHybridPlugin:
                     self.save_state(exec_ticker, now_est, persistent_state)
                 return _build_res('SELL', '동적_덤핑_타임라인_도달_전량_시장가_덤핑', qty=avwap_qty, target_price=exec_curr_p)
 
-            # 🚨 MODIFIED: [V77.08] 3.0% 한계 돌파 익절 상향 락온
             exit_target_price = round(safe_avg * 1.03, 2)
             if exec_curr_p >= exit_target_price:
                 return _build_res('SELL', '목표가(+3.0%)_도달_순수모멘텀_익절_격발', qty=avwap_qty, target_price=exit_target_price)
 
             return _build_res('HOLD', '보유중_순수익절(+3.0%)_및_동적덤핑_감시중')
 
-        # ---------------------------------------------------------
-        # 2. 매수 (포지션 0주 일 때) 로직 - V77.08 지정가 덫 선제 장전 엔진
-        # ---------------------------------------------------------
         if is_shutdown:
             return _build_res('WAIT', '당일영구동결_상태(신규진입금지)')
 
@@ -311,11 +300,9 @@ class VAvwapHybridPlugin:
         if prev_c <= 0 or amp5 <= 0:
             return _build_res('WAIT', '진입_평가용_필수데이터_결측_대기')
             
-        # 일일 1회 격발 (1-Shot 1-Kill) 절대 룰 락온
         if executed_buy:
             return _build_res('WAIT', '일일_1회_타격_완료_매매_종료(Zero_Sum_대기)')
 
-        # 04:00 EST부터 스코프 전면 개방 및 종가(Close) 기반 동적 타겟 추적(Trailing)
         if curr_time >= time_0400:
             df_1m = df_1min_exec
             if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
@@ -323,22 +310,18 @@ class VAvwapHybridPlugin:
                 df_today = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= curr_time_str)]
                 
                 if not df_today.empty:
-                    # 타임 패러독스 원천 차단: 오직 종가(close)만으로 고저점 갱신 및 타점 스캔
                     curr_pm_h = float(df_today['close'].max())
                     curr_pm_l = float(df_today['close'].min())
                     curr_c = float(df_today.iloc[-1]['close'])
                     
-                    # NEW: [V77.08] 분봉 저가(Low) 추출 신설
                     curr_l = float(df_today.iloc[-1]['low'])
                     
-                    # 진폭 안전 마진(Offset) 50% 팩트 상향 조정
+                    # NEW: [V77.10] 5분봉 저가(Low) 추출 신설
+                    curr_5m_l = float(df_today['low'].tail(5).min())
+                    
                     curr_offset = prev_c * amp5 * 0.50
                     curr_t_h = curr_pm_h - curr_offset
                     curr_t_l = curr_pm_l + curr_offset
-                    
-                    # 🚨 MODIFIED: [V77.09] T_L 강제 캡핑(Clamping) 영구 소각 (순수 수학적 교차 허용)
-                    # if curr_t_l >= curr_t_h:
-                    #     curr_t_l = max(0.01, curr_t_h - 0.01)
 
                     pm_h = curr_pm_h
                     pm_l = curr_pm_l
@@ -355,11 +338,8 @@ class VAvwapHybridPlugin:
                     if not is_simulation:
                         self.save_state(exec_ticker, now_est, persistent_state)
                         
-                    # 엣지 케이스: T_L 하향 돌파 (정규장)
-                    # 하락장 셧다운(퇴근) 판독은 오직 정규장 개장(09:30 EST) 이후에만 가동
                     hit_l = (curr_time >= time_0930 and curr_c <= curr_t_l)
                     
-                    # 제6 헌법: 정규장 중 T_H와 T_L 동시 하회 시, 퇴근(Shutdown)을 최우선 적용하여 덫을 파기함
                     if hit_l:
                         persistent_state["shutdown"] = True
                         persistent_state["limit_order_placed"] = False
@@ -369,13 +349,12 @@ class VAvwapHybridPlugin:
                         
                         if not is_simulation:
                             self.save_state(exec_ticker, now_est, persistent_state)
-                        logging.info(f"🛑 [V77.09 정규장 셧다운] 1분봉 종가({curr_c:.2f})가 T_L({curr_t_l:.2f}) 하향 돌파. 당일 매매 퇴근 및 덫 파기 완료!")
+                        logging.info(f"🛑 [V77.10 정규장 셧다운] 1분봉 종가({curr_c:.2f})가 T_L({curr_t_l:.2f}) 하향 돌파. 당일 매매 퇴근 및 덫 파기 완료!")
                         return _build_res('SHUTDOWN', '정규장_T_L하향돌파_당일매매퇴근')
                         
-                    # NEW: [V77.08] 지정가 덫 선제 장전 및 락온 알고리즘
+                    # NEW: [V77.10] 지정가 덫 선제 장전 알고리즘 (5분봉 저가 기준 격발)
                     if not limit_order_placed:
-                        # 1단계: 1분봉의 Low가 당일 T_H 이하로 떨어지는 '1차 도달' 포착 시 즉시 덫 장전 락온
-                        if curr_l <= curr_t_h:
+                        if curr_pm_l < curr_5m_l:
                             persistent_state['limit_order_placed'] = True
                             persistent_state['placed_target_th'] = curr_t_h
                             limit_order_placed = True
@@ -387,10 +366,9 @@ class VAvwapHybridPlugin:
                             safe_budget = avwap_alloc_cash * 0.95
                             buy_qty = int(math.floor(safe_budget / placed_target_th)) if placed_target_th > 0 else 0
                             
-                            logging.info(f"🚀 [V77.08 덫 장전] 1분봉 저가({curr_l:.2f})가 실시간 T_H({curr_t_h:.2f}) 터치. 선제 타격 덫 장전 락온!")
-                            return _build_res('PLACE_TRAP', 'T_H_1차도달_지정가덫_선제장전', qty=buy_qty, target_price=placed_target_th)
+                            logging.info(f"🚀 [V77.10 덫 장전] 프리장 저가({curr_pm_l:.2f}) < 5분봉 저가({curr_5m_l:.2f}) 충족. 선제 타격 덫 장전 락온!")
+                            return _build_res('PLACE_TRAP', 'PM_L<5분봉저가_지정가덫_선제장전', qty=buy_qty, target_price=placed_target_th)
                     else:
-                        # 2단계: 덫 장전 이후, 분봉의 저가가 덫 가격을 관통하면 실체결 확인용 라우팅 지시 하달
                         if curr_l <= placed_target_th:
                             return _build_res('VERIFY_TRAP_FILL', '지정가덫_하향관통_실체결검증_및_익절덫동시투하_요청', qty=0, target_price=placed_target_th)
                         else:
