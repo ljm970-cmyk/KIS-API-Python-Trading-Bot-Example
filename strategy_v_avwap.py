@@ -7,7 +7,7 @@
 # 🚨 NEW: [V65.00 AVWAP 동적 하드스탑 락온]
 # 🚨 NEW: [V66.00 AVWAP 암살자 덤핑 지터(Jitter) 분산 락온]
 # 🚨 NEW: [V75.04 상태 캐시 기억상실(Amnesia) 완벽 수술]
-# 🚨 MODIFIED: [V76.01 ATR5 동적 하드스탑 영구 소각 및 투트랙 엑시트 절대 락온]
+# 🚨 MODIFIED: [V76.01 ATR5 동적 하드스탑 렌더링 영구 소각 및 투트랙 엑시트 절대 락온]
 # 🚨 MODIFIED: [V76.02 타점 역전 패러독스 하드 마진 락온 (매니저 제안 수혈)]
 # 🚨 MODIFIED: [V76.03 암살자 덤핑 지터(Jitter) 코어 연산 디커플링 해체 및 동적 타임라인 락온]
 # 🚨 NEW: [V77.00 V7.1 백테스트 절대 동기화 롤백 (Animal Spirit 야성 회복)]
@@ -23,6 +23,7 @@
 # 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백
 # 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
 # 🚨 MODIFIED: [V77.20 조건 3 대통합] 정규장 T_L 하향 돌파 셧다운(퇴근) 로직 영구 소각 및 장마감까지 T_H 요격 전면 개방
+# 🚨 MODIFIED: [V77.22 상시 개방 가드 이식] 장후 세션 프리장 데이터 유실 시 캐시 보존 및 오염 차단 완벽 적용
 # ==========================================================
 import logging
 import datetime
@@ -37,7 +38,7 @@ import tempfile
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        self.plugin_name = "AVWAP_V77.20_LIMIT_TRAP_3PCT"
+        self.plugin_name = "AVWAP_V77.22_LIMIT_TRAP_3PCT"
         self.leverage = 3.0       
 
     def _get_logical_date_str(self, now_est):
@@ -314,8 +315,6 @@ class VAvwapHybridPlugin:
                 df_today = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= curr_time_str)]
                 
                 if not df_today.empty:
-                    # 🚨 MODIFIED: [V77.18] 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온
-                    # 정규장 캔들이 PM_H/PM_L 연산을 오염시키는 것을 원천 차단하기 위해 스코프 절단
                     slice_end_str = '092959' if curr_time >= time_0930 else curr_time_str
                     df_pm = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= slice_end_str)]
                     
@@ -323,17 +322,17 @@ class VAvwapHybridPlugin:
                         curr_pm_h = float(df_pm['close'].max())
                         curr_pm_l = float(df_pm['close'].min())
                     else:
-                        curr_pm_h = 0.0
-                        curr_pm_l = 0.0
+                        # MODIFIED: [상시 개방 가드] 장마감 후 장외 세션에서 프리장 데이터 증발 시 기존 영속 캐시 팩트 보존
+                        curr_pm_h = pm_h if pm_h > 0.0 else 0.0
+                        curr_pm_l = pm_l if pm_l > 0.0 else 0.0
 
                     curr_c = float(df_today.iloc[-1]['close'])
                     curr_l = float(df_today.iloc[-1]['low'])
                     
-                    curr_offset = prev_c * amp5 * 0.50
-                    
-                    # MODIFIED: [V77.14] 백테스트 절대기준 동기화: T_H 하향 캡핑 소각 및 순수 수학적 역전 허용
-                    curr_t_h = curr_pm_h - curr_offset
-                    curr_t_l = curr_pm_l + curr_offset
+                    # MODIFIED: [상시 개방 가드] 결측 대비 기존 오프셋 및 목표 타점(T_H, T_L) 유효 캐시 가드 결속
+                    curr_offset = prev_c * amp5 * 0.50 if (prev_c > 0.0 and amp5 > 0.0) else (offset if offset > 0.0 else 0.0)
+                    curr_t_h = curr_pm_h - curr_offset if curr_pm_h > 0.0 else (t_h if t_h > 0.0 else 0.0)
+                    curr_t_l = curr_pm_l + curr_offset if curr_pm_l > 0.0 else (t_l if t_l > 0.0 else 0.0)
 
                     pm_h = curr_pm_h
                     pm_l = curr_pm_l
@@ -351,7 +350,7 @@ class VAvwapHybridPlugin:
                         self.save_state(exec_ticker, now_est, persistent_state)
                         
                     # 🚨 MODIFIED: [V77.20 조건 3 대통합] 정규장 T_L 하향 돌파 셧다운(퇴근) 로직 영구 소각 및 장마감까지 T_H 요격 전면 개방
-                    # (기존 hit_l 셧다운 락다운 블록 100% 영구 적출)
+                    # (기존 hit_l 셧다운 락다운 블록 100% 영구 적출 완료)
 
                     # MODIFIED: [V77.14] 백테스트 절대기준 동기화: 5분봉 지지 필터 소각 및 순수 T_H 타점 관통 락온
                     if not limit_order_placed:
