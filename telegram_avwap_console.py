@@ -22,6 +22,7 @@
 # 🚨 MODIFIED: [V77.12] 순수 지정가(T_H) 절대 락온 타격 엔진 상태 렌더링 동기화
 # 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백 반영
 # 🚨 MODIFIED: [V77.15 관제탑 레이더 상시 가동 팩트 수술] 비활성(OFF) 상태 시 $0.00 렌더링 맹점 원천 차단
+# 🚨 MODIFIED: [V77.16 관제탑 시각적 마스킹 소각] 비활성(OFF) 상태에서도 실시간 작전 현황 100% 렌더링 락온
 # ==========================================================
 import logging
 import datetime
@@ -136,8 +137,8 @@ class AvwapConsolePlugin:
             # 3. Action Scan & 3단 상태 표시기 무결성 가동 (시각적 노이즈 100% 소각)
             status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
             
-            # 🚨 MODIFIED: [V77.15 관제탑 레이더 상시 가동 팩트 수술] 
-            # 모드 비활성(OFF) 시에도 연산 코어를 100% 강제 가동하여 관측 데이터(PM_H, T_H 등) 렌더링 맹점 원천 차단
+            # 🚨 MODIFIED: [V77.16 관제탑 시각적 마스킹 소각] 
+            # 비활성(OFF) 여부를 묻지도 따지지도 않고 코어의 섀도우 연산 결과를 그대로 노출하도록 if not is_avwap_active 분기 전면 철거
             try:
                 avwap_state_dict = {
                     "strikes": tracking_cache.get(f"AVWAP_STRIKES_{t}", 0),
@@ -189,10 +190,8 @@ class AvwapConsolePlugin:
                     tracking_cache[f"AVWAP_T_L_{t}"] = t_l
                     tracking_cache[f"AVWAP_OFFSET_{t}"] = offset
         
-                    # 🚨 팩트 스캔이 끝난 후 상태 텍스트 분기 처리
-                    if not is_avwap_active:
-                        status_txt = "⚪ 모드 비활성 (레이더 관측 중)"
-                    elif is_shutdown: 
+                    # 🚨 팩트 스캔 상태 텍스트 렌더링 락온
+                    if is_shutdown: 
                         status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
                     elif avwap_qty > 0:
                         if trap_odno:
@@ -218,8 +217,6 @@ class AvwapConsolePlugin:
                                 
             except Exception as e:
                 logging.debug(f"AVWAP 상태 텍스트 추출 에러: {e}")
-                if not is_avwap_active:
-                    status_txt = "⚪ 모드 비활성 (레이더 관측 중)"
 
             # 4. Message Assembly (순수 50% 오프셋 및 3.0% 타점 압축 렌더링)
             msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
