@@ -17,6 +17,7 @@
 # 🚨 NEW: [V77.04 Operation Dawn Sniper - 프리장 선제 타격 및 50% 팩트 오프셋 롤백]
 # 🚨 MODIFIED: [V77.06 3.0% 한계 돌파 팩트 롤백] 
 # 🚨 NEW: [V77.08] 백테스트 절대 동기화 - T_H 지정가 덫 선제 장전 및 상태기계 3.0% 청산 절대 락온
+# 🚨 MODIFIED: [V77.09] 타점 역전 패러독스 강제 캡핑(Clamping) 영구 소각 및 순수 수학적 교차(Cross-over) 허용
 # ==========================================================
 import logging
 import datetime
@@ -31,8 +32,8 @@ import tempfile
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        # NEW: [V77.08 플러그인 닉네임 교체 - 지정가 덫 선제 장전 에디션]
-        self.plugin_name = "AVWAP_V77.08_LIMIT_TRAP_3PCT"
+        # NEW: [V77.09 플러그인 닉네임 교체 - 캡핑 소각 및 지정가 덫 락온]
+        self.plugin_name = "AVWAP_V77.09_LIMIT_TRAP_3PCT"
         self.leverage = 3.0       
 
     def _get_logical_date_str(self, now_est):
@@ -335,8 +336,9 @@ class VAvwapHybridPlugin:
                     curr_t_h = curr_pm_h - curr_offset
                     curr_t_l = curr_pm_l + curr_offset
                     
-                    if curr_t_l >= curr_t_h:
-                        curr_t_l = max(0.01, curr_t_h - 0.01)
+                    # 🚨 MODIFIED: [V77.09] T_L 강제 캡핑(Clamping) 영구 소각 (순수 수학적 교차 허용)
+                    # if curr_t_l >= curr_t_h:
+                    #     curr_t_l = max(0.01, curr_t_h - 0.01)
 
                     pm_h = curr_pm_h
                     pm_l = curr_pm_l
@@ -367,7 +369,7 @@ class VAvwapHybridPlugin:
                         
                         if not is_simulation:
                             self.save_state(exec_ticker, now_est, persistent_state)
-                        logging.info(f"🛑 [V77.08 정규장 셧다운] 1분봉 종가({curr_c:.2f})가 T_L({curr_t_l:.2f}) 하향 돌파. 당일 매매 퇴근 및 덫 파기 완료!")
+                        logging.info(f"🛑 [V77.09 정규장 셧다운] 1분봉 종가({curr_c:.2f})가 T_L({curr_t_l:.2f}) 하향 돌파. 당일 매매 퇴근 및 덫 파기 완료!")
                         return _build_res('SHUTDOWN', '정규장_T_L하향돌파_당일매매퇴근')
                         
                     # NEW: [V77.08] 지정가 덫 선제 장전 및 락온 알고리즘
