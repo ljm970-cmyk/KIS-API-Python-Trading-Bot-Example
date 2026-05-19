@@ -18,10 +18,9 @@
 # 🚨 MODIFIED: [V77.06 3.0% 한계 돌파 팩트 롤백] 
 # 🚨 NEW: [V77.08] 백테스트 절대 동기화 - T_H 지정가 덫 선제 장전 및 상태기계 3.0% 청산 절대 락온
 # 🚨 MODIFIED: [V77.09] 타점 역전 패러독스 강제 캡핑(Clamping) 영구 소각 및 순수 수학적 교차(Cross-over) 허용
-# 🚨 MODIFIED: [V77.11] 덫 장전 조건 교집합(AND) 락온: T_H 하향 터치 AND 5분봉 저가 지지 동시 충족
 # 🚨 MODIFIED: [V77.12] 추격 매수(Negative Slippage) 원천 차단 및 순수 지정가(T_H) 절대 락온 타격 엔진 이식
-# 🚨 MODIFIED: [V77.13 수학적 락온 및 환각 수술] T_H 1센트 팽창 방어(Floor 처리) 및 0주 예산 산출 시 상태 변이(Split-Brain) 원천 차단
-# 🚨 MODIFIED: [V77.14 3분봉 마일드 필터 튜닝] V자 반등 정밀 요격을 위해 5분봉 지지선을 3분봉으로 단축 락온 및 텍스트 디커플링 영구 소각.
+# 🚨 MODIFIED: [V77.13 수학적 락온 및 환각 수술] 0주 예산 산출 시 상태 변이(Split-Brain) 원천 차단
+# 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백
 # ==========================================================
 import logging
 import datetime
@@ -227,7 +226,6 @@ class VAvwapHybridPlugin:
         curr_pm_l = 0.0
         curr_c = 0.0
         curr_l = 0.0
-        curr_3m_l = 0.0 # MODIFIED: [V77.14] 3분봉 변수명 팩트 동기화
         curr_offset = 0.0
         curr_t_h = 0.0
         curr_t_l = 0.0
@@ -317,17 +315,12 @@ class VAvwapHybridPlugin:
                     curr_pm_h = float(df_today['close'].max())
                     curr_pm_l = float(df_today['close'].min())
                     curr_c = float(df_today.iloc[-1]['close'])
-                    
                     curr_l = float(df_today.iloc[-1]['low'])
-                    
-                    # 🚨 MODIFIED: [V77.14 3분봉 마일드 필터] 5분봉(tail(5))에서 3분봉(tail(3))으로 단축 락온
-                    curr_3m_l = float(df_today['low'].tail(3).min())
                     
                     curr_offset = prev_c * amp5 * 0.50
                     
-                    # 🚨 MODIFIED: [V77.13 수학적 락온] T_H 1센트 팽창(하극상 매수) 방어를 위해 소수점 셋째 자리 내림 강제 처리
-                    raw_t_h = curr_pm_h - curr_offset
-                    curr_t_h = math.floor(round(raw_t_h * 100, 4)) / 100.0
+                    # MODIFIED: [V77.14] 백테스트 절대기준 동기화: T_H 하향 캡핑 소각 및 순수 수학적 역전 허용
+                    curr_t_h = curr_pm_h - curr_offset
                     curr_t_l = curr_pm_l + curr_offset
 
                     pm_h = curr_pm_h
@@ -356,12 +349,12 @@ class VAvwapHybridPlugin:
                         
                         if not is_simulation:
                             self.save_state(exec_ticker, now_est, persistent_state)
-                        logging.info(f"🛑 [V77.13 정규장 셧다운] 1분봉 종가({curr_c:.2f})가 T_L({curr_t_l:.2f}) 하향 돌파. 당일 매매 퇴근 및 덫 파기 완료!")
+                        logging.info(f"🛑 [V77.14 정규장 셧다운] 1분봉 종가({curr_c:.2f})가 T_L({curr_t_l:.2f}) 하향 돌파. 당일 매매 퇴근 및 덫 파기 완료!")
                         return _build_res('SHUTDOWN', '정규장_T_L하향돌파_당일매매퇴근')
                         
-                    # MODIFIED: [V77.14] 덫 장전 조건 교집합(AND) 락온, 변수 스코프 전진 배치 및 3분봉 마일드 필터 이식
+                    # MODIFIED: [V77.14] 백테스트 절대기준 동기화: 5분봉 지지 필터 소각 및 순수 T_H 타점 관통 락온
                     if not limit_order_placed:
-                        if curr_l <= curr_t_h and curr_pm_l < curr_3m_l:
+                        if curr_l <= curr_t_h:
                             
                             # 🚨 제16 절대 헌법: 예산 분할 연산을 상태 변이 앞단으로 전진 배치
                             safe_budget = avwap_alloc_cash * 0.95
@@ -377,9 +370,8 @@ class VAvwapHybridPlugin:
                                 if not is_simulation:
                                     self.save_state(exec_ticker, now_est, persistent_state)
                                 
-                                # MODIFIED: [V77.14] 로깅 및 사유 텍스트 3분봉으로 팩트 교정
-                                logging.info(f"🚀 [V77.14 덫 장전] 1분봉 저가({curr_l:.2f}) T_H 관통 및 3분봉 지지(PM_L < 3m_L) 충족. 순수 지정가({placed_target_th:.2f}) 타격 락온!")
-                                return _build_res('PLACE_TRAP', 'T_H관통_AND_3분봉지지_순수지정가_덫장전', qty=buy_qty, target_price=placed_target_th)
+                                logging.info(f"🚀 [V77.14 덫 장전] 1분봉 저가({curr_l:.2f}) T_H 순수 관통. 지정가({placed_target_th:.2f}) 타격 락온!")
+                                return _build_res('PLACE_TRAP', 'T_H순수관통_지정가_덫장전', qty=buy_qty, target_price=placed_target_th)
                             else:
                                 return _build_res('WAIT', '조건_충족이나_예산부족(0주)_덫장전_보류')
                     else:

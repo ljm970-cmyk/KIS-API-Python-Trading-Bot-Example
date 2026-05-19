@@ -19,9 +19,8 @@
 # 🚨 MODIFIED: [V77.05 SyntaxError 핫픽스] unterminated string literal 런타임 즉사 원천 차단
 # 🚨 MODIFIED: [V77.06 3.0% 한계 돌파 팩트 롤백] 익절 렌더링 2.0% -> 3.0% 전면 상향 동기화
 # 🚨 NEW: [V77.08] 백테스트 절대 동기화 - 3단 상태 표시기 개조 및 시각적 노이즈 100% 영구 소각 에디션
-# 🚨 MODIFIED: [V77.11] 덫 장전 조건 교집합(AND) 락온 시각적 디커플링 해체
 # 🚨 MODIFIED: [V77.12] 순수 지정가(T_H) 절대 락온 타격 엔진 상태 렌더링 동기화
-# 🚨 MODIFIED: [V77.14] 3분봉 마일드 필터 튜닝 시각적 동기화 락온
+# 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백 반영
 # ==========================================================
 import logging
 import datetime
@@ -47,7 +46,7 @@ class AvwapConsolePlugin:
         
         time_0400 = datetime.time(4, 0)
         time_0930 = datetime.time(9, 30)
-        
+     
         if curr_time < time_0930:
             header_status = "🌅 <b>[ 프리장 선제 타격 모드 (04:00~09:29 스캔 중) ]</b>"
         else:
@@ -88,7 +87,7 @@ class AvwapConsolePlugin:
                         tracking_cache[f"AVWAP_T_H_{t}"] = saved_state.get('T_H', 0.0)
                         tracking_cache[f"AVWAP_T_L_{t}"] = saved_state.get('T_L', 0.0)
                         tracking_cache[f"AVWAP_OFFSET_{t}"] = saved_state.get('offset', 0.0)
-                        
+           
                     tracking_cache[f"AVWAP_INIT_{t}"] = True
                 except Exception as e:
                     logging.error(f"🚨 AVWAP 관제탑 상태 로드 에러 ({t}): {e}")
@@ -134,8 +133,8 @@ class AvwapConsolePlugin:
             offset = tracking_cache.get(f"AVWAP_OFFSET_{t}", 0.0)
             
             # 3. Action Scan & 3단 상태 표시기 무결성 가동 (시각적 노이즈 100% 소각)
-            # MODIFIED: [V77.14] 덫 장전 대기 상태 텍스트 오버라이드 (3분봉 지지 팩트 교정)
-            status_txt = "⚡ T_H 터치 & 3분 지지(3m_L > PM_L) 대기 중"
+            # # MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분 지지 필터 소각에 따른 덫 장전 대기 상태 텍스트 팩트 교정
+            status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
             if not is_avwap_active:
                 status_txt = "⚪ 모드 비활성 (레이더 관측 중)"
             elif is_shutdown: 
@@ -199,7 +198,7 @@ class AvwapConsolePlugin:
                         tracking_cache[f"AVWAP_T_H_{t}"] = t_h
                         tracking_cache[f"AVWAP_T_L_{t}"] = t_l
                         tracking_cache[f"AVWAP_OFFSET_{t}"] = offset
-                        
+            
                         # NEW: [V77.08] 백테스트 상태기계 기반 시각적 맵핑 동기화
                         if action == "PLACE_TRAP":
                             # MODIFIED: [V77.12]
@@ -211,9 +210,9 @@ class AvwapConsolePlugin:
                         elif action == 'SHUTDOWN':
                             status_txt = f"🛑 셧다운 격발 ({reason})"
                         elif reason:
-                            # MODIFIED: [V77.14] 코어 반환 대기 상태 오버라이드 (3분봉 지지 팩트 교정)
+                            # # MODIFIED: [V77.14 백테스트 절대기준 동기화] 코어 반환 대기 상태 팩트 오버라이드 텍스트 교정
                             if "동적_순수타격선_도달_감시중" in reason or "스캔" in status_txt:
-                                status_txt = "⚡ T_H 터치 & 3분 지지(3m_L > PM_L) 대기 중"
+                                status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
                             else:
                                 status_txt = f"⏳ 대기 ({reason})"
                                 
