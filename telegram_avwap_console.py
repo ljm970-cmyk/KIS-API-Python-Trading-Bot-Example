@@ -23,6 +23,7 @@
 # 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백 반영
 # 🚨 MODIFIED: [V77.15 관제탑 레이더 상시 가동 팩트 수술] 비활성(OFF) 상태 시 $0.00 렌더링 맹점 원천 차단
 # 🚨 MODIFIED: [V77.16 관제탑 시각적 마스킹 소각] 비활성(OFF) 상태에서도 실시간 작전 현황 100% 렌더링 락온
+# 🚨 MODIFIED: [V77.17 관제탑 용어 교정] 실시간 트레일링 팩트를 반영하여 '프리장 최고/최저' 명칭 수정
 # ==========================================================
 import logging
 import datetime
@@ -137,8 +138,6 @@ class AvwapConsolePlugin:
             # 3. Action Scan & 3단 상태 표시기 무결성 가동 (시각적 노이즈 100% 소각)
             status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
             
-            # 🚨 MODIFIED: [V77.16 관제탑 시각적 마스킹 소각] 
-            # 비활성(OFF) 여부를 묻지도 따지지도 않고 코어의 섀도우 연산 결과를 그대로 노출하도록 if not is_avwap_active 분기 전면 철거
             try:
                 avwap_state_dict = {
                     "strikes": tracking_cache.get(f"AVWAP_STRIKES_{t}", 0),
@@ -220,8 +219,9 @@ class AvwapConsolePlugin:
 
             # 4. Message Assembly (순수 50% 오프셋 및 3.0% 타점 압축 렌더링)
             msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
-            msg += f"▫️ 프리장 최고 (PM_H): <b>${pm_h:.2f}</b> (종가 트레일링)\n"
-            msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b> (종가 트레일링)\n"
+            # MODIFIED: [V77.17 관제탑 용어 교정] 24시간 실시간 트레일링 팩트를 반영하여 명칭 수정
+            msg += f"▫️ 당일 추적 최고 (Day_H): <b>${pm_h:.2f}</b> (종가 트레일링)\n"
+            msg += f"▫️ 당일 추적 최저 (Day_L): <b>${pm_l:.2f}</b> (종가 트레일링)\n"
             msg += f"▫️ Amp5 오프셋 (50%): <b>${offset:.2f}</b>\n"
             msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b> (지정가 덫 장전선)\n"
             msg += f"▫️ 하락 셧다운 기준 (T_L): <b>${t_l:.2f}</b> (09:30 이후 활성)\n\n"
