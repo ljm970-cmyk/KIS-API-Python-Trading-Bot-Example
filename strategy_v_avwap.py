@@ -21,6 +21,7 @@
 # 🚨 MODIFIED: [V77.12] 추격 매수(Negative Slippage) 원천 차단 및 순수 지정가(T_H) 절대 락온 타격 엔진 이식
 # 🚨 MODIFIED: [V77.13 수학적 락온 및 환각 수술] 0주 예산 산출 시 상태 변이(Split-Brain) 원천 차단
 # 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백
+# 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
 # ==========================================================
 import logging
 import datetime
@@ -35,7 +36,7 @@ import tempfile
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        self.plugin_name = "AVWAP_V77.14_LIMIT_TRAP_3PCT"
+        self.plugin_name = "AVWAP_V77.18_LIMIT_TRAP_3PCT"
         self.leverage = 3.0       
 
     def _get_logical_date_str(self, now_est):
@@ -312,8 +313,18 @@ class VAvwapHybridPlugin:
                 df_today = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= curr_time_str)]
                 
                 if not df_today.empty:
-                    curr_pm_h = float(df_today['close'].max())
-                    curr_pm_l = float(df_today['close'].min())
+                    # 🚨 MODIFIED: [V77.18] 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온
+                    # 정규장 캔들이 PM_H/PM_L 연산을 오염시키는 것을 원천 차단하기 위해 스코프 절단
+                    slice_end_str = '092959' if curr_time >= time_0930 else curr_time_str
+                    df_pm = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= slice_end_str)]
+                    
+                    if not df_pm.empty:
+                        curr_pm_h = float(df_pm['close'].max())
+                        curr_pm_l = float(df_pm['close'].min())
+                    else:
+                        curr_pm_h = 0.0
+                        curr_pm_l = 0.0
+
                     curr_c = float(df_today.iloc[-1]['close'])
                     curr_l = float(df_today.iloc[-1]['low'])
                     

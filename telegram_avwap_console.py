@@ -24,6 +24,8 @@
 # 🚨 MODIFIED: [V77.15 관제탑 레이더 상시 가동 팩트 수술] 비활성(OFF) 상태 시 $0.00 렌더링 맹점 원천 차단
 # 🚨 MODIFIED: [V77.16 관제탑 시각적 마스킹 소각] 비활성(OFF) 상태에서도 실시간 작전 현황 100% 렌더링 락온
 # 🚨 MODIFIED: [V77.17 관제탑 용어 교정] 실시간 트레일링 팩트를 반영하여 '프리장 최고/최저' 명칭 수정
+# 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
+# 🚨 MODIFIED: [V77.19 관제탑 섀도우 연산 KIS 실잔고 파이프라인 결속 및 예산부족(0주) 환각 영구 소각]
 # ==========================================================
 import logging
 import datetime
@@ -63,6 +65,17 @@ class AvwapConsolePlugin:
            
         active_avwap = avwap_tickers
         tracking_cache = app_data.get('sniper_tracking', {})
+        
+        # 🚨 MODIFIED: [V77.19] KIS 실시간 가용 예산(Cash) 팩트 스캔 엔진 탑재
+        try:
+            cash_val, _ = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=5.0)
+            available_cash = float(cash_val or 0.0)
+        except asyncio.TimeoutError:
+            logging.error("🚨 AVWAP 관제탑 KIS 예산 스캔 타임아웃. 0.0 폴백.")
+            available_cash = 0.0
+        except Exception as e:
+            logging.error(f"🚨 AVWAP 관제탑 KIS 예산 스캔 에러: {e}")
+            available_cash = 0.0
         
         msg = f"🔫 <b>[ 차세대 AVWAP V77.08 암살자 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
@@ -164,6 +177,7 @@ class AvwapConsolePlugin:
                         base_ticker=t, exec_ticker=t,
                         base_curr_p=curr_p, exec_curr_p=curr_p,
                         df_1min_base=None, df_1min_exec=df_1m, avwap_qty=avwap_qty,
+                        avwap_alloc_cash=available_cash, # 🚨 MODIFIED: [V77.19] 예산 팩트 파이프라인 결속
                         now_est=now_est, avwap_state=avwap_state_dict,
                         context_data=None,
                         is_simulation=True,
@@ -219,9 +233,8 @@ class AvwapConsolePlugin:
 
             # 4. Message Assembly (순수 50% 오프셋 및 3.0% 타점 압축 렌더링)
             msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
-            # MODIFIED: [V77.17 관제탑 용어 교정] 24시간 실시간 트레일링 팩트를 반영하여 명칭 수정
-            msg += f"▫️ 당일 추적 최고 (Day_H): <b>${pm_h:.2f}</b> (종가 트레일링)\n"
-            msg += f"▫️ 당일 추적 최저 (Day_L): <b>${pm_l:.2f}</b> (종가 트레일링)\n"
+            msg += f"▫️ 프리장 최고 (PM_H): <b>${pm_h:.2f}</b> (종가 트레일링)\n"
+            msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b> (종가 트레일링)\n"
             msg += f"▫️ Amp5 오프셋 (50%): <b>${offset:.2f}</b>\n"
             msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b> (지정가 덫 장전선)\n"
             msg += f"▫️ 하락 셧다운 기준 (T_L): <b>${t_l:.2f}</b> (09:30 이후 활성)\n\n"
