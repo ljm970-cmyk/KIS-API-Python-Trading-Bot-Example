@@ -26,7 +26,8 @@
 # 🚨 MODIFIED: [V77.17 관제탑 용어 교정] 실시간 트레일링 팩트를 반영하여 '프리장 최고/최저' 명칭 수정
 # 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
 # 🚨 MODIFIED: [V77.19 관제탑 섀도우 연산 KIS 실잔고 파이프라인 결속 및 예산부족(0주) 환각 영구 소각]
-# 🚨 NEW: [V77.22 사이보그(Cyborg) 엑시트 전술 이식] 관제탑 0주 상태 시 수동 강제 요격 팩트 버튼 렌더링 락온
+# 🚨 MODIFIED: [V77.22 사이보그(Cyborg) 엑시트 전술 이식] 관제탑 0주 상태 시 수동 강제 요격 팩트 버튼 렌더링 락온
+# 🚨 MODIFIED: [V77.23 팻핑거 오조작 차단] 수동 요격 버튼을 즉각 격발(MANUAL_FIRE)에서 승인 요청(MANUAL_FIRE_REQ) 파이프라인으로 정밀 변환
 # ==========================================================
 import logging
 import datetime
@@ -67,7 +68,7 @@ class AvwapConsolePlugin:
         active_avwap = avwap_tickers
         tracking_cache = app_data.get('sniper_tracking', {})
         
-        # 🚨 MODIFIED: [V77.19] KIS 실시간 가용 예산(Cash) 팩트 스캔 엔진 탑재
+        # 🚨 [V77.19] KIS 실시간 가용 예산(Cash) 팩트 스캔 엔진 탑재
         try:
             cash_val, _ = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=5.0)
             available_cash = float(cash_val or 0.0)
@@ -78,7 +79,7 @@ class AvwapConsolePlugin:
             logging.error(f"🚨 AVWAP 관제탑 KIS 예산 스캔 에러: {e}")
             available_cash = 0.0
         
-        msg = f"🔫 <b>[ 차세대 AVWAP V77.22 암살자 관제탑 ]</b>\n{header_status}\n\n"
+        msg = f"🔫 <b>[ 차세대 AVWAP V77.23 암살자 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
         for t in active_avwap:
@@ -178,7 +179,7 @@ class AvwapConsolePlugin:
                         base_ticker=t, exec_ticker=t,
                         base_curr_p=curr_p, exec_curr_p=curr_p,
                         df_1min_base=None, df_1min_exec=df_1m, avwap_qty=avwap_qty,
-                        avwap_alloc_cash=available_cash, # 🚨 MODIFIED: [V77.19] 예산 팩트 파이프라인 결속
+                        avwap_alloc_cash=available_cash, 
                         now_est=now_est, avwap_state=avwap_state_dict,
                         context_data=None,
                         is_simulation=True,
@@ -244,7 +245,6 @@ class AvwapConsolePlugin:
             msg += f"▫️ 전일종가: <b>${prev_c:.2f}</b> (Amp5 진폭: {amp5*100:.2f}%)\n"
             msg += f"▫️ 현재가격: <b>${curr_p:.2f}</b>\n"
 
-            # 🚨 MODIFIED: [V77.08] 순수 복리 1.03 곱연산 무결성 쉴드 및 렌더링 3.0% 고정
             if avwap_qty > 0:
                 trap_price = round(avwap_avg * 1.03, 2)
                 msg += f"▫️ 매수평단: <b>${avwap_avg:.2f}</b> ({avwap_qty}주)\n"
@@ -253,12 +253,12 @@ class AvwapConsolePlugin:
             msg += f"\n🚨 <b>[ 작전 수행 현황 ]</b>\n"
             msg += f"▫️ 현재상태: <b>{status_txt}</b>\n"
 
-            # 5. 0주 강제 동기화 뷰포트 가드 사수 & 사이보그 엑시트 전술(수동 요격) 이식
+            # MODIFIED: [V77.23 팻핑거 오조작 방어용 2단계 승인 안전장치(Safety Catch) 우회 배선 이식]
+            # 기존 다이렉트 MANUAL_FIRE 격발 버튼을 MANUAL_FIRE_REQ 요격 확인 요청 파이프라인으로 정밀 변환
             if avwap_qty > 0:
                 keyboard.append([InlineKeyboardButton(f"🧯 {t} 암살자 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
             else:
-                # 🚨 MODIFIED: [V77.22 사이보그(Cyborg) 엑시트 전술] 0주 상태 시 관제탑에 수동 강제 요격 버튼 동적 렌더링
-                keyboard.append([InlineKeyboardButton(f"🔫 [{t}] 수동 강제 요격 (Manual Fire)", callback_data=f"AVWAP_SET:MANUAL_FIRE:{t}")])
+                keyboard.append([InlineKeyboardButton(f"🔫 [{t}] 수동 강제 요격 (Manual Fire)", callback_data=f"AVWAP_SET:MANUAL_FIRE_REQ:{t}")])
 
         keyboard.append([
             InlineKeyboardButton("🔄 관제탑 새로고침", callback_data="AVWAP_SET:REFRESH:NONE"),

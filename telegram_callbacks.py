@@ -15,7 +15,8 @@
 # - /settlement 메뉴에서 오조작을 유발하던 APEX_ON, APEX_OFF 콜백 라우팅 블록을 100% 도려내어 팻핑거 맹점 해체.
 # 🚨 NEW: [V77.22 사이보그(Cyborg) 엑시트 전술 이식]
 # - 수동 요격(MANUAL_FIRE) 신호 가로채기 라우터 신설.
-# - 팩트 스캔 후 T_H 지정가 딥매수, 8초 실체결 교차 검증, 3.0% 자동 익절 덫 장전, 상태기계(SHUTDOWN 해제) 롤백 대통합 완료.
+# 🚨 MODIFIED: [V77.23 팻핑거 오조작 차단] 수동 요격 2단계 승인 락온(Safety Catch)
+# - 즉각 격발을 방어하는 MANUAL_FIRE_REQ 뷰포트 신설 및 최종 승인 MANUAL_FIRE_EXEC 파이프라인 격상 완료.
 # ==========================================================
 import logging
 import datetime
@@ -723,9 +724,44 @@ class TelegramCallbacks:
                 await query.answer()
                 if hasattr(controller, 'cmd_avwap'):
                     await controller.cmd_avwap(update, context)
-            # 🚨 NEW: [V77.22 사이보그(Cyborg) 엑시트 전술 이식]
-            elif sub == "MANUAL_FIRE":
-                await query.answer("🔫 사이보그 요격 시퀀스 가동...", show_alert=False)
+            
+            # 🚨 MODIFIED: [V77.23 팻핑거 오조작 차단] 수동 요격 2단계 승인 락온(Safety Catch)
+            elif sub == "MANUAL_FIRE_REQ":
+                await query.answer("⚠️ 요격 확인 팝업 생성 중...", show_alert=False)
+                
+                try:
+                    app_data = context.bot_data.get('app_data', {})
+                    tracking_cache = app_data.get('sniper_tracking', {})
+                    
+                    t_h = tracking_cache.get(f"AVWAP_T_H_{ticker}", 0.0)
+                    if t_h <= 0.0:
+                        if hasattr(self.strategy, 'v_avwap_plugin'):
+                            est = ZoneInfo('America/New_York')
+                            now_est = datetime.datetime.now(est)
+                            state = await asyncio.to_thread(self.strategy.v_avwap_plugin.load_state, ticker, now_est)
+                            t_h = float(state.get('T_H', 0.0))
+                            
+                    if t_h <= 0.0:
+                        return await query.edit_message_text(f"❌ <b>[{ticker}] 수동 요격 불가</b>\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔 대기.", parse_mode='HTML')
+
+                    msg = f"🚨 <b>[{ticker} 사이보그 엑시트 최종 승인 대기]</b>\n\n"
+                    msg += f"▫️ 지정가 타점: <b>${t_h:.2f} (T_H 기준)</b>\n"
+                    msg += "▫️ 승인 즉시 가용 예산의 95%가 시장가성 지정가로 딥매수 타격됩니다.\n\n"
+                    msg += "⚠️ <b>포트폴리오 매니저 경고:</b>\n"
+                    msg += "현재가가 T_H보다 같거나 높을 경우, 시스템이 요격을 강제 차단합니다. 정말로 요격을 집행하시겠습니까?"
+
+                    keyboard = [
+                        [InlineKeyboardButton(f"🔥 [{ticker}] 수동 요격 최종 승인 (Fire!)", callback_data=f"AVWAP_SET:MANUAL_FIRE_EXEC:{ticker}")],
+                        [InlineKeyboardButton("❌ 작전 취소 (안전 모드 복귀)", callback_data="AVWAP_SET:REFRESH:NONE")]
+                    ]
+                    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+                    
+                except Exception as e:
+                    logging.error(f"🚨 수동 요격 확인창 생성 에러: {e}")
+                    await query.edit_message_text(f"❌ 요격 승인 대기 중 에러 발생: {e}", parse_mode='HTML')
+            
+            elif sub == "MANUAL_FIRE_EXEC":
+                await query.answer("🔫 사이보그 요격 시퀀스 최종 가동...", show_alert=False)
                 await query.edit_message_text(f"🚀 <b>[{ticker}] 사이보그(Cyborg) 수동 강제 요격(Manual Fire) 격발 중...</b>\n▫️ 팩트 스캔 및 딥매수 타점을 검증합니다.", parse_mode='HTML')
                 
                 try:
