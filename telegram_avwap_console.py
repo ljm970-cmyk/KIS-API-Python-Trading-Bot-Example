@@ -25,7 +25,7 @@
 # 🚨 MODIFIED: [V77.16 관제탑 시각적 마스킹 소각] 비활성(OFF) 상태에서도 실시간 작전 현황 100% 렌더링 락온
 # 🚨 MODIFIED: [V77.17 관제탑 용어 교정] 실시간 트레일링 팩트를 반영하여 '프리장 최고/최저' 명칭 수정
 # 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
-# 🚨 MODIFIED: [V77.19 관제탑 섀도우 연산 KIS 실잔고 파이프라인 결속 및 예산부족(0주) 환각 영구 소각]
+# 🚨 MODIFIED: [V77.19 관제탑 섀도우 연산 KIS 실잔고 파이프라인 결속 및 예산부족(0주) 환각 영구 소각
 # 🚨 MODIFIED: [V77.22 사이보그(Cyborg) 엑시트 전술 이식] 관제탑 0주 상태 시 수동 강제 요격 팩트 버튼 렌더링 락온
 # 🚨 MODIFIED: [V77.23 팻핑거 오조작 차단] 수동 요격 버튼을 즉각 격발(MANUAL_FIRE)에서 승인 요청(MANUAL_FIRE_REQ) 파이프라인으로 정밀 변환
 # ==========================================================
@@ -68,7 +68,6 @@ class AvwapConsolePlugin:
         active_avwap = avwap_tickers
         tracking_cache = app_data.get('sniper_tracking', {})
         
-        # 🚨 [V77.19] KIS 실시간 가용 예산(Cash) 팩트 스캔 엔진 탑재
         try:
             cash_val, _ = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=5.0)
             available_cash = float(cash_val or 0.0)
@@ -83,7 +82,6 @@ class AvwapConsolePlugin:
         keyboard = []
 
         for t in active_avwap:
-            # 1. State Load & Self-Healing
             if not tracking_cache.get(f"AVWAP_INIT_{t}"):
                 try:
                     saved_state = await asyncio.to_thread(self.strategy.v_avwap_plugin.load_state, t, now_est)
@@ -96,7 +94,6 @@ class AvwapConsolePlugin:
                         tracking_cache[f"AVWAP_DUMP_JITTER_{t}"] = saved_state.get('dump_jitter_sec', 0)
                         tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = saved_state.get('trap_odno', "")
                         
-                        # V77.08 Target 덫 상태 기계 변수 수혈
                         tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = saved_state.get('limit_order_placed', False)
                         tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = saved_state.get('placed_target_th', 0.0)
                         
@@ -113,7 +110,6 @@ class AvwapConsolePlugin:
             is_avwap_active = await asyncio.to_thread(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
             active_str = "🟢 암살 가동" if is_avwap_active else "⚪ 대기 (OFF)"
             
-            # 2. Fetch Current Data & Missing Params
             amp5 = 0.0
             df_1m = None
             try:
@@ -131,7 +127,7 @@ class AvwapConsolePlugin:
                 prev_c = float(res_batch[1]) if not isinstance(res_batch[1], Exception) and res_batch[1] else 0.0
                 amp5 = float(res_batch[2]) if not isinstance(res_batch[2], Exception) and res_batch[2] else 0.0
                 df_1m = res_batch[3] if not isinstance(res_batch[3], Exception) else None
-                
+               
             except Exception as e:
                 logging.debug(f"🚨 데이터 팩트 수혈 에러: {e}")
                 curr_p, prev_c, amp5, df_1m = 0.0, 0.0, 0.0, None
@@ -150,7 +146,6 @@ class AvwapConsolePlugin:
             t_l = tracking_cache.get(f"AVWAP_T_L_{t}", 0.0)
             offset = tracking_cache.get(f"AVWAP_OFFSET_{t}", 0.0)
             
-            # 3. Action Scan & 3단 상태 표시기 무결성 가동 (시각적 노이즈 100% 소각)
             status_txt = "⚡ T_H 선제 지정가 덫 장전 대기 중"
             
             try:
@@ -205,7 +200,6 @@ class AvwapConsolePlugin:
                     tracking_cache[f"AVWAP_T_L_{t}"] = t_l
                     tracking_cache[f"AVWAP_OFFSET_{t}"] = offset
         
-                    # 🚨 팩트 스캔 상태 텍스트 렌더링 락온
                     if is_shutdown: 
                         status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
                     elif avwap_qty > 0:
@@ -233,7 +227,6 @@ class AvwapConsolePlugin:
             except Exception as e:
                 logging.debug(f"AVWAP 상태 텍스트 추출 에러: {e}")
 
-            # 4. Message Assembly (순수 50% 오프셋 및 3.0% 타점 압축 렌더링)
             msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
             msg += f"▫️ 프리장 최고 (PM_H): <b>${pm_h:.2f}</b> (종가 트레일링)\n"
             msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b> (종가 트레일링)\n"
@@ -253,12 +246,14 @@ class AvwapConsolePlugin:
             msg += f"\n🚨 <b>[ 작전 수행 현황 ]</b>\n"
             msg += f"▫️ 현재상태: <b>{status_txt}</b>\n"
 
-            # MODIFIED: [V77.23 팻핑거 오조작 방어용 2단계 승인 안전장치(Safety Catch) 우회 배선 이식]
-            # 기존 다이렉트 MANUAL_FIRE 격발 버튼을 MANUAL_FIRE_REQ 요격 확인 요청 파이프라인으로 정밀 변환
+            # MODIFIED: [Target 1 지시서 반영 - T_H 결측 시 팻핑거 오조작 방어용 강제 버튼 스위칭 및 시각적 디커플링 해체]
             if avwap_qty > 0:
                 keyboard.append([InlineKeyboardButton(f"🧯 {t} 암살자 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
             else:
-                keyboard.append([InlineKeyboardButton(f"🔫 [{t}] 수동 강제 요격 (Manual Fire)", callback_data=f"AVWAP_SET:MANUAL_FIRE_REQ:{t}")])
+                if t_h > 0.0:
+                    keyboard.append([InlineKeyboardButton(f"🔫 [{t}] 수동 강제 요격 (Manual Fire)", callback_data=f"AVWAP_SET:MANUAL_FIRE_REQ:{t}")])
+                else:
+                    keyboard.append([InlineKeyboardButton(f"❌ [{t}] 수동 요격 불가 (T_H 대기)", callback_data=f"AVWAP_SET:REFRESH:NONE")])
 
         keyboard.append([
             InlineKeyboardButton("🔄 관제탑 새로고침", callback_data="AVWAP_SET:REFRESH:NONE"),

@@ -17,6 +17,9 @@
 # - 수동 요격(MANUAL_FIRE) 신호 가로채기 라우터 신설.
 # 🚨 MODIFIED: [V77.23 팻핑거 오조작 차단] 수동 요격 2단계 승인 락온(Safety Catch)
 # - 즉각 격발을 방어하는 MANUAL_FIRE_REQ 뷰포트 신설 및 최종 승인 MANUAL_FIRE_EXEC 파이프라인 격상 완료.
+# 🚨 MODIFIED: [V77.24 팻핑거 오조작 UI 디커플링 완벽 해체]
+# - MANUAL_FIRE_REQ 및 MANUAL_FIRE_EXEC 라우터 내부 4대 절대 방어막 (T_H 결측, 현재가 스캔 실패, 타점 이탈, 예산 부족) 렌더링 대수술.
+# - 기존 화면 덮어쓰기(edit_message_text) 렌더링을 영구 소각하고, 텔레그램 팝업 경고망(query.answer(..., show_alert=True))으로 100% 팩트 교정 완료.
 # ==========================================================
 import logging
 import datetime
@@ -175,13 +178,13 @@ class TelegramCallbacks:
             target_date = ":".join(data[2:])
             
             if getattr(self, 'queue_ledger', None):
-                 q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
+                q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
             else:
                  q_data = []
              
             qty, price = 0, 0.0
             for item in q_data:
-                 if item.get('date') == target_date:
+                if item.get('date') == target_date:
                     qty = item.get('qty', 0)
                     price = item.get('price', 0.0)
                     break
@@ -276,7 +279,7 @@ class TelegramCallbacks:
                             os.replace(tmp_path, backup_file)
                         except Exception:
                             pass
-                            
+                     
                 await asyncio.to_thread(_process_reset_files)
             
                 if getattr(self, 'queue_ledger', None):
@@ -605,7 +608,7 @@ class TelegramCallbacks:
                 kis_qty = int(float(holdings.get(ticker, {}).get('qty', 0))) if holdings else 0
             except Exception:
                 kis_qty = 0
-                
+            
             max_qty = await self._get_max_holdings_qty(ticker, kis_qty)
             
             if max_qty > 0:
@@ -725,10 +728,8 @@ class TelegramCallbacks:
                 if hasattr(controller, 'cmd_avwap'):
                     await controller.cmd_avwap(update, context)
             
-            # 🚨 MODIFIED: [V77.23 팻핑거 오조작 차단] 수동 요격 2단계 승인 락온(Safety Catch)
+            # 🚨 MODIFIED: [V77.24 팻핑거 오조작 UI 디커플링 완벽 해체] 수동 요격 2단계 승인 락온(Safety Catch)
             elif sub == "MANUAL_FIRE_REQ":
-                await query.answer("⚠️ 요격 확인 팝업 생성 중...", show_alert=False)
-                
                 try:
                     app_data = context.bot_data.get('app_data', {})
                     tracking_cache = app_data.get('sniper_tracking', {})
@@ -742,8 +743,10 @@ class TelegramCallbacks:
                             t_h = float(state.get('T_H', 0.0))
                             
                     if t_h <= 0.0:
-                        return await query.edit_message_text(f"❌ <b>[{ticker}] 수동 요격 불가</b>\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔 대기.", parse_mode='HTML')
+                        return await query.answer(f"❌ [{ticker}] 수동 요격 불가\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔 대기.", show_alert=True)
 
+                    await query.answer("⚠️ 요격 확인 팝업 생성 중...", show_alert=False)
+                    
                     msg = f"🚨 <b>[{ticker} 사이보그 엑시트 최종 승인 대기]</b>\n\n"
                     msg += f"▫️ 지정가 타점: <b>${t_h:.2f} (T_H 기준)</b>\n"
                     msg += "▫️ 승인 즉시 가용 예산의 95%가 시장가성 지정가로 딥매수 타격됩니다.\n\n"
@@ -758,12 +761,9 @@ class TelegramCallbacks:
                     
                 except Exception as e:
                     logging.error(f"🚨 수동 요격 확인창 생성 에러: {e}")
-                    await query.edit_message_text(f"❌ 요격 승인 대기 중 에러 발생: {e}", parse_mode='HTML')
+                    await query.answer(f"❌ 요격 승인 대기 중 에러 발생: {e}", show_alert=True)
             
             elif sub == "MANUAL_FIRE_EXEC":
-                await query.answer("🔫 사이보그 요격 시퀀스 최종 가동...", show_alert=False)
-                await query.edit_message_text(f"🚀 <b>[{ticker}] 사이보그(Cyborg) 수동 강제 요격(Manual Fire) 격발 중...</b>\n▫️ 팩트 스캔 및 딥매수 타점을 검증합니다.", parse_mode='HTML')
-                
                 try:
                     app_data = context.bot_data.get('app_data', {})
                     tracking_cache = app_data.get('sniper_tracking', {})
@@ -778,7 +778,7 @@ class TelegramCallbacks:
                             t_h = float(state.get('T_H', 0.0))
                     
                     if t_h <= 0.0:
-                        return await query.edit_message_text(f"❌ <b>[{ticker}] 수동 요격 실패</b>\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔이 완료될 때까지 대기하십시오.", parse_mode='HTML')
+                        return await query.answer(f"❌ [{ticker}] 수동 요격 실패\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔이 완료될 때까지 대기하십시오.", show_alert=True)
 
                     # 팩트 스캔: 현재가 가져오기
                     try:
@@ -789,14 +789,11 @@ class TelegramCallbacks:
                         curr_p = 0.0
 
                     if curr_p <= 0.0:
-                        return await query.edit_message_text(f"❌ <b>[{ticker}] 수동 요격 실패</b>\n▫️ 현재가를 스캔할 수 없습니다. 통신 상태를 확인하십시오.", parse_mode='HTML')
+                        return await query.answer(f"❌ [{ticker}] 수동 요격 실패\n▫️ 현재가를 스캔할 수 없습니다. 통신 상태를 확인하십시오.", show_alert=True)
 
                     # 타점 이탈 방어막
                     if curr_p >= t_h:
-                        msg = f"🛡️ <b>[{ticker}] 수동 요격 차단 (타점 이탈)</b>\n"
-                        msg += f"▫️ 현재가(<b>${curr_p:.2f}</b>)가 T_H(<b>${t_h:.2f}</b>) 이상입니다.\n"
-                        msg += "▫️ <b>떨어지는 칼날(Deep Dip)</b> 조건이 아니므로 시스템이 격발을 강제로 무효화(Bypass)합니다."
-                        return await query.edit_message_text(msg, parse_mode='HTML')
+                        return await query.answer(f"🛡️ [{ticker}] 수동 요격 차단 (타점 이탈)\n▫️ 현재가(${curr_p:.2f})가 T_H(${t_h:.2f}) 이상입니다.\n▫️ 떨어지는 칼날(Deep Dip) 조건 미충족.", show_alert=True)
 
                     # 가용 예산 스캔
                     async with self.tx_lock:
@@ -807,7 +804,11 @@ class TelegramCallbacks:
                     buy_qty = int(math.floor(safe_budget / t_h)) if t_h > 0 else 0
 
                     if buy_qty <= 0:
-                        return await query.edit_message_text(f"❌ <b>[{ticker}] 수동 요격 실패</b>\n▫️ 예산 부족(0주 산출). 가용 현금: ${avwap_free_cash:.2f}", parse_mode='HTML')
+                        return await query.answer(f"❌ [{ticker}] 수동 요격 실패\n▫️ 예산 부족(0주 산출). 가용 현금: ${avwap_free_cash:.2f}", show_alert=True)
+
+                    # 방어막 전면 통과 완료 - 딥매수 팩트 집행 개시
+                    await query.answer("🔫 사이보그 요격 시퀀스 정상 가동. KIS 서버로 전송합니다...", show_alert=False)
+                    await query.edit_message_text(f"🚀 <b>[{ticker}] 사이보그(Cyborg) 수동 강제 요격(Manual Fire) 격발 중...</b>\n▫️ 팩트 스캔 완료. 딥매수 타점을 검증합니다.", parse_mode='HTML')
 
                     # 지정가 매수 격발 (T_H 가격 100% 락온)
                     res = await asyncio.to_thread(self.broker.send_order, ticker, "BUY", buy_qty, t_h, "LIMIT")
