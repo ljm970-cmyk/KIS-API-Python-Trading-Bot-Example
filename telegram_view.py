@@ -20,6 +20,12 @@
 # - is_locked 상태에 따른 버튼 상호 배타적(Mutually Exclusive) 렌더링 적용으로 시각적 디커플링 해체 완료.
 # 🚨 NEW: [V7.4 Assassin Lock-on] 정점 요격(Apex Intercept) 렌더링 및 UI 버튼 전면 영구 소각
 # - /settlement 메뉴에서 오조작을 유발하던 Apex 스위치 버튼 및 렌더링 텍스트를 100% 도려내어 라우팅 오염 차단.
+# 🚨 NEW: [V77.27 승승장군 팩트 수혈 - V14 줍줍 5단 폭포수 UI 진공 압축 락온]
+# - 1주 단위로 5개씩 표출되어 시각적 공해를 유발하던 줍줍(Jubjub) 보너스 덫을 단 1줄로 진공 압축 렌더링.
+# - BUY/SELL 주문 순서가 꼬이던 현상을 막기 위해 BUY 우선 정렬(Stable Sort) 방어막 이식.
+# 🚨 MODIFIED: [V77.28 승승장군 팩트 수혈 - 줍줍 UI 텍스트 다이어트 정밀 교정]
+# - '🧲줍줍(+5주): ($33.33~$45.45) x 5주'와 같이 수량 표기가 중복 렌더링되는 시각적 공해 전면 소각.
+# - '🧲줍줍: ($33.33~$45.45) x 5주' 포맷으로 진공 압축하여 100% 가독성 확보 완료.
 # ==========================================================
 import os
 import math
@@ -449,9 +455,32 @@ class TelegramView:
                 if is_manual_vwap and not is_rev_logic:
                     body_msg += "⏱️ <b>스케줄:</b> 15:26 EST KIS VWAP 실전 덫 장전 ➔ 알고리즘 위임\n"
                 body_msg += f"📋 <b>[주문 계획 - {proc_status}]</b>\n"
+                
                 plan_orders = t_info.get('plan', {}).get('orders', [])
                 if plan_orders:
-                    for o in plan_orders:
+                    # 🚨 MODIFIED: [V77.27 줍줍 UI 압축 및 BUY/SELL 렌더링 정렬]
+                    plan_orders_sorted = sorted(plan_orders, key=lambda x: 1 if x['side'] == 'SELL' else 0)
+                    jubjub_orders = [o for o in plan_orders_sorted if "🧲줍줍" in o.get('desc', '')]
+                    rendered_jubjub = False
+
+                    for o in plan_orders_sorted:
+                        if "🧲줍줍" in o.get('desc', ''):
+                            if not rendered_jubjub:
+                                if jubjub_orders:
+                                    min_price = min(x['price'] for x in jubjub_orders)
+                                    max_price = max(x['price'] for x in jubjub_orders)
+                                    total_jub_shares = sum(x['qty'] for x in jubjub_orders)
+                                    
+                                    if min_price == max_price:
+                                        price_str = f"${min_price:.2f}"
+                                    else:
+                                        price_str = f"(${min_price:.2f}~${max_price:.2f})"
+                                    
+                                    # 🚨 MODIFIED: [V77.28 승승장군 팩트 수혈 - 줍줍 UI 텍스트 다이어트 정밀 교정]
+                                    body_msg += f" 🔴 🧲줍줍: <b>{price_str} x {total_jub_shares}주</b> (LOC)\n"
+                                rendered_jubjub = True
+                            continue
+                            
                         ico = "🔴" if o['side'] == 'BUY' else "🔵"
                         desc = o['desc'].replace("🩸", "")
                         if "수혈" in o['desc']: ico = "🩸"
@@ -524,8 +553,6 @@ class TelegramView:
                     avwap_status_txt = "실전 가동 중 🔥" if is_avwap_on else "대기 중 ⚪"
                     msg += f"▫️ AVWAP 암살자: <b>{avwap_status_txt}</b>\n"
                 
-                # 🚨 NEW: [V7.4 Assassin Lock-on] Apex Intercept 텍스트 렌더링 100% 영구 소각
-                
                 msg += "⚖️ <b>엔진 스탠바이:</b> 15:26 EST KIS VWAP 실전 덫 장전 및 관망 중\n\n"
             else:
                 msg += f"▫️ 분할: {split_cnt}회 | 목표: {target_profit}% | 복리: {comp_rate}%\n▫️ 수수료: <b>{fee_rate}%</b>\n"
@@ -540,9 +567,6 @@ class TelegramView:
             if ver == "V_REV":
                 is_avwap = config.get_avwap_hybrid_mode(t) if hasattr(config, 'get_avwap_hybrid_mode') else False
                 keyboard.append([InlineKeyboardButton(f"⚔️ 파격적 AVWAP 모멘텀 [ {'가동중' if is_avwap else 'OFF'} ]", callback_data=f"MODE:AVWAP_{'OFF' if is_avwap else 'WARN'}:{t}")])
-                
-                # 🚨 NEW: [V7.4 Assassin Lock-on] Apex Intercept 토글 버튼 100% 영구 소각하여 팻핑거 맹점 해체
-                
                 if t == "SOXL": keyboard.append([InlineKeyboardButton(f"🔫 {t} 단일 롱 모멘텀 관제탑", callback_data=f"AVWAP:MENU:{t}")])
                 keyboard.append([InlineKeyboardButton(f"💸 {t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {t} 수수료", callback_data=f"INPUT:FEE:{t}")])
                 keyboard.append([InlineKeyboardButton(f"✂️ {t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
@@ -704,4 +728,3 @@ class TelegramView:
         if len(body) > (4000 - len(header) - len(footer)):
             body = "… (글자 수 제한으로 이전 로그 생략) …\n" + body[-(3800 - len(header) - len(footer)):]
         return header + body + footer
-

@@ -5,6 +5,10 @@
 # - V14 오리지널(LOC) 모드에서 스냅샷 모드 호출 시 JSON 파일 저장이 누락되어
 #   15:26 EDT 지연 장전 스케줄러가 0건의 주문을 생성하던 치명적 하극상 원천 차단.
 # - 모든 return 분기 직전에 self.save_daily_snapshot 락온(Lock-on) 방어막 이식 완료.
+# 🚨 NEW: [승승장군 팩트 수혈 - V14 오리지널 1~5주 심해 줍줍(Jubjub) 역산 로직 복원]
+# - 예산 파편화 및 10주 제약을 극복하기 위해 본대 예산(core_orders)과 독립된 보너스 덫(LOC) 이식.
+# - 1회분 예산(one_portion_amt)을 바탕으로, 종가 하락 시 남는 예산으로 1주~5주를 더 살 수 있는 
+#   한계 단가를 수학적으로 역산하여 1주씩 5개의 폭포수 LOC 덫을 강제 장전합니다.
 # ==========================================================
 import math
 import os
@@ -228,8 +232,18 @@ class V14Strategy:
                 
                 if buy_qty1 > 0: core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty1, "type": "LOC", "desc": "🆕새출발1"})
                 if buy_qty2 > 0: core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty2, "type": "LOC", "desc": "🆕새출발2"})
-                orders = core_orders + bonus_orders
                 
+                # 🚨 NEW: [승승장군 팩트 수혈 - V14 오리지널 1~5주 심해 줍줍(Jubjub) 역산 로직 복원]
+                q_base = sum(o['qty'] for o in core_orders if o['side'] == 'BUY')
+                if q_base > 0:
+                    for n in range(1, 6):
+                        jub_price = math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0
+                        if jub_price > 0.01:
+                            bonus_orders.append({
+                                "side": "BUY", "price": jub_price, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"
+                            })
+                            
+                orders = core_orders + bonus_orders
                 plan_result = {"orders": orders, "core_orders": core_orders, "bonus_orders": bonus_orders, "total_q": qty, "avg_price": avg_price, "t_val": t_val, "one_portion": one_portion_amt, "process_status": process_status, "is_reverse": False, "star_price": star_price, "star_ratio": star_ratio, "real_cash_used": real_available_cash, "tracking_info": tr_info}
                 # MODIFIED: [V77.20 스냅샷 무결성 하드 가드 장착]
                 if is_snapshot_mode: self.save_daily_snapshot(ticker, plan_result)
@@ -268,6 +282,16 @@ class V14Strategy:
                         core_orders.append({"side": "SELL", "price": star_price, "qty": sell_qty, "type": "LOC", "desc": "🌟별값매도"})
 
                 if lock_s_sell: process_status = "🔫리버스(명중)"
+
+                # 🚨 NEW: [승승장군 팩트 수혈 - V14 오리지널 1~5주 심해 줍줍(Jubjub) 역산 로직 복원]
+                q_base = sum(o['qty'] for o in core_orders if o['side'] == 'BUY')
+                if q_base > 0:
+                    for n in range(1, 6):
+                        jub_price = math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0
+                        if jub_price > 0.01:
+                            bonus_orders.append({
+                                "side": "BUY", "price": jub_price, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"
+                            })
 
                 core_orders, bonus_orders = self._apply_wash_trade_shield(core_orders, bonus_orders)        
                 orders = core_orders + bonus_orders
@@ -332,6 +356,16 @@ class V14Strategy:
                         core_orders.append({"side": "SELL", "price": target_price, "qty": rem_qty, "type": "LIMIT", "desc": "🎯목표매도"})
 
             if lock_s_sell: process_status = "🔫스나이퍼(명중)"
+
+            # 🚨 NEW: [승승장군 팩트 수혈 - V14 오리지널 1~5주 심해 줍줍(Jubjub) 역산 로직 복원]
+            q_base = sum(o['qty'] for o in core_orders if o['side'] == 'BUY')
+            if q_base > 0:
+                for n in range(1, 6):
+                    jub_price = math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0
+                    if jub_price > 0.01:
+                        bonus_orders.append({
+                            "side": "BUY", "price": jub_price, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"
+                        })
 
             core_orders, bonus_orders = self._apply_wash_trade_shield(core_orders, bonus_orders)        
             orders = core_orders + bonus_orders
