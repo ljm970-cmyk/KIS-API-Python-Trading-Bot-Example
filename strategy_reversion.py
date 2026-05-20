@@ -1,13 +1,13 @@
 # ==========================================================
 # FILE: strategy_reversion.py
 # ==========================================================
-# (상단 주석 생략...)
 # 🚨 MODIFIED: [V75.11 예산 증발 데이터 기아(Amnesia) 완벽 수술]
 # - 상태 파일(_load_state_if_needed)에서 날짜(date) 비교가 누락되어 어제의 예산 지출(BUY_BUDGET)이 
 #   오늘로 강제 이월(Carry-over)되는 치명적 하극상 원천 차단.
 # - 날짜가 일치할 때만 잔차를 로드하고, 다르면 0.0으로 팩트 초기화하도록 멱등성 락온.
 # - 스냅샷 모의 장전 시(is_snapshot_mode=True), 잔여 예산이 $0.0으로 기집행 처리되어
 #   매수 덫이 통째로 렌더링에서 증발하던 사용자 1의 맹점 원천 차단.
+# 🚨 MODIFIED: [데드코드 영구 소각] 식물인간 상태인 refund_residual, reset_residual 메서드 전면 적출 완료
 # ==========================================================
 import math
 import os
@@ -96,9 +96,6 @@ class ReversionStrategy:
                 except OSError:
                     pass
 
-    def refund_residual(self, ticker, bucket, refund_value):
-        pass
-
     def save_daily_snapshot(self, ticker, plan_data):
         snap_file = self._get_snapshot_file(ticker)
         if os.path.exists(snap_file):
@@ -165,9 +162,6 @@ class ReversionStrategy:
             is_snapshot_mode=True,
             market_type="REG"
         )
-
-    def reset_residual(self, ticker):
-        pass
 
     def record_execution(self, ticker, side, qty, exec_price):
         self._load_state_if_needed(ticker)

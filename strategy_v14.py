@@ -9,6 +9,7 @@
 # - 예산 파편화 및 10주 제약을 극복하기 위해 본대 예산(core_orders)과 독립된 보너스 덫(LOC) 이식.
 # - 1회분 예산(one_portion_amt)을 바탕으로, 종가 하락 시 남는 예산으로 1주~5주를 더 살 수 있는 
 #   한계 단가를 수학적으로 역산하여 1주씩 5개의 폭포수 LOC 덫을 강제 장전합니다.
+# 🚨 MODIFIED: [데드코드 영구 소각] 미사용 _floor 메서드 전면 적출 완료
 # ==========================================================
 import math
 import os
@@ -22,7 +23,6 @@ class V14Strategy:
         self.cfg = config
 
     def _ceil(self, val): return math.ceil(val * 100) / 100.0
-    def _floor(self, val): return math.floor(val * 100) / 100.0
 
     def _get_logical_date_str(self):
         now_est = datetime.now(ZoneInfo('America/New_York'))
@@ -242,7 +242,8 @@ class V14Strategy:
                             bonus_orders.append({
                                 "side": "BUY", "price": jub_price, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"
                             })
-                            
+                        
+            
                 orders = core_orders + bonus_orders
                 plan_result = {"orders": orders, "core_orders": core_orders, "bonus_orders": bonus_orders, "total_q": qty, "avg_price": avg_price, "t_val": t_val, "one_portion": one_portion_amt, "process_status": process_status, "is_reverse": False, "star_price": star_price, "star_ratio": star_ratio, "real_cash_used": real_available_cash, "tracking_info": tr_info}
                 # MODIFIED: [V77.20 스냅샷 무결성 하드 가드 장착]

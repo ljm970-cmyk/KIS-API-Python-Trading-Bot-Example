@@ -1,7 +1,6 @@
 # ==========================================================
 # FILE: strategy_v14_vwap.py
 # ==========================================================
-# (상단 주석 생략...)
 # 🚨 MODIFIED: [V75.11 예산 증발 데이터 기아(Amnesia) 완벽 수술]
 # - 상태 파일(_load_state_if_needed)에서 날짜(date) 비교가 누락되어 어제의 예산 지출(BUY_BUDGET)이 
 #   오늘로 강제 이월(Carry-over)되는 치명적 하극상 원천 차단.
@@ -10,6 +9,7 @@
 # - 0주 매수 타점에 MAX(0.01, PrevClose * 1.15 - 0.01) 공식을 100% 락온.
 # - 전반전 평단 매수 타점에 MIN(Average Price, Star Price) - 0.01 공식을 100% 락온하여
 #   불필요한 고점 추격 매수를 원천 차단하고 수학적 무결성 복원 완료.
+# 🚨 MODIFIED: [데드코드 영구 소각] 식물인간 상태인 _floor, refund_residual, reset_residual 메서드 전면 적출 완료
 # ==========================================================
 import math
 import logging
@@ -97,9 +97,6 @@ class V14VwapStrategy:
                 try: os.unlink(temp_path)
                 except OSError: pass
 
-    def refund_residual(self, ticker, bucket, refund_value):
-        pass
-
     def save_daily_snapshot(self, ticker, plan_data):
         today_str = self._get_logical_date_str()
         snap_file = self._get_snapshot_file(ticker)
@@ -174,10 +171,6 @@ class V14VwapStrategy:
         )
 
     def _ceil(self, val): return math.ceil(val * 100) / 100.0
-    def _floor(self, val): return math.floor(val * 100) / 100.0
-
-    def reset_residual(self, ticker):
-        pass
 
     def record_execution(self, ticker, side, qty, exec_price):
         self._load_state_if_needed(ticker)
@@ -261,7 +254,7 @@ class V14VwapStrategy:
                 b2_budget = dynamic_budget - b1_budget
                 q_avg = math.floor(b1_budget / p_avg) if p_avg > 0 else 0
                 q_star = math.floor(b2_budget / buy_star_price) if buy_star_price > 0 else 0
-                 
+                
                 if q_avg == 0 and q_star == 0:
                     if p_avg > 0 and dynamic_budget >= p_avg: q_avg = math.floor(dynamic_budget / p_avg)
                     elif buy_star_price > 0 and dynamic_budget >= buy_star_price: q_star = math.floor(dynamic_budget / buy_star_price)
