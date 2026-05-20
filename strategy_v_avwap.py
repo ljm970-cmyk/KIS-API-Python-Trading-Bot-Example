@@ -23,6 +23,7 @@
 # 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백
 # 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
 # 🚨 MODIFIED: [V77.21 09:30 기요틴 셧다운 락온] 정규장 T_L 하향 돌파 로직 영구 소각 및 프리장 체결 불발 시 09:30 정각 무조건 셧다운(퇴근) 적용
+# 🚨 NEW: [V77.30 관제탑 렌더링 무결성 사수] 암살자가 퇴근(Shutdown)해도 관제탑 레이더에 팩트 데이터가 영구 표출되도록 파싱 스코프 전진 배치 완료
 # ==========================================================
 import logging
 import datetime
@@ -37,7 +38,7 @@ import tempfile
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        self.plugin_name = "AVWAP_V77.21_GUILLOTINE_SHUTDOWN"
+        self.plugin_name = "AVWAP_V77.30_GUILLOTINE_SHUTDOWN"
         self.leverage = 3.0       
 
     def _get_logical_date_str(self, now_est):
@@ -256,6 +257,51 @@ class VAvwapHybridPlugin:
         t_l = persistent_state.get('T_L', 0.0)
         offset = persistent_state.get('offset', 0.0)
 
+        # 🚨 NEW: [V77.30 관제탑 렌더링 무결성 사수]
+        # 암살자가 09:30 기요틴이나 익절/손절로 퇴근(Shutdown)하더라도, 관제탑 레이더에는 프리장과 정규장 정보가 
+        # 애프터마켓 시간까지 영구히 표출되도록 팩트 스캔(PM_H, T_H 등 연산) 블록을 얼리 리턴(Early Return)보다 최상단으로 전진 배치합니다.
+        if curr_time >= time_0400:
+            df_1m = df_1min_exec
+            if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
+                curr_time_str = curr_time.strftime('%H%M%S')
+                df_today = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= curr_time_str)]
+                
+                if not df_today.empty:
+                    # 🚨 MODIFIED: [V77.18] 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온
+                    slice_end_str = '092959' if curr_time >= time_0930 else curr_time_str
+                    df_pm = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= slice_end_str)]
+                    
+                    if not df_pm.empty:
+                        curr_pm_h = float(df_pm['close'].max())
+                        curr_pm_l = float(df_pm['close'].min())
+                    else:
+                        curr_pm_h = 0.0
+                        curr_pm_l = 0.0
+
+                    curr_c = float(df_today.iloc[-1]['close'])
+                    curr_l = float(df_today.iloc[-1]['low'])
+                    
+                    curr_offset = prev_c * amp5 * 0.50
+                    
+                    # MODIFIED: [V77.14] 백테스트 절대기준 동기화: T_H 하향 캡핑 소각 및 순수 수학적 역전 허용
+                    curr_t_h = curr_pm_h - curr_offset
+                    curr_t_l = curr_pm_l + curr_offset
+
+                    pm_h = curr_pm_h
+                    pm_l = curr_pm_l
+                    t_h = curr_t_h
+                    t_l = curr_t_l
+                    offset = curr_offset
+
+                    persistent_state['PM_H'] = pm_h
+                    persistent_state['PM_L'] = pm_l
+                    persistent_state['T_H'] = t_h
+                    persistent_state['T_L'] = t_l
+                    persistent_state['offset'] = offset
+                    
+                    if not is_simulation:
+                        self.save_state(exec_ticker, now_est, persistent_state)
+
         def _build_res(action, reason, qty=0, target_price=0.0):
             return {
                 'action': action,
@@ -307,92 +353,46 @@ class VAvwapHybridPlugin:
         if executed_buy:
             return _build_res('WAIT', '일일_1회_타격_완료_매매_종료(Zero_Sum_대기)')
 
-        if curr_time >= time_0400:
-            df_1m = df_1min_exec
-            if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
-                curr_time_str = curr_time.strftime('%H%M%S')
-                df_today = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= curr_time_str)]
+        # MODIFIED: [V77.21 09:30 기요틴 셧다운 락온] 프리장 체결 불발 시 정규장 폭락 휩소 100% 회피 및 퇴근
+        if curr_time >= time_0930:
+            persistent_state["shutdown"] = True
+            persistent_state["limit_order_placed"] = False
+            persistent_state["placed_target_th"] = 0.0
+            limit_order_placed = False
+            placed_target_th = 0.0
+            
+            if not is_simulation:
+                self.save_state(exec_ticker, now_est, persistent_state)
                 
-                if not df_today.empty:
-                    # 🚨 MODIFIED: [V77.18] 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온
-                    # 정규장 캔들이 PM_H/PM_L 연산을 오염시키는 것을 원천 차단하기 위해 스코프 절단
-                    slice_end_str = '092959' if curr_time >= time_0930 else curr_time_str
-                    df_pm = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= slice_end_str)]
-                    
-                    if not df_pm.empty:
-                        curr_pm_h = float(df_pm['close'].max())
-                        curr_pm_l = float(df_pm['close'].min())
-                    else:
-                        curr_pm_h = 0.0
-                        curr_pm_l = 0.0
-
-                    curr_c = float(df_today.iloc[-1]['close'])
-                    curr_l = float(df_today.iloc[-1]['low'])
-                    
-                    curr_offset = prev_c * amp5 * 0.50
-                    
-                    # MODIFIED: [V77.14] 백테스트 절대기준 동기화: T_H 하향 캡핑 소각 및 순수 수학적 역전 허용
-                    curr_t_h = curr_pm_h - curr_offset
-                    curr_t_l = curr_pm_l + curr_offset
-
-                    pm_h = curr_pm_h
-                    pm_l = curr_pm_l
-                    t_h = curr_t_h
-                    t_l = curr_t_l
-                    offset = curr_offset
-
-                    persistent_state['PM_H'] = pm_h
-                    persistent_state['PM_L'] = pm_l
-                    persistent_state['T_H'] = t_h
-                    persistent_state['T_L'] = t_l
-                    persistent_state['offset'] = offset
+            logging.info(f"🛑 [09:30 기요틴 셧다운] 프리장 매수 체결 불발. 정규장 폭락 휩소를 회피하기 위해 당일 매매를 종료(퇴근)합니다.")
+            return _build_res('SHUTDOWN', '09:30_기요틴_프리장미체결_정규장회피_당일퇴근')
+            
+        # MODIFIED: [V77.14] 백테스트 절대기준 동기화: 5분봉 지지 필터 소각 및 순수 T_H 타점 관통 락온
+        if not limit_order_placed:
+            if curr_l > 0 and curr_l <= t_h:
+                
+                # 🚨 제16 절대 헌법: 예산 분할 연산을 상태 변이 앞단으로 전진 배치
+                safe_budget = avwap_alloc_cash * 0.95
+                buy_qty = int(math.floor(safe_budget / t_h)) if t_h > 0 else 0
+                
+                # 🚨 0주 산출 시 발생하는 기억 상실 환각(Split-Brain) 맹점 원천 차단
+                if buy_qty > 0:
+                    persistent_state['limit_order_placed'] = True
+                    persistent_state['placed_target_th'] = t_h
+                    limit_order_placed = True
+                    placed_target_th = t_h
                     
                     if not is_simulation:
                         self.save_state(exec_ticker, now_est, persistent_state)
-                        
-                    # MODIFIED: [V77.21 09:30 기요틴 셧다운 락온] 프리장 체결 불발 시 정규장 폭락 휩소 100% 회피 및 퇴근
-                    if curr_time >= time_0930:
-                        persistent_state["shutdown"] = True
-                        persistent_state["limit_order_placed"] = False
-                        persistent_state["placed_target_th"] = 0.0
-                        limit_order_placed = False
-                        placed_target_th = 0.0
-                        
-                        if not is_simulation:
-                            self.save_state(exec_ticker, now_est, persistent_state)
-                            
-                        logging.info(f"🛑 [09:30 기요틴 셧다운] 프리장 매수 체결 불발. 정규장 폭락 휩소를 회피하기 위해 당일 매매를 종료(퇴근)합니다.")
-                        return _build_res('SHUTDOWN', '09:30_기요틴_프리장미체결_정규장회피_당일퇴근')
-                        
-                    # MODIFIED: [V77.14] 백테스트 절대기준 동기화: 5분봉 지지 필터 소각 및 순수 T_H 타점 관통 락온
-                    if not limit_order_placed:
-                        if curr_l <= curr_t_h:
-                            
-                            # 🚨 제16 절대 헌법: 예산 분할 연산을 상태 변이 앞단으로 전진 배치
-                            safe_budget = avwap_alloc_cash * 0.95
-                            buy_qty = int(math.floor(safe_budget / curr_t_h)) if curr_t_h > 0 else 0
-                            
-                            # 🚨 0주 산출 시 발생하는 기억 상실 환각(Split-Brain) 맹점 원천 차단
-                            if buy_qty > 0:
-                                persistent_state['limit_order_placed'] = True
-                                persistent_state['placed_target_th'] = curr_t_h
-                                limit_order_placed = True
-                                placed_target_th = curr_t_h
-                                
-                                if not is_simulation:
-                                    self.save_state(exec_ticker, now_est, persistent_state)
-                                
-                                logging.info(f"🚀 [V77.14 덫 장전] 1분봉 저가({curr_l:.2f}) T_H 순수 관통. 지정가({placed_target_th:.2f}) 타격 락온!")
-                                return _build_res('PLACE_TRAP', 'T_H순수관통_지정가_덫장전', qty=buy_qty, target_price=placed_target_th)
-                            else:
-                                return _build_res('WAIT', '조건_충족이나_예산부족(0주)_덫장전_보류')
-                    else:
-                        if curr_l <= placed_target_th:
-                            return _build_res('VERIFY_TRAP_FILL', '지정가덫_하향관통_실체결검증_및_익절덫동시투하_요청', qty=0, target_price=placed_target_th)
-                        else:
-                            return _build_res('TRAP_WAIT', f'선제지정가덫({placed_target_th:.2f})_시장대기중', qty=0, target_price=placed_target_th)
-
+                    
+                    logging.info(f"🚀 [V77.14 덫 장전] 1분봉 저가({curr_l:.2f}) T_H 순수 관통. 지정가({placed_target_th:.2f}) 타격 락온!")
+                    return _build_res('PLACE_TRAP', 'T_H순수관통_지정가_덫장전', qty=buy_qty, target_price=placed_target_th)
                 else:
-                    return _build_res('WAIT', '당일_캔들데이터_결측')
+                    return _build_res('WAIT', '조건_충족이나_예산부족(0주)_덫장전_보류')
+        else:
+            if curr_l > 0 and curr_l <= placed_target_th:
+                return _build_res('VERIFY_TRAP_FILL', '지정가덫_하향관통_실체결검증_및_익절덫동시투하_요청', qty=0, target_price=placed_target_th)
+            else:
+                return _build_res('TRAP_WAIT', f'선제지정가덫({placed_target_th:.2f})_시장대기중', qty=0, target_price=placed_target_th)
 
         return _build_res('WAIT', '동적_순수타격선_도달_감시중')
