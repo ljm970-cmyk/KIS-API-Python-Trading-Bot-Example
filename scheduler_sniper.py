@@ -5,6 +5,7 @@
 # 🚨 MODIFIED: [V77.20 조건 2 대통합] 정규장 고저가 관제탑 렌더링 파이프라인 직결 락온
 # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 모드 연동 및 덫 상태기계 원자적 초기화(Reset) 파이프라인 이식
 # 🚨 MODIFIED: [제2헌법 및 Case 26 절대 위반 교정] 중복 로컬 함수(get_actual_execution_price) 소각 및 벡터화 역산식 이식. KIS 에러 타전 HTML 파서 붕괴 방어막 강제 주입.
+# 🚨 MODIFIED: [맹점 1 수술] 다중 출격(Multi-Sortie) 기요틴 하극상 런타임 붕괴 원천 차단 및 셧다운 방어막 팩트 교정
 # ==========================================================
 import logging
 import datetime
@@ -302,7 +303,6 @@ async def scheduled_sniper_monitor(context):
                                 state_data['buy_odno'] = odno
                                 await asyncio.to_thread(strategy.v_avwap_plugin.save_state, t, now_est, state_data)
                             else:
-                                # 🚨 MODIFIED: [Case 26] 텔레그램 파서 붕괴(Silent Death) 방어용 html.escape 락온
                                 err_msg = html.escape(res.get('msg1', '응답 없음') if isinstance(res, dict) else '통신 장애')
                                 logging.error(f"🚨 [{t}] AVWAP 덫 장전 KIS 서버 거절: {err_msg}")
                                 reject_msg = (
@@ -369,7 +369,6 @@ async def scheduled_sniper_monitor(context):
                                     tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = trap_odno
                                     msg += f"\n\n🎯 <b>[투트랙 엑시트 장전]</b>\n▫️ +3.0% 수익 타점(<b>${trap_price:.2f}</b>)에 익절 덫을 즉시 자동 장전했습니다."
                                 else:
-                                    # 🚨 MODIFIED: [Case 26] 텔레그램 파서 붕괴 방어용 html.escape 락온
                                     trap_err = html.escape(trap_res.get('msg1', '오류') if isinstance(trap_res, dict) else '통신 장애')
                                     msg += f"\n\n⚠️ <b>[익절 덫 장전 실패]</b> KIS 서버 거절: {trap_err}"
                                 
@@ -443,7 +442,6 @@ async def scheduled_sniper_monitor(context):
                                             await asyncio.sleep(0.5)
                                         except Exception: pass
                                 else:
-                                    # 🚨 MODIFIED: [Case 26] 텔레그램 파서 붕괴 방어용 html.escape 락온
                                     err_msg = html.escape(res.get('msg1', '응답 없음') if isinstance(res, dict) else '통신 장애')
                                     logging.error(f"🚨 [{t}] AVWAP 암살자 덤핑 KIS 서버 거절: {err_msg}")
                                     reject_msg = (
@@ -473,7 +471,8 @@ async def scheduled_sniper_monitor(context):
                                     dynamic_dump_dt = base_dump_dt - datetime.timedelta(seconds=dump_jitter_sec)
                                     dynamic_dump_str = dynamic_dump_dt.strftime("%H:%M:%S")
      
-                                    if "15:20" in reason or "덤핑" in reason or "도달" in reason:
+                                    # 🚨 MODIFIED: [맹점 1 수술] 다중 출격 기요틴 하극상 원천 차단 (단어 오인 방어 락온)
+                                    if "덤핑" in reason or "EMERGENCY" in reason:
                                         msg += f"\n🛡️ <b>{dynamic_dump_str} (Jitter 적용) 타임스탑 도달 전량 덤핑 완료.</b> 암살자 작전을 <b>영구 동결(Shutdown)</b>합니다."
                                         shutdown_flag = True
                                     else:
@@ -624,14 +623,12 @@ async def scheduled_sniper_monitor(context):
                                    
                                 exec_history = await asyncio.to_thread(broker.get_execution_history, t, today_est_str, today_est_str)
                                 
-                                # 🚨 MODIFIED: [제2헌법 위반 적출] 로컬 함수 영구 소각 및 1줄 제너레이터(next) 연산식 락온
                                 actual_exec_price = next((float(ex.get('ft_ccld_unpr3', '0')) for ex in exec_history if ex.get('sll_buy_dvsn_cd') == '02' and ex.get('odno') == odno and float(ex.get('ft_ccld_unpr3', '0')) > 0), next((float(ex.get('ft_ccld_unpr3', '0')) for ex in exec_history if ex.get('sll_buy_dvsn_cd') == '02' and float(ex.get('ft_ccld_unpr3', '0')) > 0), limit_p))
                                 display_price = actual_exec_price if actual_exec_price > 0 else limit_p
             
                                 msg = f"🚨 <b>[{t}] 스나이퍼 딥-매수(Intercept) 명중!</b>\n▫️ 타겟가: ${limit_p:.2f}\n▫️ 팩트 단가: ${display_price:.2f}\n▫️ 체결수량: {ccld_qty}주 (요청: {qty}주)\n▫️ 사유: {reason}\n▫️ 하방 방어망이 잠깁니다 (상방 독립 유지)."
                                 await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML')
                         else:
-                            # 🚨 MODIFIED: [Case 26] 텔레그램 파서 붕괴 방어용 html.escape 락온
                             err_msg = html.escape(order_res.get('msg1', '응답 없음') if isinstance(order_res, dict) else '통신 장애')
                             logging.error(f"🚨 [{t}] 스나이퍼 매수 KIS 서버 거절: {err_msg}")
                             reject_msg = (
@@ -711,14 +708,12 @@ async def scheduled_sniper_monitor(context):
                                       
                                 exec_history = await asyncio.to_thread(broker.get_execution_history, t, today_est_str, today_est_str)
                                    
-                                # 🚨 MODIFIED: [제2헌법 위반 적출] 로컬 함수 전면 소각 및 제너레이터 1줄 벡터화 압축 완료
                                 actual_exec_price = next((float(ex.get('ft_ccld_unpr3', '0')) for ex in exec_history if ex.get('sll_buy_dvsn_cd') == '01' and ex.get('odno') == odno and float(ex.get('ft_ccld_unpr3', '0')) > 0), next((float(ex.get('ft_ccld_unpr3', '0')) for ex in exec_history if ex.get('sll_buy_dvsn_cd') == '01' and float(ex.get('ft_ccld_unpr3', '0')) > 0), limit_p))
                                 display_price = actual_exec_price if actual_exec_price > 0 else limit_p
                  
                                 msg = f"🦇 <b>[{t}] 스나이퍼 상방 기습({action}) 명중!</b>\n▫️ 타겟가: ${limit_p:.2f}\n▫️ 팩트 단가: ${display_price:.2f}\n▫️ 체결수량: {ccld_qty}주 (요청: {qty}주)\n▫️ 사유: {reason}\n▫️ 상방 감시망이 잠깁니다 (하방 독립 유지)."
                                 await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML')
                         else:
-                            # 🚨 MODIFIED: [Case 26] 텔레그램 파서 붕괴 방어용 html.escape 락온
                             err_msg = html.escape(order_res.get('msg1', '응답 없음') if isinstance(order_res, dict) else '통신 장애')
                             logging.error(f"🚨 [{t}] 스나이퍼 상방 기습 서버 거절: {err_msg}")
                             reject_msg = (

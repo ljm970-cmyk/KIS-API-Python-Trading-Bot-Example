@@ -1,9 +1,10 @@
 # ==========================================================
 # FILE: telegram_bot.py
 # ==========================================================
-# 🚨 MODIFIED: [Case 27 절대 위반 교정] 통합 지시서(/sync) 호출 시 에스크로 변수 스캔 및 할당 파이프라인 100% 영구 소각 완료
-# 🚨 MODIFIED: [Case 26 절대 위반 교정] 텔레그램 HTML 파서 붕괴 방어용 예외 객체 이스케이프 쉴드 강제 주입
-# 🚨 MODIFIED: [데드코드 소각] V76.00 패치로 소각된 Apex 파라미터 연산 및 전달 배선 영구 철거 완료
+# MODIFIED: [Case 27 절대 위반 교정] 통합 지시서(/sync) 호출 시 에스크로 변수 스캔 및 할당 파이프라인 100% 영구 소각 완료
+# MODIFIED: [Case 26 절대 위반 교정] 텔레그램 HTML 파서 붕괴 방어용 예외 객체 이스케이프 쉴드 강제 주입
+# MODIFIED: [데드코드 소각] V76.00 패치로 소각된 Apex 파라미터 연산 및 전달 배선 영구 철거 완료
+# 🚨 MODIFIED: [맹점 3 수술] 예산 연산 Split-Brain 낡은 로직 영구 소각 및 SSOT 배선 결속 완료
 # ==========================================================
 import logging
 import datetime
@@ -25,6 +26,9 @@ from telegram_view import TelegramView
 from telegram_sync_engine import TelegramSyncEngine
 from telegram_states import TelegramStates
 from telegram_callbacks import TelegramCallbacks
+
+# 🚨 NEW: [맹점 3 수술] 중앙 스케줄러 SSOT 예산 분배망 직접 결속
+from scheduler_core import get_budget_allocation
 
 class TelegramController:
     def __init__(self, config, broker, strategy, tx_lock=None, queue_ledger=None, strategy_rev=None):
@@ -97,28 +101,6 @@ class TelegramController:
             return "AFTER", "🌙 애프터마켓"
         else:
             return "CLOSE", "⛔ 장마감"
-
-    def _calculate_budget_allocation(self, cash, tickers):
-        sorted_tickers = sorted(tickers, key=lambda x: 0 if x == "SOXL" else (1 if x == "TQQQ" else 2))
-        allocated = {}
-        rem_cash = cash
-     
-        for tx in sorted_tickers:
-            rev_state = self.cfg.get_reverse_state(tx)
-            is_rev = rev_state.get("is_active", False)
-            
-            if is_rev:
-                allocated[tx] = 0.0 
-            else:
-                split = self.cfg.get_split_count(tx)
-                portion = self.cfg.get_seed(tx) / split if split > 0 else 0
-                if rem_cash >= portion:
-                    allocated[tx] = portion
-                    rem_cash -= portion
-                else: 
-                    allocated[tx] = 0
-             
-        return sorted_tickers, allocated
 
     def setup_handlers(self, application):
         application.add_handler(CommandHandler("start", self.cmd_start))
@@ -348,7 +330,9 @@ class TelegramController:
         
         tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         render_tickers = list(tickers)
-        sorted_tickers, allocated_cash = await asyncio.to_thread(self._calculate_budget_allocation, cash, render_tickers)
+        
+        # 🚨 MODIFIED: [맹점 3 수술] 구형 데드코드 연산기 대신 SSOT 코어 예산 스캐너 다이렉트 주입 락온
+        sorted_tickers, allocated_cash = await asyncio.to_thread(get_budget_allocation, cash, render_tickers, self.cfg)
         
         ticker_data_list = []
         total_buy_needed = 0.0
@@ -608,7 +592,6 @@ class TelegramController:
                         if hasattr(self.strategy, 'v_avwap_plugin'):
                             avwap_state_dict = {"strikes": tracking_cache.get(f"AVWAP_STRIKES_{t}", 0), "cooldown_active": tracking_cache.get(f"AVWAP_COOLDOWN_{t}", False)}
                             
-                            # 🚨 MODIFIED: [데드코드 소각] V76.00 패치로 소각된 Apex 파라미터 연산 철거 완료
                             decision = await asyncio.wait_for(
                                 asyncio.to_thread(
                                     self.strategy.v_avwap_plugin.get_decision,

@@ -6,6 +6,7 @@
 # 🚨 NEW: [Case 11] AVWAP 다중 출격(Multi-Sortie) 모드 데이터 영속성 맵핑 및 락온
 # 🚨 MODIFIED: [Case 27 절대 위반 수술] 에스크로(Escrow) 엔진 100% 영구 적출 및 잔재 코드(Reset Locks) 소각 완료
 # 🚨 NEW: [데이터 기아 방어] V-REV 및 AVWAP 갭 스위칭 임계치 제어 파라미터 맵핑 100% 팩트 이식 완료
+# 🚨 MODIFIED: [맹점 2 수술] AVWAP vs V-REV 갭 임계치 메모리 충돌 원천 차단 (상태 오염 방어)
 # ==========================================================
 
 import json
@@ -67,7 +68,9 @@ class ConfigManager:
             "SNIPER_BUY_LOCKED": "data/sniper_buy_locked.json",
             "SNIPER_SELL_LOCKED": "data/sniper_sell_locked.json",
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",       
-            "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json"
+            "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
+            # NEW: [맹점 2] 상태 오염(Coupling) 원천 차단을 위해 AVWAP 갭 임계치 전용 파일 경로 신설
+            "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json"
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -181,7 +184,6 @@ class ConfigManager:
                 try: os.remove(temp_path)
                 except Exception: pass
 
-    # NEW: [데이터 기아 방어] 갭 스위칭 파라미터 제어기 이식
     def get_vrev_gap_threshold(self, ticker):
         return float(self._load_json(self.FILES["VREV_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
 
@@ -200,14 +202,15 @@ class ConfigManager:
             d[ticker] = bool(v)
             self._save_json(self.FILES["VREV_GAP_SWITCH_CFG"], d)
             
+    # MODIFIED: [맹점 2 수술] AVWAP 전용 임계치 상태 격리 및 디커플링 팩트 교정
     def get_avwap_gap_threshold(self, ticker):
-        return float(self._load_json(self.FILES["VREV_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
+        return float(self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
 
     def set_avwap_gap_threshold(self, ticker, v):
         with self._io_lock:
-            d = self._load_json(self.FILES["VREV_GAP_THRESH_CFG"], {})
+            d = self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {})
             d[ticker] = float(v)
-            self._save_json(self.FILES["VREV_GAP_THRESH_CFG"], d)
+            self._save_json(self.FILES["AVWAP_GAP_THRESH_CFG"], d)
 
     def get_last_split_date(self, ticker):
         return self._load_json(self.FILES["SPLIT_HISTORY"], {}).get(ticker, "")
