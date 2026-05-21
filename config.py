@@ -14,6 +14,7 @@
 # 🚨 MODIFIED: [V77.01 데이터 기아 방어 및 런타임 무결성 팩트 수술]
 # - 백테스트 수수료 환경과 100% 동기화하기 위해 DEFAULT_FEE 기본값을 0.07%로 하향 팩트 락온.
 # 🚨 MODIFIED: [V77.29 데드코드 영구 소각] 중복 선언된 get_version_history 라우터를 전면 적출하고 get_full_version_history로 단일 진실 공급원(SSOT) 락온 완료
+# 🚨 NEW: [Case 11] AVWAP 다중 출격(Multi-Sortie) 모드 데이터 영속성 맵핑 및 락온
 # ==========================================================
 
 import json
@@ -70,6 +71,8 @@ class ConfigManager:
             "SNIPER_MULTIPLIER_CFG": "data/sniper_multiplier.json",
             "SPLIT_HISTORY": "data/split_history.json",
             "AVWAP_HYBRID_CFG": "data/avwap_hybrid.json",
+            # NEW: [Case 11] AVWAP 다중 출격 파일 맵핑
+            "AVWAP_SORTIE_CFG": "data/avwap_sortie.json",
             "MANUAL_VWAP_CFG": "data/manual_vwap_config.json",
             "FEE_CFG": "data/fee_config.json", 
             "MASTER_SWITCH": "data/master_switch.json",
@@ -742,6 +745,16 @@ class ConfigManager:
             d = self._load_json(self.FILES["AVWAP_HYBRID_CFG"], {})
             d[ticker] = bool(v)
             self._save_json(self.FILES["AVWAP_HYBRID_CFG"], d)
+
+    # 🚨 NEW: [Case 11] AVWAP 다중 출격 (Multi-Sortie) Getter/Setter 락온
+    def get_avwap_sortie_mode(self, ticker):
+        return self._load_json(self.FILES["AVWAP_SORTIE_CFG"], {}).get(ticker, "SINGLE")
+        
+    def set_avwap_sortie_mode(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_SORTIE_CFG"], {})
+            d[ticker] = str(v)
+            self._save_json(self.FILES["AVWAP_SORTIE_CFG"], d)
 
     def get_manual_vwap_mode(self, ticker): 
         return self._load_json(self.FILES["MANUAL_VWAP_CFG"], {}).get(ticker, False)

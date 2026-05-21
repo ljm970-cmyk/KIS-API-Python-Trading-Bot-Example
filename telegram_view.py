@@ -2,7 +2,8 @@
 # FILE: telegram_view.py
 # ==========================================================
 # 🚨 MODIFIED: [V77.33 엣지케이스 팩트 수술] 통합 지시서 에스크로(Escrow) UI 렌더링 전면 소각
-# 🚨 MODIFIED: [UI 렌더링 무결성] 최신 버전 V77.33 락온
+# 🚨 MODIFIED: [UI 렌더링 무결성] 최신 버전 V77.34 락온
+# 🚨 NEW: [Case 11] 환경설정(/settlement)에 다중 출격(Multi-Sortie) 스위치 동적 렌더링 팩트 교정
 # ==========================================================
 import os
 import math
@@ -241,7 +242,7 @@ class TelegramView:
         page_items = history_data[start_idx:end_idx]
 
         msg = "🚀 <b>[ PIPIOS 퀀트 엔진 패치노트 ]</b>\n"
-        msg += "▫️ 현재 시스템: <code>V77.33 무결점 디커플링 에디션 (V7.4 Assassin)</code>\n\n"
+        msg += "▫️ 현재 시스템: <code>V77.34 무결점 디커플링 에디션 (V7.4 Assassin)</code>\n\n"
         
         for item in page_items:
             if isinstance(item, str):
@@ -359,7 +360,6 @@ class TelegramView:
             
             body_msg += f"💵 총 시드: ${safe_seed:,.0f}\n🛒 <b>{bdg_txt}</b>\n"
        
-            # 🚨 MODIFIED: [V77.33] 바디 내 금고 보호액(에스크로) 렌더링 팩트 소각
             body_msg += f"💰 현재 ${safe_curr:,.2f} / 평단 ${safe_avg:,.2f} ({fact_qty}주)\n"
             
             if prev_close > 0 and day_high > 0 and day_low > 0:
@@ -467,6 +467,7 @@ class TelegramView:
 
         return final_msg, InlineKeyboardMarkup(keyboard) if keyboard else None
 
+    # 🚨 MODIFIED: [Case 11] 다중 출격(Multi-Sortie) 스위치 동적 렌더링 락온
     def get_settlement_message(self, active_tickers, config, atr_data, tracking_cache=None):
         msg = ""
         keyboard = []
@@ -508,6 +509,11 @@ class TelegramView:
                     is_avwap_on = config.get_avwap_hybrid_mode(t)
                     avwap_status_txt = "실전 가동 중 🔥" if is_avwap_on else "대기 중 ⚪"
                     msg += f"▫️ AVWAP 암살자: <b>{avwap_status_txt}</b>\n"
+                    
+                    if is_avwap_on:
+                        sortie_mode = getattr(config, 'get_avwap_sortie_mode', lambda x: "SINGLE")(t)
+                        sortie_txt = "다중 출격 (무한 타격)" if sortie_mode == "MULTI" else "단일 타격 (조기 퇴근)"
+                        msg += f"▫️ 작전 궤도: <b>{sortie_txt}</b>\n"
                 
                 msg += "⚖️ <b>엔진 스탠바이:</b> 15:26 EST KIS VWAP 실전 덫 장전 및 관망 중\n\n"
             else:
@@ -523,6 +529,13 @@ class TelegramView:
             if ver == "V_REV":
                 is_avwap = config.get_avwap_hybrid_mode(t) if hasattr(config, 'get_avwap_hybrid_mode') else False
                 keyboard.append([InlineKeyboardButton(f"⚔️ 파격적 AVWAP 모멘텀 [ {'가동중' if is_avwap else 'OFF'} ]", callback_data=f"MODE:AVWAP_{'OFF' if is_avwap else 'WARN'}:{t}")])
+                
+                if is_avwap:
+                    sortie_mode = getattr(config, 'get_avwap_sortie_mode', lambda x: "SINGLE")(t)
+                    next_sortie = "MULTI" if sortie_mode == "SINGLE" else "SINGLE"
+                    btn_text = "🔄 다중 출격 전환" if sortie_mode == "SINGLE" else "🔄 단일 타격 전환"
+                    keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"MODE:AVWAP_SORTIE:{t}:{next_sortie}")])
+                
                 if t == "SOXL": keyboard.append([InlineKeyboardButton(f"🔫 {t} 단일 롱 모멘텀 관제탑", callback_data=f"AVWAP:MENU:{t}")])
                 keyboard.append([InlineKeyboardButton(f"💸 {t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {t} 수수료", callback_data=f"INPUT:FEE:{t}")])
                 keyboard.append([InlineKeyboardButton(f"✂️ {t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])

@@ -2,6 +2,7 @@
 # FILE: telegram_avwap_console.py
 # ==========================================================
 # 🚨 MODIFIED: [V77.31] 팻핑거 방어 - PRE, REG 시장 상태일 때만 수동 요격 버튼 활성화 락온
+# 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 모드 관제탑 헤더 상태 렌더링 동기화
 # ==========================================================
 import logging
 import datetime
@@ -80,7 +81,7 @@ class AvwapConsolePlugin:
         except Exception as e:
             available_cash = 0.0
         
-        msg = f"🔫 <b>[ 차세대 AVWAP V77.31 관제탑 ]</b>\n{header_status}\n\n"
+        msg = f"🔫 <b>[ 차세대 AVWAP V77.34 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
         for t in active_avwap:
@@ -110,7 +111,11 @@ class AvwapConsolePlugin:
                     pass
 
             is_avwap_active = await asyncio.to_thread(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
-            active_str = "🟢 암살 가동" if is_avwap_active else "⚪ 대기 (OFF)"
+            
+            # 🚨 NEW: [Case 11] 다중 출격 모드 팩트 렌더링
+            sortie_mode = await asyncio.to_thread(getattr(self.cfg, 'get_avwap_sortie_mode', lambda x: "SINGLE"), t)
+            sortie_str = "단일 타격(1회)" if sortie_mode == "SINGLE" else "다중 출격(무한)"
+            active_str = f"🟢 암살 가동 ({sortie_str})" if is_avwap_active else "⚪ 대기 (OFF)"
             
             amp5 = 0.0
             df_1m = None
@@ -186,7 +191,8 @@ class AvwapConsolePlugin:
                         context_data=None,
                         is_simulation=True,
                         amp5=amp5,
-                        prev_close=prev_c
+                        prev_close=prev_c,
+                        sortie_mode=sortie_mode
                     ),
                     timeout=5.0
                 )
@@ -269,6 +275,11 @@ class AvwapConsolePlugin:
                         keyboard.append([InlineKeyboardButton(f"❌ [{t}] 수동 요격 불가 (T_H 대기)", callback_data="AVWAP_SET:REFRESH:NONE")])
             else:
                 keyboard.append([InlineKeyboardButton(f"⛔ [{t}] 장마감 (수동 제어 불가)", callback_data="AVWAP_SET:REFRESH:NONE")])
+
+            # 🚨 NEW: [Case 11] 다중 출격 모드 전환 토글 버튼 추가
+            toggle_target = "MULTI" if sortie_mode == "SINGLE" else "SINGLE"
+            toggle_text = "🔄 무한 출장 모드로 변경" if sortie_mode == "SINGLE" else "🎯 단일 타격 모드로 변경"
+            keyboard.append([InlineKeyboardButton(toggle_text, callback_data=f"MODE:AVWAP_SORTIE:{t}:{toggle_target}")])
 
         keyboard.append([
             InlineKeyboardButton("🔄 관제탑 새로고침", callback_data="AVWAP_SET:REFRESH:NONE"),

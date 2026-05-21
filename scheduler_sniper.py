@@ -12,7 +12,7 @@
 # MODIFIED: [V46.03 예산 침범 패러독스 방어] KIS 증거금 룰에 의해 AVWAP이 본대 예산을 침범하는 것을 막기 위해 1.05배 하드 마진 락온 이식
 # MODIFIED: [V46.04 AVWAP 증거금 침식 방어] 15:27 해제 조건 소각 및 마진 1.20배 상향 락온
 # MODIFIED: [V46.05 YF API 무한 호출 병목 소각 및 타임아웃 연장] Lock Starvation 방어
-# MODIFIED: [V46.06 기초자산 고/저가 스캔 배선 팩트 개통] 단판 승부 파라 파라미터 누수 수술
+# MODIFIED: [V46.06 기초자산 고/저가 스캔 배선 팩트 개통] 단판 승부 파라 파라 파라미터 누수 수술
 # MODIFIED: [V47.00 AVWAP 오버나이트 홀딩 락온] 일일 누적 매수/매도량 팩트 수혈 파이프라인 이식 (디커플링 대비)
 # MODIFIED: [V47.00 하이킨아시 듀얼 모멘텀] 본대 예산 보호막 무력화 0.0 및 암살자 예산 50% 강제 락온
 # MODIFIED: [V47.00 하이킨아시 듀얼 모멘텀] 옴니 매트릭스 락다운 블록 바이패스 처리(04:00 EST 개방)
@@ -48,6 +48,7 @@
 # 🚨 MODIFIED: [V77.12] 추격 매수(Negative Slippage) 원천 차단 및 순수 지정가(T_H) 절대 락온 타격 엔진 이식
 # 🚨 MODIFIED: [V77.20 조건 2 대통합] 정규장 고저가(REG_H, REG_L) 관제탑 렌더링 파이프라인 직결 락온 및 T_L 셧다운 소각 팩트 반영
 # 🚨 NEW: [V77.25 관제탑 UI 렌더링 대수술 및 정규장 고/저가 파이프라인 결속]
+# 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 모드 연동 및 덫 상태기계 원자적 초기화(Reset) 파이프라인 이식
 # ==========================================================
 import logging
 import datetime
@@ -347,6 +348,9 @@ async def scheduled_sniper_monitor(context):
                         "placed_target_th": tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}", 0.0),
                         "dump_jitter_sec": tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0)
                     }
+                    
+                    # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 모드 파라미터 수혈
+                    sortie_mode = await asyncio.to_thread(getattr(cfg, 'get_avwap_sortie_mode', lambda x: "SINGLE"), t)
              
                     decision = await asyncio.to_thread(
                         strategy.get_avwap_decision,
@@ -356,7 +360,8 @@ async def scheduled_sniper_monitor(context):
                         df_1min_base=df_1min_base, df_1min_exec=df_1min_t, now_est=now_est, avwap_state=avwap_state_dict,
                         regime_data=None, prev_close=prev_c, day_high=day_high, day_low=day_low, amp5=amp5,
                         base_day_high=base_day_high, base_day_low=base_day_low,
-                        is_simulation=False
+                        is_simulation=False,
+                        sortie_mode=sortie_mode
                     )
          
                     action = decision.get("action")
@@ -592,11 +597,24 @@ async def scheduled_sniper_monitor(context):
                                     dynamic_dump_dt = base_dump_dt - datetime.timedelta(seconds=dump_jitter_sec)
                                     dynamic_dump_str = dynamic_dump_dt.strftime("%H:%M:%S")
      
+                                    # 🚨 MODIFIED: [Case 11] 다중 출격(MULTI) 모드 익절 시 셧다운 강제 해방 및 덫 초기화 로직 락온
                                     if "15:20" in reason or "덤핑" in reason or "도달" in reason:
                                         msg += f"\n🛡️ <b>{dynamic_dump_str} (Jitter 적용) 타임스탑 도달 전량 덤핑 완료.</b> 암살자 작전을 <b>영구 동결(Shutdown)</b>합니다."
+                                        shutdown_flag = True
                                     else:
-                                        msg += f"\n🛡️ 익절 청산 완료. 암살자 작전을 <b>영구 동결(Shutdown)</b>합니다."
-                                    shutdown_flag = True
+                                        if sortie_mode == "MULTI":
+                                            msg += f"\n🔄 익절 청산 완료. <b>[다중 출격(Multi-Sortie)]</b> 모드가 활성화되어 재장전 궤도로 즉시 리셋됩니다."
+                                            shutdown_flag = False
+                                            
+                                            # 상태기계 덫 데이터 100% 클리어
+                                            tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = False
+                                            tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = 0.0
+                                            tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = ""
+                                            tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = ""
+                                        else:
+                                            msg += f"\n🛡️ 단일 타격 익절 청산 완료. 암살자 작전을 <b>영구 동결(Shutdown)</b>합니다."
+                                            shutdown_flag = True
+                                            
                                     new_avg = 0.0
                                     avwap_free_cash += (total_sold * exec_price)
                                 else:
@@ -620,7 +638,10 @@ async def scheduled_sniper_monitor(context):
                                     'qty': new_qty,
                                     'avg_price': new_avg,
                                     "daily_sold_qty": daily_s,
-                                    "trap_odno": tracking_cache.get(f"AVWAP_TRAP_ODNO_{t}", "")
+                                    "trap_odno": tracking_cache.get(f"AVWAP_TRAP_ODNO_{t}", ""),
+                                    "limit_order_placed": tracking_cache.get(f"AVWAP_LIMIT_ORDER_PLACED_{t}", False),
+                                    "placed_target_th": tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}", 0.0),
+                                    "buy_odno": tracking_cache.get(f"AVWAP_BUY_ODNO_{t}", "")
                                 })
                                 await asyncio.to_thread(strategy.v_avwap_plugin.save_state, t, now_est, state_data)
                             elif remaining_qty == 0 and trap_filled_qty == 0:

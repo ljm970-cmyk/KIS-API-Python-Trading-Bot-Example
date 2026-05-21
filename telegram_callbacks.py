@@ -2,6 +2,7 @@
 # FILE: telegram_callbacks.py
 # ==========================================================
 # 🚨 MODIFIED: [V77.31] 수동 요격(MANUAL_FIRE_REQ/EXEC) 및 수동 청산 진입 전 시간대 이중 필터링 락온
+# 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 스위칭 라우터 배선 완벽 개통
 # ==========================================================
 import logging
 import datetime
@@ -647,6 +648,14 @@ class TelegramCallbacks:
             elif sub == "AVWAP_OFF":
                 await query.answer()
                 await asyncio.to_thread(self.cfg.set_avwap_hybrid_mode, ticker, False)
+                if hasattr(controller, 'cmd_settlement'):
+                    await controller.cmd_settlement(update, context)
+            
+            # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 스위칭 라우터 배선
+            elif sub == "AVWAP_SORTIE":
+                tgt_val = data[3]
+                await query.answer(f"✅ 작전 궤도를 {tgt_val} 모드로 스위칭합니다.", show_alert=False)
+                await asyncio.to_thread(self.cfg.set_avwap_sortie_mode, ticker, tgt_val)
                 if hasattr(controller, 'cmd_settlement'):
                     await controller.cmd_settlement(update, context)
 

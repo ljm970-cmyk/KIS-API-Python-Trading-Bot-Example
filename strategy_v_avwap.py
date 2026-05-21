@@ -1,29 +1,30 @@
 # ==========================================================
 # FILE: strategy_v_avwap.py
 # ==========================================================
-# 🚨 MODIFIED: [V59.00 AVWAP 암살자 예산 100% 수혈 및 15:25 전량 덤핑 팩트 교정]
-# 🚨 MODIFIED: [V60.00 옴니 매트릭스 진입 차단망 전면 폐기 및 데드코드 소각]
-# 🚨 MODIFIED: [V61.00 숏(SOXS) 전면 소각 작전 지시서 적용]
-# 🚨 NEW: [V65.00 AVWAP 동적 하드스탑 락온]
-# 🚨 NEW: [V66.00 AVWAP 암살자 덤핑 지터(Jitter) 분산 락온]
-# 🚨 NEW: [V75.04 상태 캐시 기억상실(Amnesia) 완벽 수술]
-# 🚨 MODIFIED: [V76.01 ATR5 동적 하드스탑 영구 소각 및 투트랙 엑시트 절대 락온]
-# 🚨 MODIFIED: [V76.02 타점 역전 패러독스 하드 마진 락온 (매니저 제안 수혈)]
-# 🚨 MODIFIED: [V76.03 암살자 덤핑 지터(Jitter) 코어 연산 디커플링 해체 및 동적 타임라인 락온]
-# 🚨 NEW: [V77.00 V7.1 백테스트 절대 동기화 롤백 (Animal Spirit 야성 회복)]
-# 🚨 MODIFIED: [V77.01 데이터 기아 방어 및 런타임 무결성 팩트 수술] 
-# 🚨 NEW: [V77.02 프리마켓 관제탑 데이터 기아 및 런타임 붕괴 완벽 수술]
-# 🚨 MODIFIED: [V77.03 갭상승 휩소 원천 차단 및 Strict Touch 절대 락온]
-# 🚨 NEW: [V77.04 Operation Dawn Sniper - 프리장 선제 타격 및 50% 팩트 오프셋 롤백]
-# 🚨 MODIFIED: [V77.06 3.0% 한계 돌파 팩트 롤백] 
-# 🚨 NEW: [V77.08] 백테스트 절대 동기화 - T_H 지정가 덫 선제 장전 및 상태기계 3.0% 청산 절대 락온
-# 🚨 MODIFIED: [V77.09] 타점 역전 패러독스 강제 캡핑(Clamping) 영구 소각 및 순수 수학적 교차(Cross-over) 허용
-# 🚨 MODIFIED: [V77.12] 추격 매수(Negative Slippage) 원천 차단 및 순수 지정가(T_H) 절대 락온 타격 엔진 이식
-# 🚨 MODIFIED: [V77.13 수학적 락온 및 환각 수술] 0주 예산 산출 시 상태 변이(Split-Brain) 원천 차단
-# 🚨 MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백
-# 🚨 MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
-# 🚨 MODIFIED: [V77.21 09:30 기요틴 셧다운 락온] 정규장 T_L 하향 돌파 로직 영구 소각 및 프리장 체결 불발 시 09:30 정각 무조건 셧다운(퇴근) 적용
-# 🚨 NEW: [V77.30 관제탑 렌더링 무결성 사수] 암살자가 퇴근(Shutdown)해도 관제탑 레이더에 팩트 데이터가 영구 표출되도록 파싱 스코프 전진 배치 완료
+# MODIFIED: [V59.00 AVWAP 암살자 예산 100% 수혈 및 15:25 전량 덤핑 팩트 교정]
+# MODIFIED: [V60.00 옴니 매트릭스 진입 차단망 전면 폐기 및 데드코드 소각]
+# MODIFIED: [V61.00 숏(SOXS) 전면 소각 작전 지시서 적용]
+# NEW: [V65.00 AVWAP 동적 하드스탑 락온]
+# NEW: [V66.00 AVWAP 암살자 덤핑 지터(Jitter) 분산 락온]
+# NEW: [V75.04 상태 캐시 기억상실(Amnesia) 완벽 수술]
+# MODIFIED: [V76.01 ATR5 동적 하드스탑 영구 소각 및 투트랙 엑시트 절대 락온]
+# MODIFIED: [V76.02 타점 역전 패러독스 하드 마진 락온 (매니저 제안 수혈)]
+# MODIFIED: [V76.03 암살자 덤핑 지터(Jitter) 코어 연산 디커플링 해체 및 동적 타임라인 락온]
+# NEW: [V77.00 V7.1 백테스트 절대 동기화 롤백 (Animal Spirit 야성 회복)]
+# MODIFIED: [V77.01 데이터 기아 방어 및 런타임 무결성 팩트 수술] 
+# NEW: [V77.02 프리마켓 관제탑 데이터 기아 및 런타임 붕괴 완벽 수술]
+# MODIFIED: [V77.03 갭상승 휩소 원천 차단 및 Strict Touch 절대 락온]
+# NEW: [V77.04 Operation Dawn Sniper - 프리장 선제 타격 및 50% 팩트 오프셋 롤백]
+# MODIFIED: [V77.06 3.0% 한계 돌파 팩트 롤백] 
+# NEW: [V77.08] 백테스트 절대 동기화 - T_H 지정가 덫 선제 장전 및 상태기계 3.0% 청산 절대 락온
+# MODIFIED: [V77.09] 타점 역전 패러독스 강제 캡핑(Clamping) 영구 소각 및 순수 수학적 교차(Cross-over) 허용
+# MODIFIED: [V77.12] 추격 매수(Negative Slippage) 원천 차단 및 순수 지정가(T_H) 절대 락온 타격 엔진 이식
+# MODIFIED: [V77.13 수학적 락온 및 환각 수술] 0주 예산 산출 시 상태 변이(Split-Brain) 원천 차단
+# MODIFIED: [V77.14 백테스트 절대기준 동기화] 5분봉 과잉 방어 철거 및 순수 T_H 관통 타격 롤백
+# MODIFIED: [V77.18 프리마켓 시계열 경계 누수 완벽 수술 및 T_H/T_L 절대 앵커 락온 (정규장 데이터 유입 원천 차단)]
+# MODIFIED: [V77.21 09:30 기요틴 셧다운 락온] 정규장 T_L 하향 돌파 로직 영구 소각 및 프리장 체결 불발 시 09:30 정각 무조건 셧다운(퇴근) 적용
+# NEW: [V77.30 관제탑 렌더링 무결성 사수] 암살자가 퇴근(Shutdown)해도 관제탑 레이더에 팩트 데이터가 영구 표출되도록 파싱 스코프 전진 배치 완료
+# 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 파이프라인 및 조건부 기요틴 엔진 팩트 락온
 # ==========================================================
 import logging
 import datetime
@@ -38,7 +39,7 @@ import tempfile
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        self.plugin_name = "AVWAP_V77.30_GUILLOTINE_SHUTDOWN"
+        self.plugin_name = "AVWAP_V77.34_MULTI_SORTIE"
         self.leverage = 3.0       
 
     def _get_logical_date_str(self, now_est):
@@ -216,7 +217,8 @@ class VAvwapHybridPlugin:
             logging.error(f"🚨 [V_AVWAP] YF 기초자산 매크로 컨텍스트 추출 실패 ({base_ticker}): {e}")
             return None
 
-    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avwap_avg_price=0.0, avwap_qty=0, avwap_alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, regime_data=None, is_simulation=False, **kwargs):
+    # 🚨 MODIFIED: [Case 11] 다중 출격(sortie_mode) 파라미터 수혈
+    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avwap_avg_price=0.0, avwap_qty=0, avwap_alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, regime_data=None, is_simulation=False, sortie_mode="SINGLE", **kwargs):
         # 제16 절대 헌법: 변수 스코프 최상단 전진 배치
         avwap_qty = avwap_qty if avwap_qty != 0 else kwargs.get('current_qty', 0)
         exec_curr_p = exec_curr_p if exec_curr_p > 0 else kwargs.get('exec_curr_p', 0.0)
@@ -257,9 +259,7 @@ class VAvwapHybridPlugin:
         t_l = persistent_state.get('T_L', 0.0)
         offset = persistent_state.get('offset', 0.0)
 
-        # 🚨 NEW: [V77.30 관제탑 렌더링 무결성 사수]
-        # 암살자가 09:30 기요틴이나 익절/손절로 퇴근(Shutdown)하더라도, 관제탑 레이더에는 프리장과 정규장 정보가 
-        # 애프터마켓 시간까지 영구히 표출되도록 팩트 스캔(PM_H, T_H 등 연산) 블록을 얼리 리턴(Early Return)보다 최상단으로 전진 배치합니다.
+        # 🚨 [V77.30 관제탑 렌더링 무결성 사수]
         if curr_time >= time_0400:
             df_1m = df_1min_exec
             if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
@@ -350,11 +350,12 @@ class VAvwapHybridPlugin:
         if prev_c <= 0 or amp5 <= 0:
             return _build_res('WAIT', '진입_평가용_필수데이터_결측_대기')
             
-        if executed_buy:
-            return _build_res('WAIT', '일일_1회_타격_완료_매매_종료(Zero_Sum_대기)')
+        # 🚨 MODIFIED: [Case 11] 다중 출격 모드가 아닐 경우(단일 타격)에만 매매 종료 락온 적용
+        if executed_buy and sortie_mode == "SINGLE":
+            return _build_res('WAIT', '일일_1회_타격_완료_매매_종료(단일타격_모드)')
 
-        # MODIFIED: [V77.21 09:30 기요틴 셧다운 락온] 프리장 체결 불발 시 정규장 폭락 휩소 100% 회피 및 퇴근
-        if curr_time >= time_0930:
+        # 🚨 MODIFIED: [Case 11] 조건부 기요틴: 프리장 미체결(executed_buy == False) 상태에서만 정규장 휩소 회피 셧다운 격발
+        if curr_time >= time_0930 and not executed_buy:
             persistent_state["shutdown"] = True
             persistent_state["limit_order_placed"] = False
             persistent_state["placed_target_th"] = 0.0
@@ -367,7 +368,7 @@ class VAvwapHybridPlugin:
             logging.info(f"🛑 [09:30 기요틴 셧다운] 프리장 매수 체결 불발. 정규장 폭락 휩소를 회피하기 위해 당일 매매를 종료(퇴근)합니다.")
             return _build_res('SHUTDOWN', '09:30_기요틴_프리장미체결_정규장회피_당일퇴근')
             
-        # MODIFIED: [V77.14] 백테스트 절대기준 동기화: 5분봉 지지 필터 소각 및 순수 T_H 타점 관통 락온
+        # 🚨 MODIFIED: [V77.14] 백테스트 절대기준 동기화: 5분봉 지지 필터 소각 및 순수 T_H 타점 관통 락온
         if not limit_order_placed:
             if curr_l > 0 and curr_l <= t_h:
                 
