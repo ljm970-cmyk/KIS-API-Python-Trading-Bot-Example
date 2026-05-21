@@ -711,12 +711,14 @@ class KoreaInvestmentBroker:
                 for item in output:
                     try:
                         iq, ip = float(item.get('ft_ccld_qty', 0)), float(item.get('ft_ccld_unpr3', 0))
-        
+                        # MODIFIED: [Case 16 & V77.01 들여쓰기 붕괴 런타임 즉사 방어 및 변수 스코프 전진 배치]
+                        odno = item.get('odno', f"__nk_{id(item)}")
                         if iq > 0:
-                            odno = item.get('odno', f"__nk_{id(item)}")
-                            if odno not in odno_map: odno_map[odno] = {"item": dict(item), "total_qty": iq, "total_amt": iq * ip}
-     
-                        else: odno_map[odno]["total_qty"] += iq; odno_map[odno]["total_amt"] += (iq * ip)
+                            if odno not in odno_map: 
+                                odno_map[odno] = {"item": dict(item), "total_qty": iq, "total_amt": iq * ip}
+                            else: 
+                                odno_map[odno]["total_qty"] += iq
+                                odno_map[odno]["total_amt"] += (iq * ip)
                     except: continue
                 if res.headers.get('tr_cont', '') in ['M', 'F']: time.sleep(0.3); continue
                 else: break
@@ -834,3 +836,4 @@ class KoreaInvestmentBroker:
         except Exception as e:
             logging.error(f"⚠️ [Broker] Amp 5MA 파싱 에러 ({ticker}): {e}")
         return 0.0
+
