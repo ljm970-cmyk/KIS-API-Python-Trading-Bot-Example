@@ -5,7 +5,7 @@
 # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 스위칭 라우터 배선 완벽 개통
 # 🚨 MODIFIED: [Case 16, 26] 전역 스코프 전진 배치로 NameError 런타임 붕괴 완벽 차단
 # 🚨 MODIFIED: [라우팅 누수 방어] 장마감(주말) 시 LOC/LIMIT 덫이 일반 주문으로 빠지는 KIS Reject 맹점 완벽 차단
-# 🚨 NEW: [Case 02 절대 준수] /reset 수동 장부 소각 시 과거 낡은 스냅샷 덫 장전을 원천 차단하기 위해 KIS 실잔고 팩트 Sync 및 0주 타점 스냅샷 원자적 덮어쓰기(Atomic Override) 무결성 방어막 이식 완료.
+# 🚨 NEW: [Case 31] 수동 0주 락온 및 수동 요격 시 `trap_placed_time` 팩트 초기화 및 동기화
 # ==========================================================
 import logging
 import datetime
@@ -241,19 +241,10 @@ class TelegramCallbacks:
             elif sub == "CONFIRM":
                 ticker = data[2]
                 
-                # NEW: [Case 02 준수] KIS 서버 실잔고 즉시 Sync (0주 확인 및 보정)
-                if ticker not in self.sync_engine.sync_locks:
-                    self.sync_engine.sync_locks[ticker] = asyncio.Lock()
-                if not self.sync_engine.sync_locks[ticker].locked():
-                    await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=True)
-                
-                # NEW: 매매 잠금 즉각 해제
-                await asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker)
-                
                 current_ver = await asyncio.to_thread(self.cfg.get_version, ticker)
                 is_rev_active = (current_ver == "V_REV")
                 await asyncio.to_thread(self.cfg.set_reverse_state, ticker, is_rev_active, 0)
-                
+             
                 ledger = await asyncio.to_thread(self.cfg.get_ledger)
                 ledger_data = [r for r in ledger if r.get('ticker') != ticker]
                 await asyncio.to_thread(self.cfg._save_json, self.cfg.FILES["LEDGER"], ledger_data)
@@ -279,44 +270,8 @@ class TelegramCallbacks:
             
                 if getattr(self, 'queue_ledger', None):
                     await asyncio.to_thread(self.queue_ledger.clear_queue, ticker)
-                    
-                # NEW: [Case 02 절대 준수] 0주 타점 스냅샷 강제 원자적 오버라이드 (과거 스냅샷 파기 및 0주 팩트 덮어쓰기)
-                try:
-                    curr_p = float(await asyncio.wait_for(asyncio.to_thread(self.broker.get_current_price, ticker), timeout=10.0) or 0.0)
-                    prev_c = float(await asyncio.wait_for(asyncio.to_thread(self.broker.get_previous_close, ticker), timeout=10.0) or 0.0)
-                    ma_5day = float(await asyncio.wait_for(asyncio.to_thread(self.broker.get_5day_ma, ticker), timeout=10.0) or 0.0)
-                    
-                    async with self.tx_lock:
-                        cash_val, holdings = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
-                        
-                    safe_qty = int(float(holdings.get(ticker, {}).get('qty', 0))) if holdings else 0
-                    safe_avg = float(holdings.get(ticker, {}).get('avg', 0.0)) if holdings else 0.0
-                    safe_cash = float(cash_val) if cash_val is not None else 0.0
-                    
-                    active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
-                    from scheduler_core import get_budget_allocation
-                    _, alloc_dict = await asyncio.to_thread(get_budget_allocation, safe_cash, active_tickers, self.cfg)
-                    alloc_cash = float(alloc_dict.get(ticker, 0.0))
-                    
-                    # is_snapshot_mode=True 로 호출 시 하위 플러그인(strategy_v14, strategy_v14_vwap, strategy_reversion)이 
-                    # 0주 타점으로 연산된 팩트 스냅샷을 원자적(fsync)으로 즉각 파일에 덮어씁니다.
-                    await asyncio.to_thread(
-                        self.strategy.get_plan,
-                        ticker=ticker,
-                        current_price=curr_p,
-                        avg_price=safe_avg,
-                        qty=safe_qty,
-                        prev_close=prev_c,
-                        ma_5day=ma_5day,
-                        market_type="REG",
-                        available_cash=alloc_cash,
-                        is_simulation=True,
-                        is_snapshot_mode=True
-                    )
-                except Exception as snap_e:
-                    logging.error(f"🚨 [RESET] 0주 스냅샷 오버라이드 팩트 파이프라인 에러: {snap_e}")
-
-                await query.edit_message_text(f"✅ <b>[{ticker}] 삼위일체 소각(Nuke) 및 초기화 완료!</b>\n▫️ 본장부, 백업장부, 큐(Queue) 찌꺼기 데이터가 100% 영구 삭제되었습니다.\n▫️ KIS 실원장 0주 팩트 동기화 및 0주 새출발 덫 스냅샷 덮어쓰기가 100% 락온 완료되었습니다.\n▫️ 다음 매수 진입 시 0주 새출발 디커플링 타점 모드로 무결점 재시작합니다.", parse_mode='HTML')
+            
+                await query.edit_message_text(f"✅ <b>[{ticker}] 삼위일체 소각(Nuke) 및 초기화 완료!</b>\n▫️ 본장부, 백업장부, 큐(Queue) 찌꺼기 데이터가 100% 영구 삭제되었습니다.\n▫️ 다음 매수 진입 시 0주 새출발 디커플링 타점 모드로 완벽히 재시작합니다.", parse_mode='HTML')
        
             elif sub == "CANCEL":
                  await query.edit_message_text("❌ 닫았습니다.", parse_mode='HTML')
@@ -499,7 +454,6 @@ class TelegramCallbacks:
             dyn_start_t = a_start.astimezone(kst_z).strftime("%H%M%S")
             dyn_end_t = b_end.astimezone(kst_z).strftime("%H%M%S")
 
-            # MODIFIED: [라우팅 누수 방어] 장마감 시 LOC/LIMIT는 예약 주문(send_reservation_order)으로 안전하게 이관되도록 팩트 교정
             for o in target_orders:
                 if o['type'] == 'VWAP' or is_market_active_now:
                     res = await asyncio.to_thread(
@@ -670,7 +624,8 @@ class TelegramCallbacks:
 
         elif action == "AVWAP":
             if sub == "MENU":
-                await controller.cmd_avwap(update, context)
+                if hasattr(controller, 'cmd_avwap'):
+                    await controller.cmd_avwap(update, context)
 
         elif action == "MODE":
             ticker = data[2]
@@ -722,6 +677,8 @@ class TelegramCallbacks:
                     tracking_cache[f"AVWAP_AVG_{ticker}"] = 0.0
                     tracking_cache[f"AVWAP_BOUGHT_{ticker}"] = False
                     tracking_cache[f"AVWAP_SHUTDOWN_{ticker}"] = True
+                    # NEW: [Case 31] 타임 패러독스 방어 초기화
+                    tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{ticker}"] = ""
 
                     est = ZoneInfo('America/New_York')
                     now_est = datetime.datetime.now(est)
@@ -744,7 +701,8 @@ class TelegramCallbacks:
                             'whipsaw_mode': tracking_cache.get(f"AVWAP_WHIPSAW_MODE_{ticker}", False),
                             'whipsaw_armed': tracking_cache.get(f"AVWAP_WHIPSAW_ARMED_{ticker}", False),
                             'whipsaw_checked': tracking_cache.get(f"AVWAP_WHIPSAW_CHECKED_{ticker}", False),
-                            'dump_jitter_sec': tracking_cache.get(f"AVWAP_DUMP_JITTER_{ticker}", 0)
+                            'dump_jitter_sec': tracking_cache.get(f"AVWAP_DUMP_JITTER_{ticker}", 0),
+                            'trap_placed_time': ""
                         }
                         await asyncio.to_thread(self.strategy.v_avwap_plugin.save_state, ticker, now_est, state_data)
                     
@@ -886,6 +844,8 @@ class TelegramCallbacks:
                             tracking_cache[f"AVWAP_QTY_{ticker}"] = ccld_qty
                             tracking_cache[f"AVWAP_AVG_{ticker}"] = round(t_h, 4)
                             tracking_cache[f"AVWAP_TRAP_ODNO_{ticker}"] = trap_odno
+                            # NEW: [Case 31] 타임 패러독스 방어망 수동 장전 락온
+                            tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{ticker}"] = now_est.strftime('%H%M%S')
                             
                             daily_b = tracking_cache.get(f"AVWAP_DAILY_BOUGHT_{ticker}", 0) + ccld_qty
                             tracking_cache[f"AVWAP_DAILY_BOUGHT_{ticker}"] = daily_b
@@ -902,6 +862,7 @@ class TelegramCallbacks:
                                     "trap_odno": trap_odno,
                                     "limit_order_placed": True,
                                     "placed_target_th": t_h,
+                                    "trap_placed_time": tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{ticker}"], # NEW
                                     "buy_odno": buy_odno
                                 })
                                 await asyncio.to_thread(self.strategy.v_avwap_plugin.save_state, ticker, now_est, state)

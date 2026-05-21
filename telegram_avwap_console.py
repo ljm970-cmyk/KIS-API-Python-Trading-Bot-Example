@@ -6,7 +6,7 @@
 # 🚨 MODIFIED: [Case 14 절대 헌법 준수] 달력 API(mcal) 호출 시 10.0초 타임아웃 락온으로 이벤트 루프 교착 완벽 차단
 # 🚨 MODIFIED: [Case 28 준수] 팻핑거 방어를 위한 수동 요격 UI 디커플링 팩트 교정 (타점 이탈 시 버튼 비활성화)
 # 🚨 MODIFIED: [0.0달러 환각 방어] 통신 장애 시 0.0달러 폴백 값이 수동 요격 버튼을 강제 활성화시키는 맹점 원천 차단
-# 🚨 NEW: [V78.00 오프셋 및 수익률 하향] 45% 오프셋, 2.0% 수익률 팩트 교정 렌더링 적용
+# 🚨 NEW: [Case 31] AVWAP 1분봉 시차 패러독스(Time-Shield Decoupling) 락온 캐싱 팩트 동기화 완료.
 # ==========================================================
 import logging
 import datetime
@@ -92,7 +92,7 @@ class AvwapConsolePlugin:
         except Exception as e:
             available_cash = 0.0
         
-        msg = f"🔫 <b>[ 차세대 AVWAP V78.00 관제탑 ]</b>\n{header_status}\n\n"
+        msg = f"🔫 <b>[ 차세대 AVWAP V77.35 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
         for t in active_avwap:
@@ -110,6 +110,8 @@ class AvwapConsolePlugin:
                         
                         tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = saved_state.get('limit_order_placed', False)
                         tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = saved_state.get('placed_target_th', 0.0)
+                        # NEW: [Case 31] 타임 쉴드 수혈
+                        tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{t}"] = saved_state.get('trap_placed_time', "")
            
                         tracking_cache[f"AVWAP_PM_H_{t}"] = saved_state.get('PM_H', 0.0)
                         tracking_cache[f"AVWAP_PM_L_{t}"] = saved_state.get('PM_L', 0.0)
@@ -162,6 +164,7 @@ class AvwapConsolePlugin:
             
             limit_order_placed = tracking_cache.get(f"AVWAP_LIMIT_ORDER_PLACED_{t}", False)
             placed_target_th = tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}", 0.0)
+            trap_placed_time = tracking_cache.get(f"AVWAP_TRAP_PLACED_TIME_{t}", "")
             
             pm_h = tracking_cache.get(f"AVWAP_PM_H_{t}", 0.0)
             pm_l = tracking_cache.get(f"AVWAP_PM_L_{t}", 0.0)
@@ -188,7 +191,8 @@ class AvwapConsolePlugin:
                     "offset": offset,
                     "limit_order_placed": limit_order_placed,
                     "placed_target_th": placed_target_th,
-                    "dump_jitter_sec": tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0)
+                    "dump_jitter_sec": tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0),
+                    "trap_placed_time": tracking_cache.get(f"AVWAP_TRAP_PLACED_TIME_{t}", "")
                 }
                 
                 decision = await asyncio.wait_for(
@@ -228,8 +232,7 @@ class AvwapConsolePlugin:
                         status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
                     elif avwap_qty > 0:
                         if trap_odno:
-                            # MODIFIED: [V78.00 수익률 하향] 2.0% 익절가 텍스트 팩트 교정
-                            status_txt = "🎯 체결 완료 ➡️ [2.0% 지정가 익절 덫] 가동 중"
+                            status_txt = "🎯 체결 완료 ➡️ [3.0% 지정가 익절 덫] 가동 중"
                         else:
                             status_txt = "🎯 체결 완료 ➡️ (15:20 청산 지터 대기 중)"
                     elif limit_order_placed and placed_target_th > 0:
@@ -260,8 +263,7 @@ class AvwapConsolePlugin:
             msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b>\n"
             msg += f"▫️ 정규장 최고 (REG_H): <b>${reg_h:.2f}</b>\n"
             msg += f"▫️ 정규장 최저 (REG_L): <b>${reg_l:.2f}</b>\n"
-            # MODIFIED: [V78.00 오프셋 하향] 45% 텍스트 교정
-            msg += f"▫️ Amp5 오프셋 (45%): <b>${offset:.2f}</b>\n"
+            msg += f"▫️ Amp5 오프셋 (50%): <b>${offset:.2f}</b>\n"
             msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b>\n      (지정가 덫 장전선)\n"
             msg += f"▫️ 하락 지지 기준 (T_L): <b>${t_l:.2f}</b>\n      (단순 참조용)\n\n"
 
@@ -270,10 +272,9 @@ class AvwapConsolePlugin:
             msg += f"▫️ 현재가격: <b>${curr_p:.2f}</b>\n"
 
             if avwap_qty > 0:
-                # MODIFIED: [V78.00 수익률 하향] 2.0% 익절가 연산 교정
-                trap_price = round(avwap_avg * 1.02, 2)
+                trap_price = round(avwap_avg * 1.03, 2)
                 msg += f"▫️ 매수평단: <b>${avwap_avg:.2f}</b> ({avwap_qty}주)\n"
-                msg += f"▫️ 익절목표(+2.0%): <b>${trap_price:.2f}</b>\n"
+                msg += f"▫️ 익절목표(+3.0%): <b>${trap_price:.2f}</b>\n"
 
             msg += f"\n🚨 <b>[ 작전 수행 현황 ]</b>\n"
             msg += f"▫️ 현재상태: <b>{status_txt}</b>\n"
