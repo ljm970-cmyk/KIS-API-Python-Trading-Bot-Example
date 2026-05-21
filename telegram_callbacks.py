@@ -5,6 +5,7 @@
 # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 스위칭 라우터 배선 완벽 개통
 # 🚨 MODIFIED: [Case 16, 26] 전역 스코프 전진 배치로 NameError 런타임 붕괴 완벽 차단
 # 🚨 MODIFIED: [라우팅 누수 방어] 장마감(주말) 시 LOC/LIMIT 덫이 일반 주문으로 빠지는 KIS Reject 맹점 완벽 차단
+# 🚨 NEW: [V78.00 수익률 하향] 수동 요격 시 2.0% 익절 덫 장전 팩트 교정
 # ==========================================================
 import logging
 import datetime
@@ -456,7 +457,6 @@ class TelegramCallbacks:
             dyn_start_t = a_start.astimezone(kst_z).strftime("%H%M%S")
             dyn_end_t = b_end.astimezone(kst_z).strftime("%H%M%S")
 
-            # MODIFIED: [라우팅 누수 방어] 장마감 시 LOC/LIMIT는 예약 주문(send_reservation_order)으로 안전하게 이관되도록 팩트 교정
             for o in target_orders:
                 if o['type'] == 'VWAP' or is_market_active_now:
                     res = await asyncio.to_thread(
@@ -656,7 +656,6 @@ class TelegramCallbacks:
                 if hasattr(controller, 'cmd_settlement'):
                     await controller.cmd_settlement(update, context)
             
-            # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 스위칭 라우터 배선
             elif sub == "AVWAP_SORTIE":
                 tgt_val = data[3]
                 await query.answer(f"✅ 작전 궤도를 {tgt_val} 모드로 스위칭합니다.", show_alert=False)
@@ -666,7 +665,6 @@ class TelegramCallbacks:
 
         elif action == "AVWAP_SET":
             ticker = data[2]
-            # 🚨 MODIFIED: [V77.31] 암살자 수동 버튼(청산/요격) 진입 전 시간대 락온 (팻핑거 원천 차단)
             if sub == "SYNC_ZERO":
                 status_code, _ = await controller._get_market_status()
                 if status_code not in ["PRE", "REG"]:
@@ -783,7 +781,7 @@ class TelegramCallbacks:
                         curr_p = 0.0
 
                     if curr_p <= 0.0:
-                        return await query.answer(f"❌ [{ticker}] 수동 요격 실패\n▫️ 현재가를 스캔할 수 없습니다. 통신 상태를 확인하십시오.", show_alert=True)
+                        return await query.answer(f"❌ [{ticker}] 수동 요격 실패\n▫️ 현재가를 스캔할 수문을 철회했습니다. 통신 상태를 확인하십시오.", show_alert=True)
 
                     if curr_p >= t_h:
                         return await query.answer(f"🛡️ [{ticker}] 수동 요격 차단 (타점 이탈)\n▫️ 현재가(${curr_p:.2f})가 T_H(${t_h:.2f}) 이상입니다.\n▫️ 떨어지는 칼날(Deep Dip) 조건 미충족.", show_alert=True)
@@ -826,12 +824,14 @@ class TelegramCallbacks:
                             except: pass
 
                         if ccld_qty > 0:
-                            trap_price = round(t_h * 1.03, 2)
+                            # MODIFIED: [V78.00 수익률 하향] 2.0% 수동 요격 익절가 연산 교정
+                            trap_price = round(t_h * 1.02, 2)
                             trap_res = await asyncio.to_thread(self.broker.send_order, ticker, "SELL", ccld_qty, trap_price, "LIMIT")
                             trap_odno = trap_res.get('odno', '') if isinstance(trap_res, dict) else ''
 
                             if trap_res and trap_res.get('rt_cd') == '0' and trap_odno:
-                                trap_msg = f"▫️ +3.0% 수익 타점(<b>${trap_price:.2f}</b>)에 익절 덫을 즉시 자동 장전했습니다."
+                                # MODIFIED: [V78.00 수익률 하향] 2.0% 익절 텍스트 팩트 교정
+                                trap_msg = f"▫️ +2.0% 수익 타점(<b>${trap_price:.2f}</b>)에 익절 덫을 즉시 자동 장전했습니다."
                             else:
                                 trap_err = html.escape(trap_res.get('msg1', '오류')) if trap_res else '통신 장애'
                                 trap_msg = f"⚠️ <b>[익절 덫 장전 실패]</b> KIS 서버 거절: {trap_err}"

@@ -6,6 +6,7 @@
 # 🚨 NEW: [Case 11] 다중 출격(Multi-Sortie) 모드 연동 및 덫 상태기계 원자적 초기화(Reset) 파이프라인 이식
 # 🚨 MODIFIED: [제2헌법 및 Case 26 절대 위반 교정] 중복 로컬 함수(get_actual_execution_price) 소각 및 벡터화 역산식 이식. KIS 에러 타전 HTML 파서 붕괴 방어막 강제 주입.
 # 🚨 MODIFIED: [맹점 1 수술] 다중 출격(Multi-Sortie) 기요틴 하극상 런타임 붕괴 원천 차단 및 셧다운 방어막 팩트 교정
+# 🚨 MODIFIED: [V78.00 수익률 하향] 2.0% 익절 덫 장전 팩트 반영
 # ==========================================================
 import logging
 import datetime
@@ -17,7 +18,7 @@ import os
 import json
 import glob
 import tempfile
-import html  # 🚨 NEW: [Case 26] 텔레그램 HTML 파서 크래시 방어 쉴드 주입
+import html
 import yfinance as yf
 import pandas_market_calendars as mcal
 
@@ -361,13 +362,15 @@ async def scheduled_sniper_monitor(context):
                                 daily_b = tracking_cache.get(f"AVWAP_DAILY_BOUGHT_{t}", 0) + ccld_qty
                                 tracking_cache[f"AVWAP_DAILY_BOUGHT_{t}"] = daily_b
                      
-                                trap_price = round(new_avg * 1.03, 2)
+                                # MODIFIED: [V78.00 수익률 하향] 2.0% 익절 타겟 팩트 교정
+                                trap_price = round(new_avg * 1.02, 2)
                                 trap_res = await asyncio.to_thread(broker.send_order, t, "SELL", ccld_qty, trap_price, "LIMIT")
                                 trap_odno = trap_res.get('odno', '') if isinstance(trap_res, dict) else ''
                                 
                                 if trap_res and trap_res.get('rt_cd') == '0' and trap_odno:
                                     tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = trap_odno
-                                    msg += f"\n\n🎯 <b>[투트랙 엑시트 장전]</b>\n▫️ +3.0% 수익 타점(<b>${trap_price:.2f}</b>)에 익절 덫을 즉시 자동 장전했습니다."
+                                    # MODIFIED: [V78.00 수익률 하향] 2.0% 익절 텍스트 팩트 교정
+                                    msg += f"\n\n🎯 <b>[투트랙 엑시트 장전]</b>\n▫️ +2.0% 수익 타점(<b>${trap_price:.2f}</b>)에 익절 덫을 즉시 자동 장전했습니다."
                                 else:
                                     trap_err = html.escape(trap_res.get('msg1', '오류') if isinstance(trap_res, dict) else '통신 장애')
                                     msg += f"\n\n⚠️ <b>[익절 덫 장전 실패]</b> KIS 서버 거절: {trap_err}"
@@ -471,7 +474,6 @@ async def scheduled_sniper_monitor(context):
                                     dynamic_dump_dt = base_dump_dt - datetime.timedelta(seconds=dump_jitter_sec)
                                     dynamic_dump_str = dynamic_dump_dt.strftime("%H:%M:%S")
      
-                                    # 🚨 MODIFIED: [맹점 1 수술] 다중 출격 기요틴 하극상 원천 차단 (단어 오인 방어 락온)
                                     if "덤핑" in reason or "EMERGENCY" in reason:
                                         msg += f"\n🛡️ <b>{dynamic_dump_str} (Jitter 적용) 타임스탑 도달 전량 덤핑 완료.</b> 암살자 작전을 <b>영구 동결(Shutdown)</b>합니다."
                                         shutdown_flag = True
