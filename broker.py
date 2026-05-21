@@ -836,4 +836,3 @@ class KoreaInvestmentBroker:
         except Exception as e:
             logging.error(f"⚠️ [Broker] Amp 5MA 파싱 에러 ({ticker}): {e}")
         return 0.0
-
