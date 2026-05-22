@@ -10,6 +10,7 @@
 # 🚨 MODIFIED: [결함 2 수술 Case 02/08] 수동 장부 소각 시 KIS 실잔고 0주 강제 동기화 및 0주 팩트 다이렉트 덮어쓰기 락온
 # 🚨 MODIFIED: [결함 3 수술 Case 28] 수동 요격 승인 전 실시간 현재가 팩트 스캔 및 타점 이탈 팻핑거 팝업 생성 원천 차단
 # 🚨 MODIFIED: [Case 31 팩트 수술] 수동 요격 시 1분봉 시차 패러독스 방어망(Time-Shield) 멱등성 동기화를 위해 초 단위 0 초기화 락온
+# 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 TPS 캡핑 방어망 전면 이식
 # ==========================================================
 import logging
 import datetime
@@ -21,7 +22,6 @@ import math
 import asyncio
 import tempfile
 import yfinance as yf
-# MODIFIED: [Case 16, 26] 전역 스코프 전진 배치로 NameError 런타임 붕괴 완벽 차단
 import html  
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -74,7 +74,6 @@ class TelegramCallbacks:
                 await query.edit_message_text("⏳ <b>[업데이트 승인됨]</b> GitHub 코드를 강제 페칭합니다...", parse_mode='HTML')
                 try:
                     success, msg = await updater.pull_latest_code()
-                    # MODIFIED: [Case 16, 26] html 모듈 전역 스코프 전진 배치로 중복 import 소각
                     safe_msg = html.escape(msg)
                     if success:
                         await query.edit_message_text(f"✅ <b>[업데이트 완료]</b> {safe_msg}\n\n🔄 데몬을 재가동합니다. 잠시 후 봇이 응답할 것입니다.", parse_mode='HTML')
@@ -274,31 +273,40 @@ class TelegramCallbacks:
             
                 if getattr(self, 'queue_ledger', None):
                     await asyncio.to_thread(self.queue_ledger.clear_queue, ticker)
-                    # MODIFIED: [결함 2 수술 Case 02/08] KIS 실잔고(0주) 강제 동기화 락온
                     await asyncio.to_thread(self.queue_ledger.sync_with_broker, ticker, 0, 0.0)
 
-                # MODIFIED: [결함 2 수술 Case 02/08] 당일 매매 잠금 즉각 해제 락온
                 await asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker)
 
-                # MODIFIED: [결함 2 수술 Case 02/08] 전일 종가 스캔 및 0주 팩트 스냅샷 원자적 오버라이드 락온
-                try:
-                    prev_c_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_previous_close, ticker), timeout=5.0)
-                    prev_c = float(prev_c_val or 0.0)
-                except Exception as e:
-                    logging.error(f"🚨 수동 소각 후 전일 종가 스캔 에러: {e}")
-                    prev_c = 0.0
+                prev_c = 0.0
+                # 🚨 MODIFIED: [Case 33] 지수 백오프
+                for attempt in range(3):
+                    try:
+                        prev_c_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_previous_close, ticker), timeout=10.0)
+                        prev_c = float(prev_c_val or 0.0)
+                        break
+                    except Exception as e:
+                        if attempt == 2: logging.error(f"🚨 수동 소각 후 전일 종가 스캔 에러: {e}")
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
                 
                 if prev_c > 0:
                     try:
                         async with self.tx_lock:
-                            cash_val, _ = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                            cash_val = 0.0
+                            for attempt in range(3):
+                                try:
+                                    cash_tuple = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                                    cash_val = cash_tuple[0]
+                                    break
+                                except Exception:
+                                    if attempt == 2: cash_val = 0.0
+                                    else: await asyncio.sleep(1.0 * (2 ** attempt))
+                                    
                             cash = float(cash_val or 0.0)
                             from scheduler_core import get_budget_allocation
                             active_tickers_list = await asyncio.to_thread(self.cfg.get_active_tickers)
                             _, alloc_cash_dict = await asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, self.cfg)
                             available_cash = alloc_cash_dict.get(ticker, 0.0)
                             
-                            # 0주 팩트 스냅샷 원자적 덮어쓰기 집행 (V-REV/V14 라우터 공통 지원)
                             await asyncio.to_thread(
                                 self.strategy.get_plan, 
                                 ticker, 0.0, 0.0, 0, prev_c, 
@@ -317,7 +325,15 @@ class TelegramCallbacks:
             await query.answer()
             if sub == "VIEW": 
                 async with self.tx_lock:
-                    _, holdings = await asyncio.to_thread(self.broker.get_account_balance)
+                    holdings = None
+                    for attempt in range(3):
+                        try:
+                            _, holdings = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                            break
+                        except Exception:
+                            if attempt == 2: holdings = {}
+                            else: await asyncio.sleep(1.0 * (2 ** attempt))
+                            
                 await self.sync_engine._display_ledger(data[2], chat_id, context, query=query, pre_fetched_holdings=holdings)
             elif sub == "SYNC": 
                 ticker = data[2]
@@ -330,7 +346,15 @@ class TelegramCallbacks:
                     res = await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=True)
                     if res == "SUCCESS": 
                         async with self.tx_lock:
-                            _, holdings = await asyncio.to_thread(self.broker.get_account_balance)
+                            holdings = None
+                            for attempt in range(3):
+                                try:
+                                    _, holdings = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                                    break
+                                except Exception:
+                                    if attempt == 2: holdings = {}
+                                    else: await asyncio.sleep(1.0 * (2 ** attempt))
+                                    
                         await self.sync_engine._display_ledger(ticker, chat_id, context, message_obj=query.message, pre_fetched_holdings=holdings)
 
         elif action == "HIST":
@@ -412,7 +436,16 @@ class TelegramCallbacks:
             await query.edit_message_text(f"🚀 {t} 수동 강제 전송 시작 (최신 잔고 스냅샷 강제 갱신 중)...")
             
             async with self.tx_lock:
-                cash, holdings = await asyncio.to_thread(self.broker.get_account_balance)
+                holdings = None
+                cash = 0.0
+                for attempt in range(3):
+                    try:
+                        res = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                        cash, holdings = res[0], res[1]
+                        break
+                    except Exception:
+                        if attempt == 2: holdings = None
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
                 
             if holdings is None:
                 return await query.edit_message_text("❌ API 통신 오류로 잔고를 확인할 수 없어 실행을 차단합니다. 잠시 후 다시 시도해 주세요.")
@@ -440,8 +473,19 @@ class TelegramCallbacks:
             _, allocated_cash = await asyncio.to_thread(get_budget_allocation, cash, active_tickers, self.cfg)
             
             h = holdings.get(t, {'qty':0, 'avg':0})
-            curr_p = float(await asyncio.to_thread(self.broker.get_current_price, t) or 0.0)
-            prev_c = float(await asyncio.to_thread(self.broker.get_previous_close, t) or 0.0)
+            
+            curr_p, prev_c = 0.0, 0.0
+            for attempt in range(3):
+                try:
+                    curr_p_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_current_price, t), timeout=10.0)
+                    curr_p = float(curr_p_val or 0.0)
+                    prev_c_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_previous_close, t), timeout=10.0)
+                    prev_c = float(prev_c_val or 0.0)
+                    break
+                except Exception:
+                    if attempt == 2: pass
+                    else: await asyncio.sleep(1.0 * (2 ** attempt))
+                    
             safe_avg = float(h.get('avg') or 0.0)
             safe_qty = int(float(h.get('qty') or 0))
             
@@ -449,9 +493,17 @@ class TelegramCallbacks:
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 try:
                     def get_yf_close():
+                        time.sleep(0.06)
                         df = yf.Ticker(t).history(period="5d", interval="1d")
                         return float(df['Close'].iloc[-1]) if not df.empty else None
-                    yf_close = await asyncio.wait_for(asyncio.to_thread(get_yf_close), timeout=3.0)
+                    yf_close = None
+                    for attempt in range(3):
+                        try:
+                            yf_close = await asyncio.wait_for(asyncio.to_thread(get_yf_close), timeout=10.0)
+                            break
+                        except Exception:
+                            if attempt == 2: pass
+                            else: await asyncio.sleep(1.0 * (2 ** attempt))
                     if yf_close and yf_close > 0:
                         prev_c = yf_close
                 except Exception as e:
@@ -459,7 +511,16 @@ class TelegramCallbacks:
                 if curr_p > 0 and prev_c == 0.0:
                     prev_c = curr_p
          
-            ma_5day = await asyncio.to_thread(self.broker.get_5day_ma, t)
+            ma_5day = 0.0
+            for attempt in range(3):
+                try:
+                    ma_5day_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_5day_ma, t), timeout=10.0)
+                    ma_5day = float(ma_5day_val or 0.0)
+                    break
+                except Exception:
+                    if attempt == 2: ma_5day = 0.0
+                    else: await asyncio.sleep(1.0 * (2 ** attempt))
+                    
             is_manual_vwap = await asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t)
             
             logic_qty_v14 = safe_qty
@@ -557,10 +618,17 @@ class TelegramCallbacks:
                 est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
                 d_str = est_now.strftime('%Y%m%d')
                 
-                resv_orders = await asyncio.wait_for(
-                    asyncio.to_thread(self.broker.get_reservation_orders, t, d_str, d_str),
-                    timeout=10.0
-                )
+                resv_orders = []
+                for attempt in range(3):
+                    try:
+                        resv_orders = await asyncio.wait_for(
+                            asyncio.to_thread(self.broker.get_reservation_orders, t, d_str, d_str),
+                            timeout=10.0
+                        )
+                        break
+                    except Exception:
+                        if attempt == 2: resv_orders = []
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
                 
                 if resv_orders and isinstance(resv_orders, list):
                     for req in resv_orders:
@@ -574,16 +642,22 @@ class TelegramCallbacks:
                             except Exception as e:
                                 logging.error(f"🚨 [{t}] 수동 예약 덫 취소 실패: {e}")
                                 err_count += 1
-            except asyncio.TimeoutError:
-                err_count += 1
             except Exception as e:
                 err_count += 1
 
             try:
-                unfilled = await asyncio.wait_for(
-                    asyncio.to_thread(self.broker.get_unfilled_orders_detail, t),
-                    timeout=10.0
-                )
+                unfilled = []
+                for attempt in range(3):
+                    try:
+                        unfilled = await asyncio.wait_for(
+                            asyncio.to_thread(self.broker.get_unfilled_orders_detail, t),
+                            timeout=10.0
+                        )
+                        break
+                    except Exception:
+                        if attempt == 2: unfilled = []
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
+                        
                 if unfilled and isinstance(unfilled, list):
                     for uo in unfilled:
                         u_odno = uo.get('odno')
@@ -595,8 +669,6 @@ class TelegramCallbacks:
                             except Exception as e:
                                 logging.error(f"🚨 [{t}] 수동 일반 덫 취소 실패: {e}")
                                 err_count += 1
-            except asyncio.TimeoutError:
-                err_count += 1
             except Exception as e:
                 err_count += 1
 
@@ -615,7 +687,14 @@ class TelegramCallbacks:
             ticker = data[2]
             
             try:
-                _, holdings = await asyncio.to_thread(self.broker.get_account_balance)
+                holdings = None
+                for attempt in range(3):
+                    try:
+                        _, holdings = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                        break
+                    except Exception:
+                        if attempt == 2: holdings = {}
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
                 kis_qty = int(float(holdings.get(ticker, {}).get('qty', 0))) if holdings else 0
             except Exception:
                 kis_qty = 0
@@ -714,7 +793,6 @@ class TelegramCallbacks:
                     tracking_cache[f"AVWAP_AVG_{ticker}"] = 0.0
                     tracking_cache[f"AVWAP_BOUGHT_{ticker}"] = False
                     tracking_cache[f"AVWAP_SHUTDOWN_{ticker}"] = True
-                    # NEW: [Case 31] 타임 패러독스 방어 초기화
                     tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{ticker}"] = ""
 
                     est = ZoneInfo('America/New_York')
@@ -773,10 +851,16 @@ class TelegramCallbacks:
                     if t_h <= 0.0:
                         return await query.answer(f"❌ [{ticker}] 수동 요격 불가\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔 대기.", show_alert=True)
 
-                    # MODIFIED: [결함 3 수술 Case 28] 팝업 렌더링 전 실시간 현재가 팩트 스캔 및 타점 이탈 팻핑거 검증 강제
                     try:
-                        curr_p_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_current_price, ticker), timeout=5.0)
-                        curr_p = float(curr_p_val or 0.0)
+                        curr_p = 0.0
+                        for attempt in range(3):
+                            try:
+                                curr_p_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_current_price, ticker), timeout=5.0)
+                                curr_p = float(curr_p_val or 0.0)
+                                break
+                            except Exception:
+                                if attempt == 2: curr_p = 0.0
+                                else: await asyncio.sleep(1.0 * (2 ** attempt))
                     except Exception as e:
                         logging.error(f"🚨 수동 요격 전 현재가 스캔 에러: {e}")
                         curr_p = 0.0
@@ -826,8 +910,15 @@ class TelegramCallbacks:
                         return await query.answer(f"❌ [{ticker}] 수동 요격 실패\n▫️ T_H(지정가 덫 기준선) 데이터가 존재하지 않습니다. 스캔이 완료될 때 대기하십시오.", show_alert=True)
 
                     try:
-                        curr_p_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_current_price, ticker), timeout=5.0)
-                        curr_p = float(curr_p_val or 0.0)
+                        curr_p = 0.0
+                        for attempt in range(3):
+                            try:
+                                curr_p_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_current_price, ticker), timeout=5.0)
+                                curr_p = float(curr_p_val or 0.0)
+                                break
+                            except Exception:
+                                if attempt == 2: curr_p = 0.0
+                                else: await asyncio.sleep(1.0 * (2 ** attempt))
                     except Exception as e:
                         logging.error(f"🚨 수동 요격 현재가 스캔 에러: {e}")
                         curr_p = 0.0
@@ -839,7 +930,15 @@ class TelegramCallbacks:
                         return await query.answer(f"🛡️ [{ticker}] 수동 요격 차단 (타점 이탈)\n▫️ 현재가(${curr_p:.2f})가 T_H(${t_h:.2f}) 이상입니다.\n▫️ 떨어지는 칼날(Deep Dip) 조건 미충족.", show_alert=True)
 
                     async with self.tx_lock:
-                        cash, holdings = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                        cash = 0.0
+                        for attempt in range(3):
+                            try:
+                                cash_tuple = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                                cash = float(cash_tuple[0] or 0.0)
+                                break
+                            except Exception:
+                                if attempt == 2: cash = 0.0
+                                else: await asyncio.sleep(1.0 * (2 ** attempt))
                         
                     avwap_free_cash = max(0.0, float(cash or 0.0))
                     safe_budget = avwap_free_cash * 0.95
@@ -876,13 +975,11 @@ class TelegramCallbacks:
                             except: pass
 
                         if ccld_qty > 0:
-                            # MODIFIED: [결함 1 수술] 수동 요격 시 익절 덫 타점 2.0% 하향 락온 적용
                             trap_price = round(t_h * 1.02, 2)
                             trap_res = await asyncio.to_thread(self.broker.send_order, ticker, "SELL", ccld_qty, trap_price, "LIMIT")
                             trap_odno = trap_res.get('odno', '') if isinstance(trap_res, dict) else ''
 
                             if trap_res and trap_res.get('rt_cd') == '0' and trap_odno:
-                                # MODIFIED: [결함 1 수술] 텔레그램 메시지 텍스트 2.0% 팩트 교정 완료
                                 trap_msg = f"▫️ +2.0% 수익 타점(<b>${trap_price:.2f}</b>)에 익절 덫을 즉시 자동 장전했습니다."
                             else:
                                 trap_err = html.escape(trap_res.get('msg1', '오류')) if trap_res else '통신 장애'
@@ -897,7 +994,6 @@ class TelegramCallbacks:
                             tracking_cache[f"AVWAP_QTY_{ticker}"] = ccld_qty
                             tracking_cache[f"AVWAP_AVG_{ticker}"] = round(t_h, 4)
                             tracking_cache[f"AVWAP_TRAP_ODNO_{ticker}"] = trap_odno
-                            # MODIFIED: [Case 31 팩트 수술] 1분봉 시차 패러독스(Time-Shield) 멱등성 동기화를 위해 초 단위 0 초기화 락온
                             tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{ticker}"] = now_est.replace(second=0, microsecond=0).strftime('%H%M%S')
                             
                             daily_b = tracking_cache.get(f"AVWAP_DAILY_BOUGHT_{ticker}", 0) + ccld_qty

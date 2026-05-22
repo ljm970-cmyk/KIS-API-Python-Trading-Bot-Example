@@ -8,12 +8,14 @@
 # 🚨 MODIFIED: [0.0달러 환각 방어] 통신 장애 시 0.0달러 폴백 값이 수동 요격 버튼을 강제 활성화시키는 맹점 원천 차단
 # 🚨 NEW: [Case 31] AVWAP 1분봉 시차 패러독스(Time-Shield Decoupling) 락온 캐싱 팩트 동기화 완료.
 # 🚨 MODIFIED: [V78.00 팩트 교정] AVWAP 오프셋 연산 50% -> 45% 하향 락온 및 관제탑 렌더링 100% 동기화 완료.
+# 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 TPS 캡핑 방어망 전면 이식
 # ==========================================================
 import logging
 import datetime
 from zoneinfo import ZoneInfo
 import math
 import asyncio
+import time
 import pandas as pd
 import json
 import os
@@ -35,36 +37,38 @@ class AvwapConsolePlugin:
         time_0930 = datetime.time(9, 30)
      
         import pandas_market_calendars as mcal
-        try:
-            def _fetch_schedule():
-                nyse = mcal.get_calendar('NYSE')
-                return nyse.schedule(start_date=now_est.date(), end_date=now_est.date())
-            schedule = await asyncio.wait_for(asyncio.to_thread(_fetch_schedule), timeout=10.0)
-            if schedule.empty:
-                status_code = "CLOSE"
-            else:
-                market_open = schedule.iloc[0]['market_open'].astimezone(est)
-                market_close = schedule.iloc[0]['market_close'].astimezone(est)
-                pre_start = market_open.replace(hour=4, minute=0, second=0, microsecond=0)
-                after_end = market_close.replace(hour=20, minute=0, second=0, microsecond=0)
+        
+        # 🚨 MODIFIED: [Case 33] 3단 지수 백오프
+        def _fetch_schedule():
+            time.sleep(0.06)
+            nyse = mcal.get_calendar('NYSE')
+            return nyse.schedule(start_date=now_est.date(), end_date=now_est.date())
+            
+        schedule = None
+        for attempt in range(3):
+            try:
+                schedule = await asyncio.wait_for(asyncio.to_thread(_fetch_schedule), timeout=10.0)
+                break
+            except Exception:
+                if attempt == 2:
+                    logging.error("🚨 달력 API 호출 에러/타임아웃. Fail-Open 평일 개장으로 강제 폴백합니다.")
+                else: await asyncio.sleep(1.0 * (2 ** attempt))
 
-                if pre_start <= now_est < market_open:
-                    status_code = "PRE"
-                elif market_open <= now_est < market_close:
-                    status_code = "REG"
-                elif market_close <= now_est < after_end:
-                    status_code = "AFTER"
-                else:
-                    status_code = "CLOSE"
-        except asyncio.TimeoutError:
-            logging.error("🚨 달력 API 호출 타임아웃 (10초). Fail-Open 평일 개장으로 강제 폴백합니다.")
-            if now_est.weekday() < 5:
+        if schedule is None or schedule.empty:
+            if schedule is None and now_est.weekday() < 5: status_code = "REG"
+            else: status_code = "CLOSE"
+        else:
+            market_open = schedule.iloc[0]['market_open'].astimezone(est)
+            market_close = schedule.iloc[0]['market_close'].astimezone(est)
+            pre_start = market_open.replace(hour=4, minute=0, second=0, microsecond=0)
+            after_end = market_close.replace(hour=20, minute=0, second=0, microsecond=0)
+
+            if pre_start <= now_est < market_open:
+                status_code = "PRE"
+            elif market_open <= now_est < market_close:
                 status_code = "REG"
-            else:
-                status_code = "CLOSE"
-        except Exception:
-            if now_est.weekday() < 5:
-                status_code = "REG"
+            elif market_close <= now_est < after_end:
+                status_code = "AFTER"
             else:
                 status_code = "CLOSE"
 
@@ -84,16 +88,29 @@ class AvwapConsolePlugin:
         active_avwap = avwap_tickers
         tracking_cache = app_data.get('sniper_tracking', {})
         
-        try:
-            cash_val, _ = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=5.0)
-            available_cash = float(cash_val or 0.0)
-        except asyncio.TimeoutError:
-            available_cash = 0.0
-        except Exception as e:
-            available_cash = 0.0
+        # 🚨 MODIFIED: [Case 33]
+        cash_val = 0.0
+        for attempt in range(3):
+            try:
+                cash_val_tuple = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
+                cash_val = cash_val_tuple[0]
+                break
+            except Exception:
+                if attempt == 2: cash_val = 0.0
+                else: await asyncio.sleep(1.0 * (2 ** attempt))
+        available_cash = float(cash_val or 0.0)
         
-        msg = f"🔫 <b>[ 차세대 AVWAP V78.20 관제탑 ]</b>\n{header_status}\n\n"
+        msg = f"🔫 <b>[ 차세대 AVWAP V78.30 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
+
+        # 🚨 MODIFIED: [Case 33] 다중 동시 호출 래퍼
+        async def _get_with_retry(func, *args):
+            for attempt in range(3):
+                try:
+                    return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=10.0)
+                except Exception:
+                    if attempt == 2: return None
+                    await asyncio.sleep(1.0 * (2 ** attempt))
 
         for t in active_avwap:
             if not tracking_cache.get(f"AVWAP_INIT_{t}"):
@@ -128,23 +145,18 @@ class AvwapConsolePlugin:
             sortie_str = "단일 타격(1회)" if sortie_mode == "SINGLE" else "다중 출격(무한)"
             active_str = f"🟢 암살 가동 ({sortie_str})" if is_avwap_active else "⚪ 대기 (OFF)"
             
-            amp5 = 0.0
-            df_1m = None
             try:
-                curr_p_task = asyncio.to_thread(self.broker.get_current_price, t)
-                prev_c_task = asyncio.to_thread(self.broker.get_previous_close, t)
-                amp5_task = asyncio.to_thread(self.broker.get_amp_5d_data, t)
-                df_task = asyncio.to_thread(self.broker.get_1min_candles_df, t)
-
-                res_batch = await asyncio.wait_for(
-                    asyncio.gather(curr_p_task, prev_c_task, amp5_task, df_task, return_exceptions=True),
-                    timeout=5.0
+                res_batch = await asyncio.gather(
+                    _get_with_retry(self.broker.get_current_price, t),
+                    _get_with_retry(self.broker.get_previous_close, t),
+                    _get_with_retry(self.broker.get_amp_5d_data, t),
+                    _get_with_retry(self.broker.get_1min_candles_df, t)
                 )
            
-                curr_p = float(res_batch[0]) if not isinstance(res_batch[0], Exception) and res_batch[0] else 0.0
-                prev_c = float(res_batch[1]) if not isinstance(res_batch[1], Exception) and res_batch[1] else 0.0
-                amp5 = float(res_batch[2]) if not isinstance(res_batch[2], Exception) and res_batch[2] else 0.0
-                df_1m = res_batch[3] if not isinstance(res_batch[3], Exception) else None
+                curr_p = float(res_batch[0]) if res_batch[0] else 0.0
+                prev_c = float(res_batch[1]) if res_batch[1] else 0.0
+                amp5 = float(res_batch[2]) if res_batch[2] else 0.0
+                df_1m = res_batch[3]
                
             except Exception as e:
                 curr_p, prev_c, amp5, df_1m = 0.0, 0.0, 0.0, None
@@ -207,7 +219,7 @@ class AvwapConsolePlugin:
                         prev_close=prev_c,
                         sortie_mode=sortie_mode
                     ),
-                    timeout=5.0
+                    timeout=10.0
                 )
                 
                 if decision:
@@ -230,7 +242,6 @@ class AvwapConsolePlugin:
                         status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
                     elif avwap_qty > 0:
                         if trap_odno:
-                            # 🚨 MODIFIED: [V78.00] 익절 덫 안내 문구 2.0% 통일
                             status_txt = "🎯 체결 완료 ➡️ [2.0% 지정가 익절 덫] 가동 중"
                         else:
                             status_txt = "🎯 체결 완료 ➡️ (15:20 청산 지터 대기 중)"
@@ -262,7 +273,6 @@ class AvwapConsolePlugin:
             msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b>\n"
             msg += f"▫️ 정규장 최고 (REG_H): <b>${reg_h:.2f}</b>\n"
             msg += f"▫️ 정규장 최저 (REG_L): <b>${reg_l:.2f}</b>\n"
-            # 🚨 MODIFIED: [V78.00 팩트 교정] 오프셋 45% 렌더링 락온
             msg += f"▫️ Amp5 오프셋 (45%): <b>${offset:.2f}</b>\n"
             msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b>\n      (지정가 덫 장전선)\n"
             msg += f"▫️ 하락 지지 기준 (T_L): <b>${t_l:.2f}</b>\n      (단순 참조용)\n\n"
@@ -272,7 +282,6 @@ class AvwapConsolePlugin:
             msg += f"▫️ 현재가격: <b>${curr_p:.2f}</b>\n"
 
             if avwap_qty > 0:
-                # 🚨 MODIFIED: [V78.00] 투트랙 익절 목표가 2.0% 락온
                 trap_price = round(avwap_avg * 1.02, 2)
                 msg += f"▫️ 매수평단: <b>${avwap_avg:.2f}</b> ({avwap_qty}주)\n"
                 msg += f"▫️ 익절목표(+2.0%): <b>${trap_price:.2f}</b>\n"
