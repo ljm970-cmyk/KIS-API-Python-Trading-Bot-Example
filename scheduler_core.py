@@ -5,7 +5,9 @@
 # 🚨 MODIFIED: [V73.10 확정 정산 16:05 EST 전진 배치 및 시각적 디커플링 해체]
 # 🚨 MODIFIED: [Case 27 절대 위반 교정] 에스크로(Escrow) 로직 전면 소각 및 예산 분배망 진공 압축 완료
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑 이식 완료
+# 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 런타임 붕괴 방어용 html 모듈 팩트 이식
 # ==========================================================
+import html # 🚨 NEW: [Case 26] 텔레그램 HTML 파서 붕괴 방어망 주입
 import os
 import logging
 import datetime
@@ -122,7 +124,6 @@ async def scheduled_token_check(context):
     logging.info(f"🔑 [API 토큰 갱신] 서버 동시 접속 부하 방지를 위해 {jitter_seconds}초 대기 후 발급을 시작합니다.")
     await asyncio.sleep(jitter_seconds)
     
-    # 🚨 MODIFIED: [Case 33] 토큰 갱신 지수 백오프
     await async_retry(context.job.data['broker']._get_access_token, force=True)
     logging.info("🔑 [API 토큰 갱신] 토큰 갱신이 안전하게 완료되었습니다.")
 
@@ -135,7 +136,6 @@ async def scheduled_force_reset(context):
 
     async def _do_force_reset():
         is_open = False
-        # 🚨 MODIFIED: [Case 33] 3단 지수 백오프 이식
         for attempt in range(3):
             try:
                 is_open = await asyncio.wait_for(asyncio.to_thread(is_market_open), timeout=10.0)
@@ -174,7 +174,6 @@ async def scheduled_force_reset(context):
                     pass
                 return
              
-            # 🚨 MODIFIED: [Case 33] 잔고 조회 지수 백오프
             holdings = None
             async with tx_lock:
                 for attempt in range(3):
@@ -192,7 +191,6 @@ async def scheduled_force_reset(context):
             
             active_tickers = await asyncio.to_thread(cfg.get_active_tickers)
             for t in active_tickers:
-                # 🚨 MODIFIED: [Case 32] 스케줄러 다중 스캔 루프 TPS 캡핑
                 await asyncio.sleep(0.06)
                 
                 version = await asyncio.to_thread(cfg.get_version, t)
@@ -243,7 +241,9 @@ async def scheduled_force_reset(context):
             await context.bot.send_message(chat_id=chat_id, text=final_msg, parse_mode='HTML')
             
         except Exception as e:
-            await context.bot.send_message(chat_id=context.job.chat_id, text=f"🚨 <b>시스템 초기화 중 에러 발생:</b> {e}", parse_mode='HTML')
+            # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 런타임 붕괴 방어용 예외 쉴드 강제 주입
+            safe_err = html.escape(str(e))
+            await context.bot.send_message(chat_id=context.job.chat_id, text=f"🚨 <b>시스템 초기화 중 에러 발생:</b> <code>{safe_err}</code>", parse_mode='HTML')
 
     try:
         await asyncio.wait_for(_do_force_reset(), timeout=180.0)
@@ -284,7 +284,6 @@ async def scheduled_auto_sync(context):
 
         return True, today_est
 
-    # 🚨 MODIFIED: [Case 33] 지수 백오프 래핑 적용
     can_run, today_est = await async_retry(_check_and_set_lock, default=(False, ""))
     
     if not can_run:
@@ -298,7 +297,6 @@ async def scheduled_auto_sync(context):
     success_tickers = []
     active_tickers = await asyncio.to_thread(context.job.data['cfg'].get_active_tickers)
     for t in active_tickers:
-        # 🚨 MODIFIED: [Case 32] 다중 스캔 루프 TPS 캡핑
         await asyncio.sleep(0.06)
         res = await bot.sync_engine.process_auto_sync(t, chat_id, context, silent_ledger=True)
         if res == "SUCCESS":

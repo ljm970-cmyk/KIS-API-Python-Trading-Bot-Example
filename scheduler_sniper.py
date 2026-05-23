@@ -11,6 +11,7 @@
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑 이식 완료
 # 🚨 MODIFIED: [V79.50] MA5 연산 비동기 병렬 스캔 및 get_decision 다이렉트 주입 배선 100% 개통
 # 🚨 MODIFIED: [Case 14 절대 헌법 준수] is_market_open 및 _get_market_hours 등 달력 API 타임아웃 10.0초 락온 완료
+# 🚨 MODIFIED: [Case 31 연계 미시구조 수술] 매수 체결 직후 KIS 잔고 편입 딜레이(Latency)로 인한 매도 덫 '증거금 부족' 리젝 방어를 위해 1.0초 대기 샌드위치 이식.
 # ==========================================================
 import logging
 import datetime
@@ -32,7 +33,6 @@ async def scheduled_sniper_monitor(context):
     is_open = False
     for attempt in range(3):
         try:
-            # MODIFIED: [Case 14] 달력 API 타임아웃 10초 하드코딩 락온
             is_open = await asyncio.wait_for(asyncio.to_thread(is_market_open), timeout=10.0)
             break
         except asyncio.TimeoutError:
@@ -63,7 +63,6 @@ async def scheduled_sniper_monitor(context):
     schedule = None
     for attempt in range(3):
         try:
-            # MODIFIED: [Case 14] 달력 API 타임아웃 10초 하드코딩 락온
             schedule = await asyncio.wait_for(asyncio.to_thread(_get_market_hours), timeout=10.0)
             break
         except asyncio.TimeoutError:
@@ -418,6 +417,10 @@ async def scheduled_sniper_monitor(context):
                                 tracking_cache[f"AVWAP_DAILY_BOUGHT_{t}"] = daily_b
                      
                                 trap_price = round(new_avg * 1.02, 2)
+                                
+                                # 🚨 MODIFIED: [Case 31 연계 미시구조 수술] 매수 체결 직후 KIS 잔고 편입 딜레이(Latency)로 인한 매도 덫 '증거금 부족' 리젝 방어를 위해 1.0초 대기 샌드위치 이식
+                                await asyncio.sleep(1.0)
+                                
                                 trap_res = await asyncio.to_thread(broker.send_order, t, "SELL", ccld_qty, trap_price, "LIMIT")
                                 trap_odno = trap_res.get('odno', '') if isinstance(trap_res, dict) else ''
                                 

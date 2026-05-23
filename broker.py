@@ -6,6 +6,7 @@
 # 🚨 MODIFIED: [제2헌법 준수] yfinance 네임스페이스 오염을 유발하는 중복 임포트 영구 소각 및 단일화 락온
 # 🚨 NEW: [Case 32] 고성능 서버 KIS API 초당 20건 통신 제한(TPS) 완벽 방어를 위한 0.06초 캡핑 주입
 # 🚨 NEW: [Case 33] yfinance 및 외부 통신 타임아웃 대응 3단 지수 백오프(Exponential Backoff) 및 재시도 엔진 전면 이식
+# 🚨 MODIFIED: [Case 30 팩트 교정] 취소 주문(cancel_order) API 응답 객체 누락 맹점을 소각하고 return 배선 개통 완료.
 # ==========================================================
 
 import requests
@@ -732,7 +733,8 @@ class KoreaInvestmentBroker:
         time.sleep(0.06)
         excg_cd = self._get_exchange_code(ticker, target_api="ORDER")
         body = {"CANO": self.cano, "ACNT_PRDT_CD": self.acnt_prdt_cd, "OVRS_EXCG_CD": excg_cd, "PDNO": ticker, "ORGN_ODNO": order_id, "RVSE_CNCL_DVSN_CD": "02", "ORD_QTY": "0", "OVRS_ORD_UNPR": "0", "ORD_SVR_DVSN_CD": "0"}
-        self._call_api("TTTT1004U", "/uapi/overseas-stock/v1/trading/order-rvsecncl", "POST", body=body)
+        # 🚨 MODIFIED: [Case 30 팩트 교정] 취소 주문 API 응답 객체 반환 배선 강제 이식
+        return self._call_api("TTTT1004U", "/uapi/overseas-stock/v1/trading/order-rvsecncl", "POST", body=body)
 
     def send_daytime_order(self, ticker, side, qty, price):
         time.sleep(0.06)
