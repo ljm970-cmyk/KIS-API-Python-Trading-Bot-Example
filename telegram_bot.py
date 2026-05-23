@@ -1,6 +1,7 @@
 # ==========================================================
 # FILE: telegram_bot.py
 # ==========================================================
+# 🚨 MODIFIED: [Insight 24] 이벤트 루프 영구 블로킹 뇌관(Sync I/O) 제거. _is_admin() 내부의 동기 파일 I/O를 비동기(async)로 격리하고 모든 호출부에 await 락온.
 # 🚨 MODIFIED: [Case 27 절대 위반 교정] 통합 지시서(/sync) 호출 시 에스크로 변수 스캔 및 할당 파이프라인 100% 영구 소각 완료
 # 🚨 MODIFIED: [Case 26 절대 위반 교정] 텔레그램 HTML 파서 붕괴 방어용 예외 객체 이스케이프 쉴드 강제 주입
 # 🚨 MODIFIED: [Case 16] 변수 스코프 전진 배치(UnboundLocalError 방어)
@@ -36,7 +37,7 @@ class TelegramController:
         self.strategy = strategy
         self.view = TelegramView()
         self.user_states = {} 
-        self.admin_id = self.cfg.get_chat_id()
+        self.admin_id = None 
         self.sync_locks = {} 
         self.tx_lock = tx_lock or asyncio.Lock()
         
@@ -47,9 +48,10 @@ class TelegramController:
         self.states_handler = TelegramStates(self.cfg, self.broker, self.queue_ledger, self.sync_engine)
         self.callbacks_handler = TelegramCallbacks(self.cfg, self.broker, self.strategy, self.queue_ledger, self.sync_engine, self.view, self.tx_lock)
 
-    def _is_admin(self, update: Update):
+    # 🚨 MODIFIED: [Insight 24] 동기 I/O 100% 비동기 격리 (제1헌법 절대 사수)
+    async def _is_admin(self, update: Update):
         if self.admin_id is None:
-            self.admin_id = self.cfg.get_chat_id()
+            self.admin_id = await asyncio.to_thread(self.cfg.get_chat_id)
              
         if self.admin_id is None:
             print("⚠️ 보안 경고: ADMIN_CHAT_ID가 설정되지 않아 알 수 없는 사용자의 접근을 차단했습니다.")
@@ -72,12 +74,11 @@ class TelegramController:
         now = datetime.datetime.now(est)
          
         def _fetch_schedule():
-            time.sleep(0.06) # 🚨 [Case 32] TPS 캡핑
+            time.sleep(0.06) 
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=now.date(), end_date=now.date())
 
         schedule = None
-        # 🚨 [Case 33] 3단 지수 백오프 이식
         for attempt in range(3):
             try:
                 schedule = await asyncio.wait_for(asyncio.to_thread(_fetch_schedule), timeout=10.0)
@@ -85,7 +86,6 @@ class TelegramController:
             except Exception as e:
                 if attempt == 2:
                     logging.error(f"⚠️ [달력 API 에러/타임아웃] 평일 강제 개장(Fail-Open) 폴백 가동: {e}")
-                    # 🚨 [Case 14] Fail-Open 하드코딩
                     if now.weekday() < 5:
                         return "REG", "🔥 정규장 (Fail-Open)"
                     else:
@@ -139,7 +139,8 @@ class TelegramController:
         await self.callbacks_handler.handle_callback(update, context, self)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update):
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update):
             return
             
         text = update.message.text
@@ -167,7 +168,8 @@ class TelegramController:
         await self.states_handler.handle_message(update, context, self)
 
     async def cmd_avwap(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         
         loading_text = "⏳ <b>[AVWAP 듀얼 모멘텀 관제탑]</b>\n레이더망을 가동하여 시장 데이터를 스캔 중..."
         
@@ -200,17 +202,17 @@ class TelegramController:
             await status_msg.edit_text("❌ <b>[네트워크 지연 발생]</b>\n야후 파이낸스 또는 증권사 서버 응답이 지연되어 스캔을 강제 종료했습니다. 잠시 후 다시 시도해 주세요.", parse_mode='HTML')
         except Exception as e:
             logging.error(f"🚨 AVWAP 관제탑 호출 내부 에러: {e}")
-            # 🚨 MODIFIED: [Case 26] HTML 파서 붕괴 방어용 쉴드 강제 주입
             safe_err = html.escape(str(e))
             await status_msg.edit_text(f"❌ <b>[시스템 에러]</b>\n독립 관제탑 호출 중 내부 오류가 발생했습니다:\n<code>{safe_err}</code>", parse_mode='HTML')
 
     async def cmd_log(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         status_msg = await update.message.reply_text("🔍 <b>[원격 진단]</b> 최근 시스템 에러 로그를 핀셋 추출 중...", parse_mode='HTML')
         try:
             est = ZoneInfo('America/New_York')
             today_str = datetime.datetime.now(est).strftime('%Y%m%d')
-            log_path = f"logs/bot_app_{today_str}.log"
+            log_path = f"logs/bot_app.log" # MODIFIED: [Case 34] 로그 로테이션 파일명 대응
             if not os.path.exists(log_path):
                 return await status_msg.edit_text("📭 <b>[진단 결과]</b> 오늘자 로그 파일이 생성되지 않았습니다.", parse_mode='HTML')
                 
@@ -227,12 +229,12 @@ class TelegramController:
             await status_msg.edit_text(report, parse_mode='HTML')
         except Exception as e:
             logging.error(f"🚨 원격 로그 추출 실패: {e}")
-            # 🚨 MODIFIED: [Case 26] HTML 파서 붕괴 방어용 쉴드
             safe_err = html.escape(str(e))
             await status_msg.edit_text(f"🚨 <b>[진단 실패]</b> 로그 추출 중 오류 발생:\n<code>{safe_err}</code>", parse_mode='HTML')
 
     async def cmd_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         from plugin_updater import SystemUpdater
         updater = SystemUpdater()
         allowed, fail_msg = await updater.is_update_allowed()
@@ -241,18 +243,19 @@ class TelegramController:
         status_msg = await update.message.reply_text("⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
         try:
             success, msg = await updater.pull_latest_code()
-            safe_msg = html.escape(msg) # 🚨 MODIFIED: [Case 26]
+            safe_msg = html.escape(msg) 
             if success:
                 await status_msg.edit_text(f"✅ <b>[동기화 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML')
                 await updater.restart_daemon()
             else:
                 await status_msg.edit_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML')
         except Exception as e:
-            safe_err = html.escape(str(e)) # 🚨 MODIFIED: [Case 26]
+            safe_err = html.escape(str(e)) 
             await status_msg.edit_text(f"🚨 <b>[치명적 오류]</b> 플러그인 호출 및 프로세스 예외 발생: {safe_err}", parse_mode='HTML')
 
     async def cmd_queue(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         args = context.args
         if not args: return await update.message.reply_text("❌ 종목명을 입력하세요. 예: /queue SOXL")
         ticker = args[0].upper()
@@ -264,7 +267,8 @@ class TelegramController:
         await update.message.reply_text(text=msg, reply_markup=reply_markup, parse_mode='HTML')
 
     async def cmd_add_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         try:
             args = context.args
             if len(args) < 4:
@@ -308,7 +312,8 @@ class TelegramController:
             await update.message.reply_text(f"❌ 알 수 없는 에러 발생: {safe_err}")
 
     async def cmd_clear_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         args = context.args
         if not args: return await update.message.reply_text("❌ 종목명을 입력하세요. 예: /clear_q SOXL")
         ticker = args[0].upper()
@@ -326,14 +331,16 @@ class TelegramController:
             await update.message.reply_text(f"❌ 소각 중 에러 발생: {safe_err}")
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         target_hour, season_icon = self._get_dst_info()
         latest_version = await asyncio.to_thread(self.cfg.get_latest_version) 
         msg = self.view.get_start_message(target_hour, season_icon, latest_version) 
         await update.message.reply_text(msg, parse_mode='HTML')
 
     async def cmd_sync(self, update, context):
-        if not self._is_admin(update):
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update):
             return
         
         await update.message.reply_text("🔄 시장 분석 및 지시서 작성 중...")
@@ -361,7 +368,6 @@ class TelegramController:
         tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         render_tickers = list(tickers)
         
-        # 🚨 MODIFIED: [Case 27] 통합 예산 연산 라우팅 100% 결속 완료 (에스크로 스캔 파이프라인 영구 소각)
         sorted_tickers, allocated_cash = await asyncio.to_thread(get_budget_allocation, cash, render_tickers, self.cfg)
         
         ticker_data_list = []
@@ -414,7 +420,7 @@ class TelegramController:
                     await asyncio.sleep(1.0 * (2 ** attempt))
 
         for t in sorted_tickers:
-            await asyncio.sleep(0.06) # 🚨 NEW: [Case 32] TPS 캡핑
+            await asyncio.sleep(0.06) 
             
             is_avwap_active = False
             avwap_budget = 0.0
@@ -583,7 +589,7 @@ class TelegramController:
                     if available_l1 > 0 and trigger_l1 > 0:
                          sell_dict[trigger_l1] = sell_dict.get(trigger_l1, 0) + available_l1
                     if available_upper > 0 and trigger_upper > 0:
-                         sell_dict[trigger_upper] = sell_dict.get(trigger_upper, 0) + available_upper
+                        sell_dict[trigger_upper] = sell_dict.get(trigger_upper, 0) + available_upper
                     
                     for price in sorted(sell_dict.keys()):
                         s_qty = sell_dict[price]
@@ -768,7 +774,8 @@ class TelegramController:
         await update.message.reply_text(final_msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_record(self, update, context):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         chat_id = update.message.chat_id
         status_msg = await context.bot.send_message(chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML')
         success_tickers = []
@@ -791,7 +798,8 @@ class TelegramController:
             await status_msg.edit_text("✅ <b>동기화 완료</b> (표시할 진행 중인 장부가 없거나 에러 대기 중입니다)", parse_mode='HTML')
 
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         target_msg = update.callback_query.message if update.callback_query else update.message
         try: history_data = await asyncio.to_thread(self.cfg.get_history)
         except Exception: history_data = []
@@ -812,7 +820,8 @@ class TelegramController:
         await target_msg.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
     async def cmd_mode(self, update, context):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         report = "📊 <b>[ 자율주행 변동성 마스터 지표 상세 분석 ]</b>\n\n"
         report += "<b>[ 🧭 지수 범위 범례 (ON/OFF 권장) ]</b>\n"
@@ -852,13 +861,15 @@ class TelegramController:
         await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
     async def cmd_reset(self, update, context):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         msg, markup = self.view.get_reset_menu(active_tickers)
         await update.message.reply_text(msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_seed(self, update, context):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         msg = "💵 <b>[ 종목별 시드머니 관리 ]</b>\n\n"
         keyboard = []
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
@@ -873,13 +884,15 @@ class TelegramController:
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
     async def cmd_ticker(self, update, context):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         msg, markup = self.view.get_ticker_menu(active_tickers)
         await update.message.reply_text(msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_settlement(self, update, context):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         atr_data = {}
         dynamic_target_data = {} 
@@ -897,11 +910,12 @@ class TelegramController:
                 await update.callback_query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
                 await status_msg.delete()
             except Exception as e:
-                 if "Message is not modified" not in str(e): await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
+                if "Message is not modified" not in str(e): await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
         else: await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_version(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._is_admin(update): return
+        # 🚨 MODIFIED: [Insight 24] await 강제 적용
+        if not await self._is_admin(update): return
         history_data = await asyncio.to_thread(self.cfg.get_full_version_history)
         msg, markup = self.view.get_version_message(history_data, page_index=None)
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=markup)
