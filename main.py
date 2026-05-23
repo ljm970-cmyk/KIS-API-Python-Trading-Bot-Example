@@ -175,7 +175,7 @@ def main():
     latest_version = cfg.get_latest_version() 
     
     print("=" * 60)
-    print(f"🚀 옴니 매트릭스 퀀트 엔진 {latest_version} (V77.34 팩트 교정본)")
+    print(f"🚀 옴니 매트릭스 퀀트 엔진 {latest_version} (V79.50 팩트 교정본)")
     print("=" * 60)
     
     perform_self_cleaning()

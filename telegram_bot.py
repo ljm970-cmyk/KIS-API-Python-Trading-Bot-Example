@@ -1,10 +1,9 @@
 # ==========================================================
 # FILE: telegram_bot.py
 # ==========================================================
-# MODIFIED: [Case 27 절대 위반 교정] 통합 지시서(/sync) 호출 시 에스크로 변수 스캔 및 할당 파이프라인 100% 영구 소각 완료
-# MODIFIED: [Case 26 절대 위반 교정] 텔레그램 HTML 파서 붕괴 방어용 예외 객체 이스케이프 쉴드 강제 주입
-# MODIFIED: [데드코드 소각] V76.00 패치로 소각된 Apex 파라미터 연산 및 전달 배선 영구 철거 완료
-# 🚨 MODIFIED: [맹점 3 수술] 예산 연산 Split-Brain 낡은 로직 영구 소각 및 SSOT 배선 결속 완료
+# 🚨 MODIFIED: [Case 27 절대 위반 교정] 통합 지시서(/sync) 호출 시 에스크로 변수 스캔 및 할당 파이프라인 100% 영구 소각 완료
+# 🚨 MODIFIED: [Case 26 절대 위반 교정] 텔레그램 HTML 파서 붕괴 방어용 예외 객체 이스케이프 쉴드 강제 주입
+# 🚨 MODIFIED: [Case 16] 변수 스코프 전진 배치(UnboundLocalError 방어)
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 이식 및 TPS 캡핑으로 타임아웃 원천 방어
 # ==========================================================
 import logging
@@ -73,11 +72,12 @@ class TelegramController:
         now = datetime.datetime.now(est)
          
         def _fetch_schedule():
-            time.sleep(0.06)
+            time.sleep(0.06) # 🚨 [Case 32] TPS 캡핑
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=now.date(), end_date=now.date())
 
         schedule = None
+        # 🚨 [Case 33] 3단 지수 백오프 이식
         for attempt in range(3):
             try:
                 schedule = await asyncio.wait_for(asyncio.to_thread(_fetch_schedule), timeout=10.0)
@@ -85,6 +85,7 @@ class TelegramController:
             except Exception as e:
                 if attempt == 2:
                     logging.error(f"⚠️ [달력 API 에러/타임아웃] 평일 강제 개장(Fail-Open) 폴백 가동: {e}")
+                    # 🚨 [Case 14] Fail-Open 하드코딩
                     if now.weekday() < 5:
                         return "REG", "🔥 정규장 (Fail-Open)"
                     else:
@@ -199,6 +200,7 @@ class TelegramController:
             await status_msg.edit_text("❌ <b>[네트워크 지연 발생]</b>\n야후 파이낸스 또는 증권사 서버 응답이 지연되어 스캔을 강제 종료했습니다. 잠시 후 다시 시도해 주세요.", parse_mode='HTML')
         except Exception as e:
             logging.error(f"🚨 AVWAP 관제탑 호출 내부 에러: {e}")
+            # 🚨 MODIFIED: [Case 26] HTML 파서 붕괴 방어용 쉴드 강제 주입
             safe_err = html.escape(str(e))
             await status_msg.edit_text(f"❌ <b>[시스템 에러]</b>\n독립 관제탑 호출 중 내부 오류가 발생했습니다:\n<code>{safe_err}</code>", parse_mode='HTML')
 
@@ -225,6 +227,7 @@ class TelegramController:
             await status_msg.edit_text(report, parse_mode='HTML')
         except Exception as e:
             logging.error(f"🚨 원격 로그 추출 실패: {e}")
+            # 🚨 MODIFIED: [Case 26] HTML 파서 붕괴 방어용 쉴드
             safe_err = html.escape(str(e))
             await status_msg.edit_text(f"🚨 <b>[진단 실패]</b> 로그 추출 중 오류 발생:\n<code>{safe_err}</code>", parse_mode='HTML')
 
@@ -238,14 +241,14 @@ class TelegramController:
         status_msg = await update.message.reply_text("⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
         try:
             success, msg = await updater.pull_latest_code()
-            safe_msg = html.escape(msg)
+            safe_msg = html.escape(msg) # 🚨 MODIFIED: [Case 26]
             if success:
                 await status_msg.edit_text(f"✅ <b>[동기화 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML')
                 await updater.restart_daemon()
             else:
                 await status_msg.edit_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML')
         except Exception as e:
-            safe_err = html.escape(str(e))
+            safe_err = html.escape(str(e)) # 🚨 MODIFIED: [Case 26]
             await status_msg.edit_text(f"🚨 <b>[치명적 오류]</b> 플러그인 호출 및 프로세스 예외 발생: {safe_err}", parse_mode='HTML')
 
     async def cmd_queue(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -358,6 +361,7 @@ class TelegramController:
         tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         render_tickers = list(tickers)
         
+        # 🚨 MODIFIED: [Case 27] 통합 예산 연산 라우팅 100% 결속 완료 (에스크로 스캔 파이프라인 영구 소각)
         sorted_tickers, allocated_cash = await asyncio.to_thread(get_budget_allocation, cash, render_tickers, self.cfg)
         
         ticker_data_list = []
@@ -589,7 +593,7 @@ class TelegramController:
                         elif price == trigger_l1:
                             desc_str = "1층탈출"
                         elif price == trigger_upper:
-                             desc_str = "총평단탈출"
+                             desc_str = "상위층탈출"
                         else:
                             desc_str = "잔여탈출"
                         v_rev_guidance += f" 🔵 {desc_str} ${price:.2f} <b>{s_qty}주</b> ({tag})\n"

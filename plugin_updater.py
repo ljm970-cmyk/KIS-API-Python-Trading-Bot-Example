@@ -36,7 +36,7 @@ class SystemUpdater:
             return schedule.empty
 
         is_holiday = False
-        # NEW: [Case 33] 3단 지수 백오프 이식
+        # 🚨 NEW: [Case 33] 3단 지수 백오프 이식
         for attempt in range(3):
             try:
                 is_holiday = await asyncio.wait_for(asyncio.to_thread(_check_holiday), timeout=10.0)
@@ -57,6 +57,7 @@ class SystemUpdater:
 
         curr_time = now_est.time()
         
+        # 🚨 MODIFIED: [Case 09] 레드존 락온
         start_lock = datetime.time(15, 12)
         end_lock = datetime.time(15, 31)
         
@@ -127,6 +128,7 @@ class SystemUpdater:
 
         try:
             logging.info(f"🔄 [Updater] 좀비 셧다운 방어를 위해 파이썬 프로세스를 즉시 자폭(Hard Kill)시킵니다. (systemd가 부활시킴)")
+            # 🚨 MODIFIED: [Case 15] 파이썬 하드 킬(os._exit(0)) 무중단 아키텍처 사수
             os._exit(0)
             return True
         except Exception as e:

@@ -1,7 +1,8 @@
 # ==========================================================
 # FILE: strategy_v14_vwap.py
 # ==========================================================
-# 🚨 MODIFIED: [스냅샷 무결성 파이프라인 팩트 교정] os.path.exists 방어막 소각
+# 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
+# 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 락온
 # ==========================================================
 import math
 import logging
@@ -73,6 +74,7 @@ class V14VwapStrategy:
             dir_name = os.path.dirname(state_file)
             if dir_name and not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True) 
+            # 🚨 MODIFIED: [제4헌법] 원자적 쓰기 강제 락온
             fd, temp_path = tempfile.mkstemp(dir=dir_name or '.', text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
@@ -86,7 +88,7 @@ class V14VwapStrategy:
         today_str = self._get_logical_date_str()
         snap_file = self._get_snapshot_file(ticker)
         
-        # 🚨 [스냅샷 무결성 락온] os.path.exists 방어막 영구 소각 (무조건 최신 팩트로 오버라이드)
+        # 🚨 MODIFIED: [Case 08] 스냅샷 무결성 락온 (os.path.exists 방어막 영구 소각, 무조건 최신 팩트로 오버라이드)
         data = {
             "date": today_str,
             "plan": plan_data

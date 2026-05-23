@@ -7,7 +7,7 @@
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑 이식 완료
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 런타임 붕괴 방어용 html 모듈 팩트 이식
 # ==========================================================
-import html # 🚨 NEW: [Case 26] 텔레그램 HTML 파서 붕괴 방어망 주입
+import html 
 import os
 import logging
 import datetime
@@ -26,6 +26,7 @@ async def async_retry(func, *args, default=None, timeout=10.0, **kwargs):
     """ 네트워크 지연 발생 시 지수 대기(Exponential Backoff)를 통해 최대 3회 재시도하는 멱등성 엔진 """
     for attempt in range(3):
         try:
+            # 🚨 MODIFIED: [제1헌법 준수] 100% 비동기 격리 및 타임아웃 족쇄 체결
             return await asyncio.wait_for(asyncio.to_thread(func, *args, **kwargs), timeout=timeout)
         except asyncio.TimeoutError:
             if attempt < 2: await asyncio.sleep(1.0 * (2 ** attempt))
@@ -56,6 +57,7 @@ def is_market_open():
             if attempt == 2:
                 logging.error(f"⚠️ 달력 라이브러리 에러 발생. 스케줄 증발 방어를 위해 평일 강제 개장(Fail-Open) 처리합니다: {e}")
                 est = ZoneInfo('America/New_York')
+                # 🚨 MODIFIED: [Case 14 준수] Fail-Open 하드코딩
                 return datetime.datetime.now(est).weekday() < 5
             time.sleep(1.0 * (2 ** attempt))
 

@@ -40,6 +40,7 @@ class TelegramSyncEngine:
                 # 🚨 MODIFIED: [Case 33] 3단 지수 백오프
                 for attempt in range(3):
                     try:
+                        time.sleep(0.06)
                         split_ratio, split_date = await asyncio.wait_for(
                             asyncio.to_thread(self.broker.get_recent_stock_split, ticker, last_split_date), timeout=15.0
                         )
@@ -62,6 +63,7 @@ class TelegramSyncEngine:
                 now_est = datetime.datetime.now(est)
                 
                 def _get_last_trade_date():
+                    time.sleep(0.06)
                     nyse = mcal.get_calendar('NYSE')
                     schedule = nyse.schedule(start_date=(now_est - datetime.timedelta(days=10)).date(), end_date=now_est.date())
                     return schedule
@@ -455,9 +457,12 @@ class TelegramSyncEngine:
                                         revenue=snapshot['clear_price'] * snapshot['cleared_qty'], end_date=cap_dt_str[:10]
                                     )
                                     if img_path and os.path.exists(img_path):
-                                        with open(img_path, 'rb') as f_out:
-                                            if img_path.lower().endswith('.gif'): await context.bot.send_animation(chat_id=chat_id, animation=f_out)
-                                            else: await context.bot.send_photo(chat_id=chat_id, photo=f_out)
+                                        # 🚨 MODIFIED: [제1헌법] 비동기 파일 읽기 래퍼 적용
+                                        def _read_img2(p):
+                                            with open(p, 'rb') as f_in: return f_in.read()
+                                        img_bytes2 = await asyncio.to_thread(_read_img2, img_path)
+                                        if img_path.lower().endswith('.gif'): await context.bot.send_animation(chat_id=chat_id, animation=img_bytes2)
+                                        else: await context.bot.send_photo(chat_id=chat_id, photo=img_bytes2)
                                 except Exception: pass
                         else:
                             await context.bot.send_message(chat_id, f"⚠️ <b>[{ticker} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
@@ -559,9 +564,12 @@ class TelegramSyncEngine:
                                         invested=new_hist['invested'], revenue=new_hist['revenue'], end_date=new_hist['end_date']
                                     )
                                     if img_path and os.path.exists(img_path):
-                                        with open(img_path, 'rb') as f_out:
-                                            if img_path.lower().endswith('.gif'): await context.bot.send_animation(chat_id=chat_id, animation=f_out)
-                                            else: await context.bot.send_photo(chat_id=chat_id, photo=f_out)
+                                        # 🚨 MODIFIED: [제1헌법] 비동기 파일 읽기 래퍼 적용
+                                        def _read_img3(p):
+                                            with open(p, 'rb') as f_in: return f_in.read()
+                                        img_bytes3 = await asyncio.to_thread(_read_img3, img_path)
+                                        if img_path.lower().endswith('.gif'): await context.bot.send_animation(chat_id=chat_id, animation=img_bytes3)
+                                        else: await context.bot.send_photo(chat_id=chat_id, photo=img_bytes3)
                                 except Exception: pass
                             else:
                                 full_ledger2 = await asyncio.to_thread(self.cfg.get_ledger)

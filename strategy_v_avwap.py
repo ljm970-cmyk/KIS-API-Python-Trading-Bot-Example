@@ -213,7 +213,7 @@ class VAvwapHybridPlugin:
         prev_c = float(kwargs.get('prev_close', 0.0))
         ma_5day = float(kwargs.get('ma_5day', 0.0))
         
-        # 🚨 NEW: 5일 평균 종가 앵커 스위칭 (결측 시 prev_c 폴백)
+        # 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭] 결측 시 prev_c 폴백 락온
         anchor_price = ma_5day if ma_5day > 0 else prev_c
         
         curr_pm_h = 0.0
@@ -230,7 +230,8 @@ class VAvwapHybridPlugin:
         
         time_0400 = datetime.time(4, 0)
         time_0930 = datetime.time(9, 30)
-        time_1300 = datetime.time(13, 0) # 🚨 NEW: 13시 컷오프(Time-Guillotine)
+        # 🚨 MODIFIED: [Case 11] 타임 슬라이싱 차단벽 (13:00 EST 컷오프)
+        time_1300 = datetime.time(13, 0)
 
         persistent_state = self.load_state(exec_ticker, now_est)
         is_shutdown = persistent_state.get('shutdown', False)
@@ -273,7 +274,7 @@ class VAvwapHybridPlugin:
                     curr_c = float(df_today.iloc[-1]['close'])
                     curr_l = float(df_today.iloc[-1]['low'])
                     
-                    # 🚨 MODIFIED: [MA5 앵커 스위칭] 타임라인 기반 스위칭 철거 및 MA5 앵커 오프셋 적용
+                    # 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭 및 45% 하향 락온]
                     curr_offset = anchor_price * amp5 * 0.45
                     
                     curr_t_h = curr_pm_h - curr_offset
@@ -313,7 +314,6 @@ class VAvwapHybridPlugin:
                 'trap_placed_time': trap_placed_time if t_time is None else t_time 
             }
 
-        # 🚨 결측치 유입 시 T_H 하이재킹 차단 (Anchor Base 검증)
         if anchor_price <= 0 or amp5 <= 0:
             return _build_res('WAIT', '진입_평가용_필수데이터_결측_대기')
 
@@ -329,6 +329,7 @@ class VAvwapHybridPlugin:
                     self.save_state(exec_ticker, now_est, persistent_state)
                 return _build_res('SELL', '동적_덤핑_타임라인_도달_전량_시장가_덤핑', qty=avwap_qty, target_price=exec_curr_p)
 
+            # 🚨 MODIFIED: [결함 1 수술] 익절 타겟 2.0% 하향 락온
             exit_target_price = round(safe_avg * 1.02, 2)
             if exec_curr_p >= exit_target_price:
                 return _build_res('SELL', '목표가(+2.0%)_도달_순수모멘텀_익절_격발', qty=avwap_qty, target_price=exit_target_price)
@@ -347,6 +348,7 @@ class VAvwapHybridPlugin:
         if executed_buy and sortie_mode == "SINGLE":
             return _build_res('WAIT', '일일_1회_타격_완료_매매_종료(단일타격_모드)')
 
+        # 🚨 MODIFIED: [Case 11] 기요틴 셧다운 (09:30 EST)
         if curr_time >= time_0930 and not executed_buy:
             persistent_state["shutdown"] = True
             persistent_state["limit_order_placed"] = False
@@ -362,7 +364,7 @@ class VAvwapHybridPlugin:
             logging.info(f"🛑 [09:30 기요틴 셧다운] 프리장 매수 체결 불발. 정규장 폭락 휩소를 회피하기 위해 당일 매매를 종료(퇴근)합니다.")
             return _build_res('SHUTDOWN', '09:30_기요틴_프리장미체결_정규장회피_당일퇴근')
 
-        # 🚨 NEW: 13:00 EST 신규 진입 원천 차단 (Time-Guillotine)
+        # 🚨 MODIFIED: [Case 11] 타임 슬라이싱 차단벽 (13:00 EST 컷오프)
         if avwap_qty == 0 and curr_time >= time_1300:
             if limit_order_placed:
                 persistent_state["shutdown"] = True
@@ -392,6 +394,7 @@ class VAvwapHybridPlugin:
                 else:
                     return _build_res('WAIT', '조건_충족이나_예산부족(0주)_덫장전_보류')
         else:
+            # 🚨 MODIFIED: [Case 31] 1분봉 시차 패러독스 방어 60초 타임 쉴드
             is_time_shield_active = False
             if trap_placed_time and curr_candle_time_str:
                 try:

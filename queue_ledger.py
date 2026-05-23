@@ -72,7 +72,7 @@ class QueueLedger:
         
         raise RuntimeError(f"🚨 [FATAL ERROR] {self.file_path} 장부 파일 읽기 실패. 데이터 유실 방지를 위해 시스템을 중단합니다. 원인: {last_exc}")
 
-    # MODIFIED: [V44.49 tempfile 기반 멱등성 보장 원자적 쓰기 락온]
+    # 🚨 MODIFIED: [제4헌법 준수] tempfile 기반 멱등성 보장 원자적 쓰기 및 fsync 락온
     def _save_unsafe(self, data):
         """Must be called while holding self._lock."""
         dir_name = os.path.dirname(self.file_path) or '.'
@@ -258,7 +258,6 @@ class QueueLedger:
             self._save_unsafe(data)
             return True
 
-    # NEW: [V55.00 오퍼레이션 SSOT - 텔레그램 전용 스레드 세이프 메서드 4종 신설]
     def delete_lot(self, ticker, target_date):
         """특정 날짜(target_date)의 지층을 핀셋으로 도려내어 삭제합니다."""
         with self._lock:
@@ -290,6 +289,7 @@ class QueueLedger:
             data[ticker] = []
             self._save_unsafe(data)
 
+    # 🚨 MODIFIED: [Case 02 준수] 텔레그램 덮어쓰기 다이렉트 래핑
     def overwrite_queue(self, ticker, q_data):
         """수동 매수(MANUAL_SYNC) 등 팩트 지층 배열을 강제 주입(덮어쓰기)합니다."""
         with self._lock:

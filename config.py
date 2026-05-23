@@ -70,7 +70,6 @@ class ConfigManager:
             "SNIPER_SELL_LOCKED": "data/sniper_sell_locked.json",
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",       
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
-            # NEW: [맹점 2] 상태 오염(Coupling) 원천 차단을 위해 AVWAP 갭 임계치 전용 파일 경로 신설
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json"
         }
         
@@ -132,6 +131,7 @@ class ConfigManager:
             if not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True)
                  
+            # 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 및 fsync 락온
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 fd = None
@@ -171,7 +171,6 @@ class ConfigManager:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 fd = None
                 f.write(str(content))
-                # MODIFIED: [제4헌법 준수] 파일 스트림 스코프 이탈 전 플러시 및 디스크 동기화 강제 배치 (ValueError 방어)
                 f.flush()
                 os.fsync(f.fileno()) 
             
@@ -204,7 +203,6 @@ class ConfigManager:
             d[ticker] = bool(v)
             self._save_json(self.FILES["VREV_GAP_SWITCH_CFG"], d)
             
-    # MODIFIED: [맹점 2 수술] AVWAP 전용 임계치 상태 격리 및 디커플링 팩트 교정
     def get_avwap_gap_threshold(self, ticker):
         return float(self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
 

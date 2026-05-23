@@ -36,13 +36,15 @@ class AvwapConsolePlugin:
         import pandas_market_calendars as mcal
         
         def _fetch_schedule():
-            time.sleep(0.06)
+            time.sleep(0.06) # 🚨 NEW: [Case 32] TPS 캡핑
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=now_est.date(), end_date=now_est.date())
             
         schedule = None
+        # 🚨 NEW: [Case 33] 3단 지수 백오프 이식
         for attempt in range(3):
             try:
+                # 🚨 MODIFIED: [Case 14] 달력 API 10초 타임아웃 락온
                 schedule = await asyncio.wait_for(asyncio.to_thread(_fetch_schedule), timeout=10.0)
                 break
             except Exception:
@@ -101,12 +103,14 @@ class AvwapConsolePlugin:
         async def _get_with_retry(func, *args):
             for attempt in range(3):
                 try:
+                    await asyncio.sleep(0.06) # 🚨 NEW: [Case 32] TPS 캡핑
                     return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=10.0)
                 except Exception:
                     if attempt == 2: return None
                     await asyncio.sleep(1.0 * (2 ** attempt))
 
         for t in active_avwap:
+            await asyncio.sleep(0.06)
             if not tracking_cache.get(f"AVWAP_INIT_{t}"):
                 try:
                     saved_state = await asyncio.to_thread(self.strategy.v_avwap_plugin.load_state, t, now_est)
@@ -124,6 +128,7 @@ class AvwapConsolePlugin:
                         tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{t}"] = saved_state.get('trap_placed_time', "")
                         tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = saved_state.get('buy_odno', "")
            
+                        # 🚨 [Case 24] 관제탑 렌더링 무결성: 조기 퇴근하더라도 PM_H, T_H 팩트를 100% 표출
                         tracking_cache[f"AVWAP_PM_H_{t}"] = saved_state.get('PM_H', 0.0)
                         tracking_cache[f"AVWAP_PM_L_{t}"] = saved_state.get('PM_L', 0.0)
                         tracking_cache[f"AVWAP_T_H_{t}"] = saved_state.get('T_H', 0.0)
@@ -136,6 +141,7 @@ class AvwapConsolePlugin:
 
             is_avwap_active = await asyncio.to_thread(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
             
+            # 🚨 MODIFIED: [Case 11] 다중 출격(Multi-Sortie) 모드 동적 렌더링 락온
             sortie_mode = await asyncio.to_thread(getattr(self.cfg, 'get_avwap_sortie_mode', lambda x: "SINGLE"), t)
             sortie_str = "단일 타격(1회)" if sortie_mode == "SINGLE" else "다중 출격(무한)"
             active_str = f"🟢 암살 가동 ({sortie_str})" if is_avwap_active else "⚪ 대기 (OFF)"
@@ -269,12 +275,13 @@ class AvwapConsolePlugin:
             reg_h = tracking_cache.get(f"AVWAP_REG_H_{t}", 0.0)
             reg_l = tracking_cache.get(f"AVWAP_REG_L_{t}", 0.0)
 
-            # 🚨 NEW: [V79.50 MA5 스위칭] MA5 오프셋 렌더링 팩트 교정
+            # 🚨 MODIFIED: [V79.50 MA5 스위칭] MA5 오프셋 렌더링 팩트 교정
             msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
             msg += f"▫️ 프리장 최고 (PM_H): <b>${pm_h:.2f}</b>\n"
             msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b>\n"
             msg += f"▫️ 정규장 최고 (REG_H): <b>${reg_h:.2f}</b>\n"
             msg += f"▫️ 정규장 최저 (REG_L): <b>${reg_l:.2f}</b>\n"
+            # 🚨 MODIFIED: [Case 11] 오프셋 45% 하향 락온 렌더링
             msg += f"▫️ 5일평균 앵커 오프셋 (45%): <b>${offset:.2f}</b>\n"
             msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b>\n      (지정가 덫 장전선)\n"
             msg += f"▫️ 하락 지지 기준 (T_L): <b>${t_l:.2f}</b>\n      (단순 참조용)\n\n"
@@ -292,13 +299,16 @@ class AvwapConsolePlugin:
             msg += f"\n🚨 <b>[ 작전 수행 현황 ]</b>\n"
             msg += f"▫️ 현재상태: <b>{status_txt}</b>\n"
 
+            # 🚨 MODIFIED: [Case 28] 수동 요격 및 취소(Nuke) 버튼 동적 스위칭
             if status_code in ["PRE", "REG"]:
                 if avwap_qty > 0:
                     keyboard.append([InlineKeyboardButton(f"🧯 {t} 암살자 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
                 elif limit_order_placed and buy_odno:
+                    # 🚨 NEW: [Case 28] 덫 장전 중 취소(Nuke Trap) 버튼 동적 스위칭
                     keyboard.append([InlineKeyboardButton(f"🛑 [{t}] 수동 매수취소 (Nuke Trap)", callback_data=f"AVWAP_SET:MANUAL_CANCEL_REQ:{t}")])
                 else:
                     if t_h > 0.0:
+                        # 🚨 NEW: [Case 28] 현재가 제한 해제 (순수 지정가 락온) 수동 요격 버튼 표출
                         keyboard.append([InlineKeyboardButton(f"🔫 [{t}] 수동 강제 요격 (Limit T_H)", callback_data=f"AVWAP_SET:MANUAL_FIRE_REQ:{t}")])
                     else:
                         keyboard.append([InlineKeyboardButton(f"❌ [{t}] 수동 요격 불가 (T_H 스캔 대기 중)", callback_data="AVWAP_SET:REFRESH:NONE")])
