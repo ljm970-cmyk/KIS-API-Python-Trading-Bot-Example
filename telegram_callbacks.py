@@ -14,6 +14,7 @@
 # 🚨 NEW: [Case 28 동적 스위칭] 수동 취소 콜백(MANUAL_CANCEL_REQ) 신설 및 덫 무결성 원자적 파기 로직 이식
 # 🚨 MODIFIED: [제1헌법 절대 준수] MANUAL_CANCEL_REQ 및 MANUAL_FIRE_EXEC 내부 time.sleep을 await asyncio.sleep으로 전면 팩트 교정 완료
 # 🚨 MODIFIED: [Edge Case 2 수술] EXEC 수동 강제 전송 시 호출되는 get_yf_close 내부에 time.sleep(0.06) 캡핑 강제 주입 완료. (HTTP 429 밴 원천 차단)
+# 🚨 NEW: [Insight 02 수술] 텔레그램 렌더링을 위한 큐(Queue) 파싱 시 형변환 쉴드(Safe Casting) 팩트 이식 완료
 # ==========================================================
 import logging
 import datetime
@@ -121,8 +122,9 @@ class TelegramCallbacks:
                 return
             
             await query.answer()
-            emergency_qty = q_data[-1].get('qty', 0)
-            emergency_price = q_data[-1].get('price', 0.0)
+            # 🚨 MODIFIED: [UI 렌더링 무결성] Safe Casting (Float 포맷팅 에러 방어)
+            emergency_qty = int(float(q_data[-1].get('qty', 0)))
+            emergency_price = float(q_data[-1].get('price', 0.0))
             
             msg, markup = self.view.get_emergency_moc_confirm_menu(ticker, emergency_qty, emergency_price)
             await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
@@ -146,7 +148,8 @@ class TelegramCallbacks:
             
             await query.answer("⏳ KIS 서버에 수동 긴급 수혈(MOC) 명령을 격발합니다...", show_alert=False)
             
-            emergency_qty = q_data[-1].get('qty', 0)
+            # 🚨 MODIFIED: [UI 렌더링 무결성] Safe Casting
+            emergency_qty = int(float(q_data[-1].get('qty', 0)))
             
             if emergency_qty > 0:
                 async with self.tx_lock:
@@ -178,8 +181,9 @@ class TelegramCallbacks:
             qty, price = 0, 0.0
             for item in q_data:
                 if item.get('date') == target_date:
-                    qty = item.get('qty', 0)
-                    price = item.get('price', 0.0)
+                    # 🚨 NEW: [Insight 02 수술] JSON 파싱 시 유입될 수 있는 문자열 형변환 에러(TypeError) 원천 차단 (Safe Casting 락온)
+                    qty = int(float(item.get('qty', 0)))
+                    price = float(item.get('price', 0.0))
                     break
         
             msg, markup = self.view.get_queue_action_confirm_menu(ticker, target_date, qty, price)
@@ -495,7 +499,6 @@ class TelegramCallbacks:
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 try:
                     def get_yf_close():
-                        # 🚨 MODIFIED: [Edge Case 2 수술] EXEC 수동 강제 전송 시 호출되는 get_yf_close 내부에 time.sleep(0.06) 캡핑 강제 주입 완료. (HTTP 429 밴 원천 차단)
                         time.sleep(0.06)
                         df = yf.Ticker(t).history(period="5d", interval="1d")
                         return float(df['Close'].iloc[-1]) if not df.empty else None
@@ -847,12 +850,11 @@ class TelegramCallbacks:
                     if not buy_odno:
                         return await query.answer("❌ 파기할 지정가 덫을 찾을 수 없습니다.", show_alert=True)
                         
-                    await query.answer("⚠️ 덫 파기 시퀀스 가동 중...", show_alert=False)
+                    await query.answer("⚠️ 덫 파기 시퀀 가동 중...", show_alert=False)
                     
                     async with self.tx_lock:
                         for attempt in range(3):
                             try:
-                                # MODIFIED: [제1헌법] 비동기 루프 내 동기 sleep 사용에 따른 데드락 원천 차단
                                 await asyncio.sleep(0.06)
                                 await asyncio.to_thread(self.broker.cancel_order, ticker, buy_odno)
                                 break
@@ -984,7 +986,6 @@ class TelegramCallbacks:
                         await query.answer("🔫 지정가 덫 장전 중...", show_alert=False)
                         await query.edit_message_text(f"🚀 <b>[{ticker}] 사이보그(Cyborg) 수동 강제 요격 덫 전송 중...</b>", parse_mode='HTML')
 
-                        # MODIFIED: [제1헌법] 비동기 루프 내 동기 sleep 사용에 따른 데드락 원천 차단
                         await asyncio.sleep(0.06)
                         res = await asyncio.to_thread(self.broker.send_order, ticker, "BUY", buy_qty, t_h, "LIMIT")
                         buy_odno = res.get('odno', '') if isinstance(res, dict) else ''
