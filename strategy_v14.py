@@ -3,7 +3,7 @@
 # ==========================================================
 # 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
 # 🚨 MODIFIED: [Case 21] 후반전 별값 매수 예산 통합 100% 팩트 이식
-# 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍 5단 폭포수 덫 공식 팩트 이식
+# 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍 5단 폭포수 덫 공식 진공 압축 팩트 이식 완료
 # ==========================================================
 import math
 import os
@@ -113,24 +113,17 @@ class V14Strategy:
         target_pct_val = self.cfg.get_target_profit(ticker) 
         target_ratio = target_pct_val / 100.0
         
-        # 1회 예산 : Portion = Seed / Split
         portion = seed / split if split > 0 else 1.0
-
-        # T값 (절대 진행률) : T = (Total Holdings * Average Price) / Portion
         t_val = (qty * avg_price) / portion if portion > 0 else 0.0
         t_val = round(t_val, 4)
 
-        # 목표 익절가 : Target = Average Price * (1 + Target Ratio)
         target_price = self._ceil(avg_price * (1 + target_ratio)) if avg_price > 0 else 0
         is_jackpot_reached = target_price > 0 and current_price >= target_price
 
         one_portion_amt = portion
         
-        # 감가상각 계수 : DF = 2 / Split (Split이 0이면 0.1 적용)
         depreciation_factor = 2.0 / split if split > 0 else 0.1
-        # 별% : Star Ratio = Target Ratio - (Target Ratio * DF * T)
         star_ratio = target_ratio - (target_ratio * depreciation_factor * t_val)
-        # 별값 : Star Price = Average Price * (1 + Star Ratio)
         star_price = self._ceil(avg_price * (1 + star_ratio)) if avg_price > 0 else 0
             
         base_price = current_price if current_price > 0 else prev_close
@@ -142,7 +135,6 @@ class V14Strategy:
         if market_type == "REG":
             if qty == 0:
                 process_status = "✨새출발"
-                # 매수 타점 (0주) : Buy_1, Buy_2 = MAX(0.01, PrevClose * 1.15 - 0.01) (예산 50%씩)
                 buy_price = max(0.01, round(self._ceil(base_price * 1.15) - 0.01, 2))
                 half_budget = one_portion_amt * 0.5
                 buy_qty1 = int(math.floor(half_budget / buy_price)) if buy_price > 0 else 0
@@ -154,15 +146,10 @@ class V14Strategy:
                 if buy_qty1 > 0: core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty1, "type": "LOC", "desc": "🆕새출발1"})
                 if buy_qty2 > 0: core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty2, "type": "LOC", "desc": "🆕새출발2"})
                 
-                # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍(Jubjub) 5단 폭포수 공식 이식
+                # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍(Jubjub) 5단 폭포수 1줄 진공 압축 및 안정 정렬 팩트 이식
                 q_base = sum(o['qty'] for o in core_orders if o['side'] == 'BUY')
                 if q_base > 0:
-                    for n in range(1, 6):
-                        jub_price = math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0
-                        if jub_price > 0.01:
-                            bonus_orders.append({
-                                "side": "BUY", "price": jub_price, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"
-                            })
+                    bonus_orders.extend(sorted([{"side": "BUY", "price": math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"} for n in range(1, 6) if math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0 > 0.01], key=lambda x: x['price'], reverse=True))
             
                 orders = core_orders + bonus_orders
                 plan_result = {"orders": orders, "core_orders": core_orders, "bonus_orders": bonus_orders, "total_q": qty, "avg_price": avg_price, "t_val": t_val, "one_portion": one_portion_amt, "process_status": process_status, "is_reverse": False, "star_price": star_price, "star_ratio": star_ratio, "real_cash_used": real_available_cash, "tracking_info": tr_info}
@@ -183,7 +170,6 @@ class V14Strategy:
             elif t_val < (split / 2): process_status = "🌓전반전"
             else: process_status = "🌕후반전"
 
-            # 매수 타점 연산
             if t_val < (split / 2):
                 p_avg = max(0.01, round(min(avg_price, star_price) - 0.01, 2))
                 p_star = max(0.01, round(star_price - 0.01, 2))
@@ -201,14 +187,12 @@ class V14Strategy:
                 if q_avg > 0: core_orders.append({"side": "BUY", "price": p_avg, "qty": q_avg, "type": "LOC", "desc": "⚓평단매수"})
                 if q_star > 0: core_orders.append({"side": "BUY", "price": p_star, "qty": int(q_star), "type": "LOC", "desc": "💫별값매수"})
             else: 
-                # 🚨 MODIFIED: [Case 21] 후반전 통합 별값 매수 예산 100% 통합 단일 버킷 타격
                 p_star = max(0.01, round(star_price - 0.01, 2))
                 if p_star > 0:
                     q_star_total = int(math.floor(one_portion_amt / p_star))
                     if q_star_total > 0:
                         core_orders.append({"side": "BUY", "price": p_star, "qty": q_star_total, "type": "LOC", "desc": "💫별값매수(통합)"})
 
-            # 매도
             if qty > 0:
                 q_qty = int(math.ceil(qty / 4))
                 rem_qty = int(qty - q_qty)
@@ -217,15 +201,10 @@ class V14Strategy:
                 if target_price > 0 and rem_qty > 0:
                     core_orders.append({"side": "SELL", "price": target_price, "qty": rem_qty, "type": "LIMIT", "desc": "🎯목표매도(잔여)"})
 
-            # 심해 줍줍
+            # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍(Jubjub) 5단 폭포수 1줄 진공 압축 및 안정 정렬 팩트 이식
             q_base = sum(o['qty'] for o in core_orders if o['side'] == 'BUY')
             if q_base > 0:
-                for n in range(1, 6):
-                    jub_price = math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0
-                    if jub_price > 0.01:
-                        bonus_orders.append({
-                            "side": "BUY", "price": jub_price, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"
-                        })
+                bonus_orders.extend(sorted([{"side": "BUY", "price": math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"} for n in range(1, 6) if math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0 > 0.01], key=lambda x: x['price'], reverse=True))
 
             core_orders, bonus_orders = self._apply_wash_trade_shield(core_orders, bonus_orders)        
             orders = core_orders + bonus_orders

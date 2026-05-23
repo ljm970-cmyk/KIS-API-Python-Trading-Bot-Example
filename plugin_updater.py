@@ -5,6 +5,8 @@
 # 🚨 MODIFIED: [V75.05 레드존 팩트 교정] 제9경고에 따라 불필요한 레드존을 진공 압축하여 15:12 ~ 15:31 EST 구간으로 정밀 락온 완료.
 # 🚨 MODIFIED: [Case 14 절대 헌법 준수] 달력 API 타임아웃 5.0초를 10.0초로 팩트 교정하여 타임아웃 헌법 일원화.
 # 🚨 NEW: [Case 33 절대 규칙] 3단 지수 백오프 및 Fail-Safe 기반 휴장일 판별 로직 이식
+# 🚨 MODIFIED: [제1헌법 준수] 서브프로세스 교착 방어를 위한 타임아웃(wait_for) 족쇄 전면 결속
+# 🚨 NEW: [Case 32 절대 헌법] 달력 API 스캔 동기 함수 내 TPS 캡핑 샌드위치 강제 주입
 # ==========================================================
 import logging
 import asyncio
@@ -30,6 +32,8 @@ class SystemUpdater:
             return True, ""
 
         def _check_holiday():
+            # 🚨 NEW: [Case 32] 달력 API TPS 캡핑 강제 주입
+            time.sleep(0.06)
             import pandas_market_calendars as mcal
             nyse = mcal.get_calendar('NYSE')
             schedule = nyse.schedule(start_date=now_est.date(), end_date=now_est.date())
@@ -94,7 +98,12 @@ class SystemUpdater:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            _, fetch_err = await fetch_proc.communicate()
+            # 🚨 MODIFIED: [제1헌법 준수] 서브프로세스 30초 타임아웃 족쇄 체결
+            try:
+                _, fetch_err = await asyncio.wait_for(fetch_proc.communicate(), timeout=30.0)
+            except asyncio.TimeoutError:
+                fetch_proc.kill()
+                return False, "Git Fetch 통신 지연 타임아웃 (30초 초과)"
             
             if fetch_proc.returncode != 0:
                 error_msg = fetch_err.decode('utf-8').strip()
@@ -106,7 +115,12 @@ class SystemUpdater:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            _, reset_err = await reset_proc.communicate()
+            # 🚨 MODIFIED: [제1헌법 준수] 서브프로세스 30초 타임아웃 족쇄 체결
+            try:
+                _, reset_err = await asyncio.wait_for(reset_proc.communicate(), timeout=30.0)
+            except asyncio.TimeoutError:
+                reset_proc.kill()
+                return False, "Git Reset 통신 지연 타임아웃 (30초 초과)"
             
             if reset_proc.returncode != 0:
                 error_msg = reset_err.decode('utf-8').strip()

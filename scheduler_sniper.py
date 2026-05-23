@@ -12,6 +12,7 @@
 # 🚨 MODIFIED: [V79.50] MA5 연산 비동기 병렬 스캔 및 get_decision 다이렉트 주입 배선 100% 개통
 # 🚨 MODIFIED: [Case 14 절대 헌법 준수] is_market_open 및 _get_market_hours 등 달력 API 타임아웃 10.0초 락온 완료
 # 🚨 MODIFIED: [Case 31 연계 미시구조 수술] 매수 체결 직후 KIS 잔고 편입 딜레이(Latency)로 인한 매도 덫 '증거금 부족' 리젝 방어를 위해 1.0초 대기 샌드위치 이식.
+# 🚨 NEW: [Case 16 & 32 절대 헌법] NameError 런타임 붕괴 차단용 time 네임스페이스 전진 배치 및 TPS 캡핑 강제 주입
 # ==========================================================
 import logging
 import datetime
@@ -26,6 +27,7 @@ import tempfile
 import html  
 import yfinance as yf
 import pandas_market_calendars as mcal
+import time # 🚨 NEW: [Case 16] 네임스페이스 전진 배치 결속
 
 from scheduler_core import is_market_open
 
@@ -57,6 +59,8 @@ async def scheduled_sniper_monitor(context):
         return
     
     def _get_market_hours():
+        # 🚨 NEW: [Case 32] 달력 API 스캔 시 TPS 캡핑 강제 주입
+        time.sleep(0.06)
         nyse = mcal.get_calendar('NYSE')
         return nyse.schedule(start_date=now_est.date(), end_date=now_est.date())
 
@@ -223,6 +227,8 @@ async def scheduled_sniper_monitor(context):
                     if not tracking_cache.get(f"AVWAP_DAY_OPEN_{target_base}"):
                         def _fetch_open(tkr):
                             try:
+                                # 🚨 NEW: [Case 32] 야후 파이낸스 API 호출 시 TPS 캡핑 (HTTP 429 밴 방어)
+                                time.sleep(0.06)
                                 st = yf.Ticker(tkr)
                                 h = st.history(period="1d", interval="1m", prepost=False, timeout=5)
                                 if not h.empty: return float(h['Open'].dropna().iloc[0])
@@ -418,7 +424,6 @@ async def scheduled_sniper_monitor(context):
                      
                                 trap_price = round(new_avg * 1.02, 2)
                                 
-                                # 🚨 MODIFIED: [Case 31 연계 미시구조 수술] 매수 체결 직후 KIS 잔고 편입 딜레이(Latency)로 인한 매도 덫 '증거금 부족' 리젝 방어를 위해 1.0초 대기 샌드위치 이식
                                 await asyncio.sleep(1.0)
                                 
                                 trap_res = await asyncio.to_thread(broker.send_order, t, "SELL", ccld_qty, trap_price, "LIMIT")

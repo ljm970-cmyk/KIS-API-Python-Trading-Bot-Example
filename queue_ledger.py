@@ -11,6 +11,7 @@
 # 외부 모듈(telegram_callbacks, telegram_states, telegram_sync_engine)이 
 # 파일 I/O를 직접 수행하며 발생하는 락(Lock) 우회 맹점을 차단하기 위한 4대 스레드 세이프 전용 메서드 신설.
 # 🚨 MODIFIED: [V77.29 데드코드 영구 소각] 타 모듈에서 직접 연산하므로 방치된 get_total_qty 100% 영구 적출 완료.
+# 🚨 MODIFIED: [결함 2 수술] 큐 장부 수동 덮어쓰기 시 시계열 안정 정렬 강제로 LIFO 앵커 패러독스 원천 차단
 # ==========================================================
 import os
 import json
@@ -259,7 +260,6 @@ class QueueLedger:
             return True
 
     def delete_lot(self, ticker, target_date):
-        """특정 날짜(target_date)의 지층을 핀셋으로 도려내어 삭제합니다."""
         with self._lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
@@ -268,7 +268,6 @@ class QueueLedger:
             self._save_unsafe(data)
 
     def edit_lot(self, ticker, target_date, qty, price):
-        """특정 날짜(target_date)의 지층 수량과 평단가를 정밀 수정합니다."""
         qty_int = int(float(qty or 0))
         price_f = float(price or 0.0)
         with self._lock:
@@ -283,16 +282,17 @@ class QueueLedger:
             self._save_unsafe(data)
 
     def clear_queue(self, ticker):
-        """해당 종목의 큐 장부를 100% 완전 소각(초기화)합니다."""
         with self._lock:
             data = self._load_unsafe()
             data[ticker] = []
             self._save_unsafe(data)
 
-    # 🚨 MODIFIED: [Case 02 준수] 텔레그램 덮어쓰기 다이렉트 래핑
+    # 🚨 MODIFIED: [Case 02 준수] 텔레그램 덮어쓰기 다이렉트 래핑 및 LIFO 앵커 패러독스 차단
     def overwrite_queue(self, ticker, q_data):
         """수동 매수(MANUAL_SYNC) 등 팩트 지층 배열을 강제 주입(덮어쓰기)합니다."""
         with self._lock:
             data = self._load_unsafe()
-            data[ticker] = q_data
+            # 🚨 MODIFIED: [결함 수술] 시계열 안정 정렬 강제 (오래된 것이 0, 최신이 -1)로 LIFO 앵커 역전 패러독스 차단
+            sorted_q = sorted(q_data, key=lambda x: str(x.get('date', '0000-00-00')))
+            data[ticker] = sorted_q
             self._save_unsafe(data)
