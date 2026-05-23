@@ -5,7 +5,7 @@
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 TPS 캡핑 방어망 전면 이식
 # 🚨 MODIFIED: [V79.50 절대 헌법] 과거 40/45% 변속 로직 텍스트를 영구 소각하고 MA5 45% 절대 락온 팩트 교정 완료
 # 🚨 NEW: [Case 28 수동 요격 스위칭] 현재가 < T_H 제한 전면 해방 및 덫 장전 중 취소(Nuke) 버튼 동적 렌더링
-# 🚨 NEW: [V79.50 MA5 스위칭] MA5 앵커 팩트 스캔 엔진 합류 및 텔레그램 렌더링 시각적 디커플링 원천 차단
+# 🚨 NEW: [Case 26 & UI 교정] 모바일 화면 오버플로우 2줄 압축 및 html.escape 사일런트 데스 방어망 구축
 # ==========================================================
 import logging
 import datetime
@@ -16,6 +16,7 @@ import time
 import pandas as pd
 import json
 import os
+import html  # NEW: [Case 26] HTML Parse Error 방어용 쉴드
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 class AvwapConsolePlugin:
@@ -50,7 +51,8 @@ class AvwapConsolePlugin:
             except Exception:
                 if attempt == 2:
                     logging.error("🚨 달력 API 호출 에러/타임아웃. Fail-Open 평일 개장으로 강제 폴백합니다.")
-                else: await asyncio.sleep(1.0 * (2 ** attempt))
+                else: 
+                    await asyncio.sleep(1.0 * (2 ** attempt))
 
         if schedule is None or schedule.empty:
             if schedule is None and now_est.weekday() < 5: status_code = "REG"
@@ -93,8 +95,10 @@ class AvwapConsolePlugin:
                 cash_val = cash_val_tuple[0]
                 break
             except Exception:
-                if attempt == 2: cash_val = 0.0
-                else: await asyncio.sleep(1.0 * (2 ** attempt))
+                if attempt == 2: 
+                    cash_val = 0.0
+                else: 
+                    await asyncio.sleep(1.0 * (2 ** attempt))
         available_cash = float(cash_val or 0.0)
         
         msg = f"🔫 <b>[ 차세대 AVWAP V79.50 관제탑 ]</b>\n{header_status}\n\n"
@@ -111,6 +115,10 @@ class AvwapConsolePlugin:
 
         for t in active_avwap:
             await asyncio.sleep(0.06)
+            
+            # NEW: [Case 26] 텔레그램 렌더링용 안전 치환 문자열 분리 보존
+            ticker_clean = html.escape(t)
+            
             if not tracking_cache.get(f"AVWAP_INIT_{t}"):
                 try:
                     saved_state = await asyncio.to_thread(self.strategy.v_avwap_plugin.load_state, t, now_est)
@@ -275,20 +283,28 @@ class AvwapConsolePlugin:
             reg_h = tracking_cache.get(f"AVWAP_REG_H_{t}", 0.0)
             reg_l = tracking_cache.get(f"AVWAP_REG_L_{t}", 0.0)
 
-            # 🚨 MODIFIED: [V79.50 MA5 스위칭] MA5 오프셋 렌더링 팩트 교정
-            msg += f"🎯 <b>[ {t} (롱) 작전반 - {active_str} ]</b>\n"
+            # 🚨 MODIFIED: [UI/UX] 명세에 따른 모바일 화면 2줄 라인랩 방어 및 팩트 렌더링 강제 교정
+            msg += f"🎯 <b>[ {ticker_clean} (롱) 작전반 - {active_str} ]</b>\n"
             msg += f"▫️ 프리장 최고 (PM_H): <b>${pm_h:.2f}</b>\n"
             msg += f"▫️ 프리장 최저 (PM_L): <b>${pm_l:.2f}</b>\n"
             msg += f"▫️ 정규장 최고 (REG_H): <b>${reg_h:.2f}</b>\n"
             msg += f"▫️ 정규장 최저 (REG_L): <b>${reg_l:.2f}</b>\n"
-            # 🚨 MODIFIED: [V79.50] MA5 기준 45% 오프셋 절대 락온 시각적 렌더링 팩트 교정 완료
-            msg += f"▫️ 5일평균 앵커 오프셋 (45% 절대 락온): <b>${offset:.2f}</b>\n"
-            msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b>\n      (지정가 덫 장전선)\n"
-            msg += f"▫️ 하락 지지 기준 (T_L): <b>${t_l:.2f}</b>\n      (단순 참조용)\n\n"
+            
+            # 오프셋 2줄 분할 락온 (45% 하드코딩 텍스트 보존)
+            msg += f"▫️ 5일평균 앵커 오프셋: <b>${offset:.2f}</b>\n"
+            msg += f"      (45% 절대 락온)\n"
+            
+            msg += f"▫️ 상승 돌파 목표 (T_H): <b>${t_h:.2f}</b>\n"
+            msg += f"      (지정가 덫 장전선)\n"
+            
+            msg += f"▫️ 하락 지지 기준 (T_L): <b>${t_l:.2f}</b>\n"
+            msg += f"      (단순 참조용)\n\n"
 
             msg += f"📊 <b>[ 실시간 현재가 스프레드 ]</b>\n"
             msg += f"▫️ 전일종가: <b>${prev_c:.2f}</b> (Amp5: {amp5*100:.2f}%)\n"
-            msg += f"▫️ 5일평균가: <b>${ma_5day:.2f}</b>\n"
+            
+            # 명칭 교정: 5일평균종가
+            msg += f"▫️ 5일평균종가: <b>${ma_5day:.2f}</b>\n"
             msg += f"▫️ 현재가격: <b>${curr_p:.2f}</b>\n"
 
             if avwap_qty > 0:
@@ -299,21 +315,21 @@ class AvwapConsolePlugin:
             msg += f"\n🚨 <b>[ 작전 수행 현황 ]</b>\n"
             msg += f"▫️ 현재상태: <b>{status_txt}</b>\n"
 
-            # 🚨 MODIFIED: [Case 28] 수동 요격 및 취소(Nuke) 버튼 동적 스위칭
+            # 🚨 MODIFIED: [Case 28] 수동 요격 및 취소(Nuke) 버튼 동적 스위칭 (ticker_clean 보존)
             if status_code in ["PRE", "REG"]:
                 if avwap_qty > 0:
-                    keyboard.append([InlineKeyboardButton(f"🧯 {t} 암살자 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"🧯 {ticker_clean} 암살자 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
                 elif limit_order_placed and buy_odno:
                     # 🚨 NEW: [Case 28] 덫 장전 중 취소(Nuke Trap) 버튼 동적 스위칭
-                    keyboard.append([InlineKeyboardButton(f"🛑 [{t}] 수동 매수취소 (Nuke Trap)", callback_data=f"AVWAP_SET:MANUAL_CANCEL_REQ:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"🛑 [{ticker_clean}] 수동 매수취소 (Nuke Trap)", callback_data=f"AVWAP_SET:MANUAL_CANCEL_REQ:{t}")])
                 else:
                     if t_h > 0.0:
                         # 🚨 NEW: [Case 28] 현재가 제한 해제 (순수 지정가 락온) 수동 요격 버튼 표출
-                        keyboard.append([InlineKeyboardButton(f"🔫 [{t}] 수동 강제 요격 (Limit T_H)", callback_data=f"AVWAP_SET:MANUAL_FIRE_REQ:{t}")])
+                        keyboard.append([InlineKeyboardButton(f"🔫 [{ticker_clean}] 수동 강제 요격 (Limit T_H)", callback_data=f"AVWAP_SET:MANUAL_FIRE_REQ:{t}")])
                     else:
-                        keyboard.append([InlineKeyboardButton(f"❌ [{t}] 수동 요격 불가 (T_H 스캔 대기 중)", callback_data="AVWAP_SET:REFRESH:NONE")])
+                        keyboard.append([InlineKeyboardButton(f"❌ [{ticker_clean}] 수동 요격 불가 (T_H 스캔 대기 중)", callback_data="AVWAP_SET:REFRESH:NONE")])
             else:
-                keyboard.append([InlineKeyboardButton(f"⛔ [{t}] 장마감 (수동 제어 불가)", callback_data="AVWAP_SET:REFRESH:NONE")])
+                keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감 (수동 제어 불가)", callback_data="AVWAP_SET:REFRESH:NONE")])
 
             toggle_target = "MULTI" if sortie_mode == "SINGLE" else "SINGLE"
             toggle_text = "🔄 무한 출장 모드로 변경" if sortie_mode == "SINGLE" else "🎯 단일 타격 모드로 변경"
