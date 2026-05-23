@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 MODIFIED: [Case 27 절대 위반 교정] 에스크로 동기화(_sync_escrow_cash) 코루틴 및 호출부 전면 영구 소각 완료
 # 🚨 NEW: [Case 33 절대 규칙] 3단 지수 백오프 및 KIS 외부 API 연산망 전면 이식 완료
+# 🚨 MODIFIED: [제1헌법 절대 준수] process_auto_sync 루프 내 동기 대기(time.sleep)를 await asyncio.sleep으로 팩트 교정 완료
 # ==========================================================
 import logging
 import datetime
@@ -40,7 +41,8 @@ class TelegramSyncEngine:
                 # 🚨 MODIFIED: [Case 33] 3단 지수 백오프
                 for attempt in range(3):
                     try:
-                        time.sleep(0.06)
+                        # MODIFIED: [제1헌법 절대 준수] 비동기 루프 내 동기 대기 원천 차단
+                        await asyncio.sleep(0.06)
                         split_ratio, split_date = await asyncio.wait_for(
                             asyncio.to_thread(self.broker.get_recent_stock_split, ticker, last_split_date), timeout=15.0
                         )
@@ -457,7 +459,6 @@ class TelegramSyncEngine:
                                         revenue=snapshot['clear_price'] * snapshot['cleared_qty'], end_date=cap_dt_str[:10]
                                     )
                                     if img_path and os.path.exists(img_path):
-                                        # 🚨 MODIFIED: [제1헌법] 비동기 파일 읽기 래퍼 적용
                                         def _read_img2(p):
                                             with open(p, 'rb') as f_in: return f_in.read()
                                         img_bytes2 = await asyncio.to_thread(_read_img2, img_path)
@@ -564,7 +565,6 @@ class TelegramSyncEngine:
                                         invested=new_hist['invested'], revenue=new_hist['revenue'], end_date=new_hist['end_date']
                                     )
                                     if img_path and os.path.exists(img_path):
-                                        # 🚨 MODIFIED: [제1헌법] 비동기 파일 읽기 래퍼 적용
                                         def _read_img3(p):
                                             with open(p, 'rb') as f_in: return f_in.read()
                                         img_bytes3 = await asyncio.to_thread(_read_img3, img_path)
