@@ -2,12 +2,7 @@
 # FILE: config.py
 # ==========================================================
 # MODIFIED: [V54.03 JSON 락온(Mutex) 방어막 전면 이식]
-# 🚨 MODIFIED: [V77.29 데드코드 영구 소각] 중복 선언된 get_version_history 라우터를 전면 적출하고 get_full_version_history로 단일 진실 공급원(SSOT) 락온 완료
-# 🚨 NEW: [Case 11] AVWAP 다중 출격(Multi-Sortie) 모드 데이터 영속성 맵핑 및 락온
-# 🚨 MODIFIED: [Case 27 절대 위반 수술] 에스크로(Escrow) 엔진 100% 영구 적출 및 잔재 코드(Reset Locks) 소각 완료
-# 🚨 NEW: [데이터 기아 방어] V-REV 및 AVWAP 갭 스위칭 임계치 제어 파라미터 맵핑 100% 팩트 이식 완료
-# 🚨 MODIFIED: [맹점 2 수술] AVWAP vs V-REV 갭 임계치 메모리 충돌 원천 차단 (상태 오염 방어)
-# 🚨 MODIFIED: [제4헌법 준수] 파일 I/O 원자적 쓰기 스코프 누수(f.flush, os.fsync) 팩트 교정 및 ValueError 런타임 붕괴 완벽 차단
+# 🚨 NEW: [Case 34] 락온 센티널 파일 고아화(Orphan Lock) 맹점 영구 소각
 # ==========================================================
 
 import json
@@ -108,6 +103,12 @@ class ConfigManager:
                 finally:
                     if fcntl:
                         fcntl.flock(lf, fcntl.LOCK_UN)
+                    # 🚨 NEW: [Case 34] 락 해제 후 센티널 파일 영구 소각 (Orphan Lock 패러독스 방어)
+                    try:
+                        if os.path.exists(sentinel):
+                            os.remove(sentinel)
+                    except Exception:
+                        pass
 
     def _load_json(self, filename, default=None):
         if os.path.exists(filename):
@@ -131,7 +132,6 @@ class ConfigManager:
             if not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True)
                  
-            # 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 및 fsync 락온
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 fd = None

@@ -1,9 +1,8 @@
 # ==========================================================
 # FILE: strategy_reversion.py
 # ==========================================================
-# 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
-# 🚨 MODIFIED: [Case 19 준수] 기보유 상태 매수 앵커 l1_price 절대 락온
-# 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 락온
+# MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
+# 🚨 MODIFIED: [Float 정밀도 오염 차단] upper_inv 음수 발생 시 0.0으로 바운딩하는 max() 쉴드 적용
 # ==========================================================
 import math
 import os
@@ -75,7 +74,6 @@ class ReversionStrategy:
             dir_name = os.path.dirname(state_file)
             if dir_name and not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True)
-            # 🚨 MODIFIED: [제4헌법] 원자적 쓰기 강제 락온
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
@@ -87,8 +85,6 @@ class ReversionStrategy:
 
     def save_daily_snapshot(self, ticker, plan_data):
         snap_file = self._get_snapshot_file(ticker)
-        
-        # 🚨 MODIFIED: [Case 08] 스냅샷 무결성 락온 (os.path.exists 방어막 영구 소각, 무조건 최신 팩트로 오버라이드)
         today_str = self._get_logical_date_str()
         data = {
             "date": today_str,
@@ -178,10 +174,11 @@ class ReversionStrategy:
         
         upper_qty = total_q - l1_qty
 
-        # 🚨 MODIFIED: 매도 타점 (LIFO 탈출 공식 적용)
         trigger_l1 = round(l1_price * 1.006, 2)
+        
+        # 🚨 MODIFIED: [Float 정밀도 오염 차단] 음수 붕괴 방어용 max 바운딩 결속
         if upper_qty > 0:
-            upper_inv = total_inv - (l1_price * l1_qty)
+            upper_inv = max(0.0, total_inv - (l1_price * l1_qty))
             upper_price = upper_inv / upper_qty if upper_qty > 0 else 0.0
             trigger_upper = round(upper_price * 1.010, 2)
         else:
@@ -198,14 +195,12 @@ class ReversionStrategy:
                 legacy_q = sum(int(item.get("qty", 0)) for item in legacy_lots)
                 is_zero_start_session = (legacy_q == 0)
 
-        # 🚨 MODIFIED: 매수 앵커 및 타점 (Case 19 락온)
         if is_zero_start_session or total_q == 0:
             side = "BUY"
             p1_trigger = round(prev_c * 1.15, 2)
             p2_trigger = round(prev_c * 0.999, 2)
         else:
             side = "SELL" if curr_p > prev_c else "BUY"
-            # Case 19: 기보유 상태 매수 앵커 최근 1지층 평단가 락온
             safe_anchor = l1_price if l1_price > 0.0 else prev_c
             p1_trigger = round(safe_anchor * 0.9976, 2)
             p2_trigger = round(safe_anchor * 0.9887, 2)
@@ -214,7 +209,6 @@ class ReversionStrategy:
         available_l1 = min(l1_qty, rem_qty_total) if rem_qty_total > 0 else 0
         available_upper = min(upper_qty, rem_qty_total - available_l1) if rem_qty_total > 0 else 0
         
-        # 자전거래 방어막 캡핑 : MinSell = MIN(Sell_L1, Sell_Upper)
         if rem_qty_total > 0:
             active_sells = []
             if available_l1 > 0 and trigger_l1 > 0:
@@ -234,14 +228,12 @@ class ReversionStrategy:
         total_spent = 0.0 if is_snapshot_mode else float(self.executed["BUY_BUDGET"].get(ticker, 0.0))
         
         seed_val = float(self.cfg.get_seed(ticker) or 0.0)
-        # 1일 고정 예산 : Budget = Seed * 0.15
         daily_limit = seed_val * 0.15
         
         safe_alloc_cash = min(float(alloc_cash), daily_limit) if daily_limit > 0 else float(alloc_cash)
         rem_budget = max(0.0, safe_alloc_cash - total_spent)
         
         if rem_budget > 0:
-            # 통합 1버킷(Shared bucket)
             b1_budget = rem_budget * 0.5
             b2_budget = rem_budget * 0.5
             
@@ -262,7 +254,6 @@ class ReversionStrategy:
             kst_zone = ZoneInfo('Asia/Seoul')
             now_est = datetime.now(est_zone)
             
-            # 🚨 MODIFIED: [Case 29] V-REV 지연 투하 스케줄 분리 락온 (15:26 EST)
             base_start_est = now_est.replace(hour=15, minute=26, second=0, microsecond=0)
             shifted_start_est = now_est + timedelta(minutes=3)
             actual_start_est = max(base_start_est, shifted_start_est)

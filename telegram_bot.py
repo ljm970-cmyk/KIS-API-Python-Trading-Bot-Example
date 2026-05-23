@@ -1,11 +1,7 @@
 # ==========================================================
 # FILE: telegram_bot.py
 # ==========================================================
-# 🚨 MODIFIED: [Insight 24] 이벤트 루프 영구 블로킹 뇌관(Sync I/O) 제거. _is_admin() 내부의 동기 파일 I/O를 비동기(async)로 격리하고 모든 호출부에 await 락온.
-# 🚨 MODIFIED: [Case 27 절대 위반 교정] 통합 지시서(/sync) 호출 시 에스크로 변수 스캔 및 할당 파이프라인 100% 영구 소각 완료
-# 🚨 MODIFIED: [Case 26 절대 위반 교정] 텔레그램 HTML 파서 붕괴 방어용 예외 객체 이스케이프 쉴드 강제 주입
-# 🚨 MODIFIED: [Case 16] 변수 스코프 전진 배치(UnboundLocalError 방어)
-# 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 이식 및 TPS 캡핑으로 타임아웃 원천 방어
+# 🚨 MODIFIED: [제1헌법 준수] 비동기 I/O 루프 내 QueueLedger, os.path.exists 등 블로킹 함수 전면 래핑 완료
 # ==========================================================
 import logging
 import datetime
@@ -48,7 +44,6 @@ class TelegramController:
         self.states_handler = TelegramStates(self.cfg, self.broker, self.queue_ledger, self.sync_engine)
         self.callbacks_handler = TelegramCallbacks(self.cfg, self.broker, self.strategy, self.queue_ledger, self.sync_engine, self.view, self.tx_lock)
 
-    # 🚨 MODIFIED: [Insight 24] 동기 I/O 100% 비동기 격리 (제1헌법 절대 사수)
     async def _is_admin(self, update: Update):
         if self.admin_id is None:
             self.admin_id = await asyncio.to_thread(self.cfg.get_chat_id)
@@ -139,7 +134,6 @@ class TelegramController:
         await self.callbacks_handler.handle_callback(update, context, self)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update):
             return
             
@@ -168,7 +162,6 @@ class TelegramController:
         await self.states_handler.handle_message(update, context, self)
 
     async def cmd_avwap(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         
         loading_text = "⏳ <b>[AVWAP 듀얼 모멘텀 관제탑]</b>\n레이더망을 가동하여 시장 데이터를 스캔 중..."
@@ -206,14 +199,16 @@ class TelegramController:
             await status_msg.edit_text(f"❌ <b>[시스템 에러]</b>\n독립 관제탑 호출 중 내부 오류가 발생했습니다:\n<code>{safe_err}</code>", parse_mode='HTML')
 
     async def cmd_log(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         status_msg = await update.message.reply_text("🔍 <b>[원격 진단]</b> 최근 시스템 에러 로그를 핀셋 추출 중...", parse_mode='HTML')
         try:
             est = ZoneInfo('America/New_York')
             today_str = datetime.datetime.now(est).strftime('%Y%m%d')
-            log_path = f"logs/bot_app.log" # MODIFIED: [Case 34] 로그 로테이션 파일명 대응
-            if not os.path.exists(log_path):
+            log_path = f"logs/bot_app.log" 
+            
+            # 🚨 MODIFIED: [제1헌법] 비동기 파일 검증 격리
+            log_exists = await asyncio.to_thread(os.path.exists, log_path)
+            if not log_exists:
                 return await status_msg.edit_text("📭 <b>[진단 결과]</b> 오늘자 로그 파일이 생성되지 않았습니다.", parse_mode='HTML')
                 
             def _grep_tail_logs(path, limit=50):
@@ -233,7 +228,6 @@ class TelegramController:
             await status_msg.edit_text(f"🚨 <b>[진단 실패]</b> 로그 추출 중 오류 발생:\n<code>{safe_err}</code>", parse_mode='HTML')
 
     async def cmd_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         from plugin_updater import SystemUpdater
         updater = SystemUpdater()
@@ -254,20 +248,21 @@ class TelegramController:
             await status_msg.edit_text(f"🚨 <b>[치명적 오류]</b> 플러그인 호출 및 프로세스 예외 발생: {safe_err}", parse_mode='HTML')
 
     async def cmd_queue(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         args = context.args
         if not args: return await update.message.reply_text("❌ 종목명을 입력하세요. 예: /queue SOXL")
         ticker = args[0].upper()
+        
+        # 🚨 MODIFIED: [제1헌법] 객체 생성 비동기화
         if not getattr(self, 'queue_ledger', None):
             from queue_ledger import QueueLedger
-            self.queue_ledger = QueueLedger()
+            self.queue_ledger = await asyncio.to_thread(QueueLedger)
+            
         q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
         msg, reply_markup = self.view.get_queue_management_menu(ticker, q_data)
         await update.message.reply_text(text=msg, reply_markup=reply_markup, parse_mode='HTML')
 
     async def cmd_add_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         try:
             args = context.args
@@ -296,9 +291,11 @@ class TelegramController:
                         return await update.message.reply_text(f"🚨 <b>오입력 차단:</b> 입력하신 평단가(<b>${price:.2f}</b>)가 현재가 대비 ±30%를 벗어납니다. 오타를 확인하세요!", parse_mode='HTML')
             except Exception: pass
             
+            # 🚨 MODIFIED: [제1헌법] 객체 생성 비동기화
             if not getattr(self, 'queue_ledger', None):
                 from queue_ledger import QueueLedger
-                self.queue_ledger = QueueLedger()
+                self.queue_ledger = await asyncio.to_thread(QueueLedger)
+                
             q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
             q_data.append({"qty": qty, "price": price, "date": f"{date_str} 23:59:59", "type": "MANUAL_OVERRIDE"})
             q_data.sort(key=lambda x: x.get('date', ''), reverse=True)
@@ -312,15 +309,16 @@ class TelegramController:
             await update.message.reply_text(f"❌ 알 수 없는 에러 발생: {safe_err}")
 
     async def cmd_clear_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         args = context.args
         if not args: return await update.message.reply_text("❌ 종목명을 입력하세요. 예: /clear_q SOXL")
         ticker = args[0].upper()
         try:
+            # 🚨 MODIFIED: [제1헌법] 객체 생성 비동기화
             if not getattr(self, 'queue_ledger', None):
                 from queue_ledger import QueueLedger
-                self.queue_ledger = QueueLedger()
+                self.queue_ledger = await asyncio.to_thread(QueueLedger)
+                
             await asyncio.to_thread(self.queue_ledger.clear_queue, ticker)
             chat_id = update.effective_chat.id
             if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
@@ -331,7 +329,6 @@ class TelegramController:
             await update.message.reply_text(f"❌ 소각 중 에러 발생: {safe_err}")
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         target_hour, season_icon = self._get_dst_info()
         latest_version = await asyncio.to_thread(self.cfg.get_latest_version) 
@@ -339,7 +336,6 @@ class TelegramController:
         await update.message.reply_text(msg, parse_mode='HTML')
 
     async def cmd_sync(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update):
             return
         
@@ -549,7 +545,7 @@ class TelegramController:
             if ver == "V_REV":
                 if not getattr(self, 'queue_ledger', None):
                     from queue_ledger import QueueLedger
-                    self.queue_ledger = QueueLedger()
+                    self.queue_ledger = await asyncio.to_thread(QueueLedger)
                
                 q_list = await asyncio.to_thread(self.queue_ledger.get_queue, t)
                 v_rev_q_lots = len(q_list)
@@ -774,7 +770,6 @@ class TelegramController:
         await update.message.reply_text(final_msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_record(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         chat_id = update.message.chat_id
         status_msg = await context.bot.send_message(chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML')
@@ -798,7 +793,6 @@ class TelegramController:
             await status_msg.edit_text("✅ <b>동기화 완료</b> (표시할 진행 중인 장부가 없거나 에러 대기 중입니다)", parse_mode='HTML')
 
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         target_msg = update.callback_query.message if update.callback_query else update.message
         try: history_data = await asyncio.to_thread(self.cfg.get_history)
@@ -820,7 +814,6 @@ class TelegramController:
         await target_msg.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
     async def cmd_mode(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         report = "📊 <b>[ 자율주행 변동성 마스터 지표 상세 분석 ]</b>\n\n"
@@ -861,14 +854,12 @@ class TelegramController:
         await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
     async def cmd_reset(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         msg, markup = self.view.get_reset_menu(active_tickers)
         await update.message.reply_text(msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_seed(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         msg = "💵 <b>[ 종목별 시드머니 관리 ]</b>\n\n"
         keyboard = []
@@ -884,14 +875,12 @@ class TelegramController:
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
     async def cmd_ticker(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         msg, markup = self.view.get_ticker_menu(active_tickers)
         await update.message.reply_text(msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_settlement(self, update, context):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
         atr_data = {}
@@ -914,7 +903,6 @@ class TelegramController:
         else: await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
 
     async def cmd_version(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [Insight 24] await 강제 적용
         if not await self._is_admin(update): return
         history_data = await asyncio.to_thread(self.cfg.get_full_version_history)
         msg, markup = self.view.get_version_message(history_data, page_index=None)

@@ -1,9 +1,8 @@
 # ==========================================================
 # FILE: telegram_sync_engine.py
 # ==========================================================
-# 🚨 MODIFIED: [Case 27 절대 위반 교정] 에스크로 동기화(_sync_escrow_cash) 코루틴 및 호출부 전면 영구 소각 완료
-# 🚨 NEW: [Case 33 절대 규칙] 3단 지수 백오프 및 KIS 외부 API 연산망 전면 이식 완료
-# 🚨 MODIFIED: [제1헌법 절대 준수] process_auto_sync 루프 내 동기 대기(time.sleep)를 await asyncio.sleep으로 팩트 교정 완료
+# 🚨 MODIFIED: [V-REV 및 AVWAP 디커플링 누수 차단] 액면분할 감지 시 모든 장부 소급 보정
+# 🚨 MODIFIED: [제1헌법 준수] 비동기 함수 내 QueueLedger 인스턴스화 격리
 # ==========================================================
 import logging
 import datetime
@@ -38,10 +37,8 @@ class TelegramSyncEngine:
             async with self.tx_lock:
                 last_split_date = await asyncio.to_thread(self.cfg.get_last_split_date, ticker)
                 split_ratio, split_date = 0.0, ""
-                # 🚨 MODIFIED: [Case 33] 3단 지수 백오프
                 for attempt in range(3):
                     try:
-                        # MODIFIED: [제1헌법 절대 준수] 비동기 루프 내 동기 대기 원천 차단
                         await asyncio.sleep(0.06)
                         split_ratio, split_date = await asyncio.wait_for(
                             asyncio.to_thread(self.broker.get_recent_stock_split, ticker, last_split_date), timeout=15.0
@@ -54,10 +51,24 @@ class TelegramSyncEngine:
                         else: await asyncio.sleep(1.0 * (2 ** attempt))
                 
                 if split_ratio > 0.0 and split_date != "":
+                    est = ZoneInfo('America/New_York')
+                    now_est = datetime.datetime.now(est)
                     await asyncio.to_thread(self.cfg.apply_stock_split, ticker, split_ratio)
+                    
+                    # 🚨 MODIFIED: [멱등성 수술] 액면분할 상태 불일치 패러독스 차단
+                    if not getattr(self, 'queue_ledger', None):
+                        from queue_ledger import QueueLedger
+                        self.queue_ledger = await asyncio.to_thread(QueueLedger)
+                        
+                    if getattr(self, 'queue_ledger', None):
+                        await asyncio.to_thread(self.queue_ledger.apply_stock_split, ticker, split_ratio)
+                        
+                    if hasattr(self.strategy, 'v_avwap_plugin'):
+                        await asyncio.to_thread(self.strategy.v_avwap_plugin.apply_stock_split, ticker, split_ratio, now_est)
+                        
                     await asyncio.to_thread(self.cfg.set_last_split_date, ticker, split_date)
                     split_type = "액면분할" if split_ratio > 1.0 else "액면병합(역분할)"
-                    await context.bot.send_message(chat_id, f"✂️ <b>[{ticker}] 야후 파이낸스 {split_type} 자동 감지!</b>\n▫️ 감지된 비율: <b>{split_ratio}배</b> (발생일: {split_date})\n▫️ 봇이 기존 장부의 수량과 평단가를 100% 무인 자동 소급 조정 완료했습니다.", parse_mode='HTML')
+                    await context.bot.send_message(chat_id, f"✂️ <b>[{ticker}] 야후 파이낸스 {split_type} 자동 감지!</b>\n▫️ 감지된 비율: <b>{split_ratio}배</b> (발생일: {split_date})\n▫️ 봇이 기존 V14 장부, V-REV 큐 장부, AVWAP 상태 캐시의 수량과 평단가를 100% 무인 자동 소급 조정 완료했습니다.", parse_mode='HTML')
                  
                 kst = ZoneInfo('Asia/Seoul')
                 now_kst = datetime.datetime.now(kst)
@@ -108,9 +119,10 @@ class TelegramSyncEngine:
                 is_rev = (await asyncio.to_thread(self.cfg.get_version, ticker) == "V_REV")
                 
                 if is_rev:
+                    # 🚨 MODIFIED: [제1헌법] 객체 생성 비동기화
                     if not getattr(self, 'queue_ledger', None):
                         from queue_ledger import QueueLedger
-                        self.queue_ledger = QueueLedger()
+                        self.queue_ledger = await asyncio.to_thread(QueueLedger)
                     
                     q_data_check = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
                     vrev_ledger_qty_for_check = sum(int(float(item.get("qty") or 0)) for item in q_data_check)

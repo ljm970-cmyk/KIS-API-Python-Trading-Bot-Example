@@ -1,17 +1,7 @@
 # ==========================================================
 # FILE: strategy_v_avwap.py
 # ==========================================================
-# 🚨 MODIFIED: [Insight 23] 임시 파일 원자적 쓰기(Atomic Write) 권한 맹점 락온. os.path.dirname이 빈 문자열("")을 반환할 때 발생하는 PermissionError를 막기 위해 `or '.'` 폴백 지정 완수.
-# 🚨 MODIFIED: [Insight 18] 암묵적 None 파라미터 전파 방어망(Parameter Omission Defense). `avwap_state=None` 주입 시 AttributeError 증발을 막기 위해 `(avwap_state or {}).get()` 쉴드 이식 완료.
-# 🚨 MODIFIED: [Insight 16] 데이터 결측 시 캔들 NaN 오염 연쇄 붕괴 차단. np.nan_to_num(..., nan=0.0) 락온으로 DataFrame 캔들 추출 시 발생하는 무음 패러독스를 원천 차단.
-# 🚨 MODIFIED: [Insight 14] API String-Float 맹독성 포맷팅 쉴드. `float(str(...).replace(',', ''))` 강제 래핑 완료.
-# 🚨 MODIFIED: [Insight 13] 로컬 상태기계 JSON 오염 복구(Self-Healing) 엔진. isinstance(dict) 쉴드 강제 이식 완료.
-# 🚨 MODIFIED: [Insight 10] Zero-Floor 바운딩 적용. buy_qty 연산 시 음수(-) 예산 거절/오류를 방어하기 위해 max(0, ...) 락온.
-# 🚨 MODIFIED: [Insight 08] 기장전된 덫의 고아화(Orphan Trap) 패러독스 방어. 13:00 컷오프는 '신규' 덫 진입에만 적용.
-# 🚨 MODIFIED: [Insight 06] JSON Null-Coalescing 맹독성 취약점 차단. TypeError 방어 `or 0.0` 단락 평가 강제 적용.
-# 🚨 MODIFIED: [Insight 04] 파기되는 buy_odno(수동주문번호)를 _build_res 리턴에 탑재하여 메모리 동기화 완료.
-# 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭] 결측 시 전일종가(PrevClose)로 Safe Fallback.
-# 🚨 MODIFIED: [Insight 02 수술] 자정 롤오버 시 과거 장전 덫 주문번호(buy_odno) 쓰레기 데이터 영구 소각 락온 이식 완료.
+# 🚨 NEW: [멱등성 수술] 액면분할 시 AVWAP 캐시 팩트를 정밀 보정하는 apply_stock_split 이식 완료
 # ==========================================================
 import logging
 import datetime
@@ -131,7 +121,6 @@ class VAvwapHybridPlugin:
         merged_data['date'] = today_str
 
         try:
-            # 🚨 MODIFIED: [Insight 23] OS 디렉토리 권한 맹점 락온 (or '.' 폴백)
             dir_name = os.path.dirname(file_path) or '.'
             if not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True)
@@ -144,6 +133,28 @@ class VAvwapHybridPlugin:
             os.replace(temp_path, file_path)
         except Exception as e:
             logging.error(f"🚨 [V_AVWAP] 상태 저장 실패 (원자적 쓰기 에러): {e}")
+
+    # 🚨 NEW: [멱등성 수술] AVWAP 암살자 상태 캐시 액면분할 정밀 소급 적용
+    def apply_stock_split(self, ticker, ratio, now_est):
+        if ratio <= 0: return
+        state = self.load_state(ticker, now_est)
+        qty = int(float(str(state.get("qty", 0)).replace(',', '')))
+        if qty > 0:
+            new_qty = math.floor((qty * ratio) + 0.5)
+            old_avg = float(str(state.get("avg_price", 0.0)).replace(',', ''))
+            state["qty"] = new_qty
+            state["avg_price"] = round(old_avg / ratio, 4)
+            
+            daily_bought = int(float(str(state.get("daily_bought_qty", 0)).replace(',', '')))
+            daily_sold = int(float(str(state.get("daily_sold_qty", 0)).replace(',', '')))
+            state["daily_bought_qty"] = math.floor((daily_bought * ratio) + 0.5)
+            state["daily_sold_qty"] = math.floor((daily_sold * ratio) + 0.5)
+            
+            placed_target_th = float(str(state.get("placed_target_th", 0.0)).replace(',', ''))
+            if placed_target_th > 0:
+                state["placed_target_th"] = round(placed_target_th / ratio, 2)
+            
+            self.save_state(ticker, now_est, state)
 
     def fetch_macro_context(self, base_ticker):
         for attempt in range(3):
@@ -259,7 +270,6 @@ class VAvwapHybridPlugin:
         limit_order_placed = bool(persistent_state.get('limit_order_placed'))
         placed_target_th = float(str(persistent_state.get('placed_target_th') or 0.0).replace(',', ''))
         
-        # 🚨 MODIFIED: [Insight 18] 암묵적 None 파라미터 전파 방어망 (Implicit None Propagation Defense)
         trap_placed_time = str((avwap_state or {}).get('trap_placed_time') or persistent_state.get('trap_placed_time') or "")
         
         dump_jitter_sec = int(float(str(persistent_state.get('dump_jitter_sec') or 0).replace(',', '')))
@@ -323,7 +333,6 @@ class VAvwapHybridPlugin:
                 'target_price': target_price,
                 'vwap': 0.0,
                 'base_curr_p': base_curr_p,
-                # 🚨 MODIFIED: [Insight 18] 암묵적 None 파라미터 전파 방어망
                 'prev_vwap': (context_data or {}).get('prev_vwap', 0.0) if isinstance(context_data, dict) else 0.0,
                 'PM_H': pm_h,
                 'PM_L': pm_l,
