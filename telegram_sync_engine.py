@@ -4,6 +4,7 @@
 # 🚨 MODIFIED: [V-REV 및 AVWAP 디커플링 누수 차단] 액면분할 감지 시 모든 장부 소급 보정
 # 🚨 MODIFIED: [제1헌법 준수] 비동기 함수 내 QueueLedger 인스턴스화 격리
 # 🚨 MODIFIED: [제1헌법 준수] os.path.exists 및 open() 동기 파일 I/O 뇌관 비동기 래핑 100% 완료
+# 🚨 MODIFIED: [네임스페이스 결측 붕괴 교정] pandas 모듈 전진 배치(import pandas as pd)로 NameError 원천 봉쇄
 # ==========================================================
 import logging
 import datetime
@@ -15,6 +16,7 @@ import json
 import tempfile
 import traceback
 import yfinance as yf
+import pandas as pd # 🚨 NEW: [네임스페이스 누락 팩트 교정]
 import pandas_market_calendars as mcal
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -78,8 +80,8 @@ class TelegramSyncEngine:
                 def _get_last_trade_date():
                     time.sleep(0.06)
                     nyse = mcal.get_calendar('NYSE')
-                    schedule = nyse.schedule(start_date=(now_est - datetime.timedelta(days=10)).date(), end_date=now_est.date())
-                    return schedule
+                    schedule_data = nyse.schedule(start_date=(now_est - datetime.timedelta(days=10)).date(), end_date=now_est.date())
+                    return schedule_data
 
                 schedule = pd.DataFrame()
                 for attempt in range(3):
