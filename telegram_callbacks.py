@@ -13,6 +13,7 @@
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 TPS 캡핑 방어망 전면 이식
 # 🚨 NEW: [Case 28 동적 스위칭] 수동 취소 콜백(MANUAL_CANCEL_REQ) 신설 및 덫 무결성 원자적 파기 로직 이식
 # 🚨 MODIFIED: [제1헌법 절대 준수] MANUAL_CANCEL_REQ 및 MANUAL_FIRE_EXEC 내부 time.sleep을 await asyncio.sleep으로 전면 팩트 교정 완료
+# 🚨 MODIFIED: [Edge Case 2 수술] EXEC 수동 강제 전송 시 호출되는 get_yf_close 내부에 time.sleep(0.06) 캡핑 강제 주입 완료. (HTTP 429 밴 원천 차단)
 # ==========================================================
 import logging
 import datetime
@@ -494,7 +495,8 @@ class TelegramCallbacks:
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 try:
                     def get_yf_close():
-                        # MODIFIED: [제1헌법] 외부 I/O 전 대기(TPS)는 비동기로 처리 권장 (하지만 def 내부이므로 broker내에서 처리됨)
+                        # 🚨 MODIFIED: [Edge Case 2 수술] EXEC 수동 강제 전송 시 호출되는 get_yf_close 내부에 time.sleep(0.06) 캡핑 강제 주입 완료. (HTTP 429 밴 원천 차단)
+                        time.sleep(0.06)
                         df = yf.Ticker(t).history(period="5d", interval="1d")
                         return float(df['Close'].iloc[-1]) if not df.empty else None
                     yf_close = None
@@ -1075,4 +1077,3 @@ class TelegramCallbacks:
             
             desc = "숫자만 입력하세요.\n(예: 액면분할 시 1주가 10주가 되었다면 10 입력, 10주가 1주로 병합되었다면 0.1 입력)" if sub == "STOCK_SPLIT" else "숫자만 입력하세요."
             await context.bot.send_message(chat_id, f"✏️ <b>[{ticker}] {ko_name}</b>를 설정합니다.\n{desc}", parse_mode='HTML')
-

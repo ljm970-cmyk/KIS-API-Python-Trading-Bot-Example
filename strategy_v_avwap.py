@@ -6,6 +6,7 @@
 # 🚨 NEW: [Case 11 타임 슬라이싱 차단벽] 13:00 EST 도달 시 신규 진입 덫 장전을 원천 차단(SHUTDOWN)하는 절대 금지선(Time-Guillotine) 이식 완료
 # 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭] 기존 시간 기반 동적 오프셋을 전면 폐기하고 MA5(5일 평균 종가) 베이스 앵커로 락온. 결측 시 전일종가(PrevClose)로 Safe Fallback.
 # 🚨 NEW: [Case 05 & 제4헌법] 외부 API 결측치(NaN) 0.0 강제 형변환 쉴드 및 OS 레벨 원자적 쓰기(fsync) 무결성 보장.
+# 🚨 MODIFIED: [Edge Case 1 수술] 13:00 EST 타임 슬라이싱 컷오프 시 미장전 상태에서도 SHUTDOWN(당일 영구 동결) 명시적 락온 적용 완료.
 # ==========================================================
 import logging
 import datetime
@@ -373,14 +374,15 @@ class VAvwapHybridPlugin:
             logging.info(f"🛑 [09:30 기요틴 셧다운] 프리장 매수 체결 불발. 정규장 폭락 휩소를 회피하기 위해 당일 매매를 종료(퇴근)합니다.")
             return _build_res('SHUTDOWN', '09:30_기요틴_프리장미체결_정규장회피_당일퇴근')
 
-        # 🚨 MODIFIED: [Case 11] 타임 슬라이싱 차단벽 (13:00 EST 컷오프)
+        # 🚨 MODIFIED: [Edge Case 1 수술] 13:00 EST 타임 슬라이싱 컷오프 도달 시 맹목적 대기(WAIT) 반환을 소각하고, 명시적 SHUTDOWN 밀봉 락온.
         if avwap_qty == 0 and curr_time >= time_1300:
+            persistent_state["shutdown"] = True
+            if not is_simulation:
+                self.save_state(exec_ticker, now_est, persistent_state)
+            
             if limit_order_placed:
-                persistent_state["shutdown"] = True
-                if not is_simulation:
-                    self.save_state(exec_ticker, now_est, persistent_state)
-                return _build_res('SHUTDOWN', '13:00_타임오버_장전덫_파기_및_진입동결')
-            return _build_res('WAIT', '13:00_장마감3시간전_신규진입_타임라인_차단')
+                return _build_res('SHUTDOWN', '13:00_타임오버_장전덫_파기_및_진입동결(SHUTDOWN)')
+            return _build_res('SHUTDOWN', '13:00_장마감3시간전_신규진입_타임라인_영구차단(SHUTDOWN)')
             
         if not limit_order_placed:
             if curr_l > 0 and curr_l <= t_h:
