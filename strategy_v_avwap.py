@@ -5,6 +5,7 @@
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 TPS 캡핑 방어망 전면 이식
 # 🚨 NEW: [Case 11 타임 슬라이싱 차단벽] 13:00 EST 도달 시 신규 진입 덫 장전을 원천 차단(SHUTDOWN)하는 절대 금지선(Time-Guillotine) 이식 완료
 # 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭] 기존 시간 기반 동적 오프셋을 전면 폐기하고 MA5(5일 평균 종가) 베이스 앵커로 락온. 결측 시 전일종가(PrevClose)로 Safe Fallback.
+# 🚨 NEW: [Case 05 & 제4헌법] 외부 API 결측치(NaN) 0.0 강제 형변환 쉴드 및 OS 레벨 원자적 쓰기(fsync) 무결성 보장.
 # ==========================================================
 import logging
 import datetime
@@ -14,6 +15,7 @@ import random
 import time 
 import yfinance as yf
 import pandas as pd
+import numpy as np # NEW: [Case 05] 결측치 방어 연산용 주입
 import json
 import os
 import tempfile
@@ -23,6 +25,7 @@ class VAvwapHybridPlugin:
         self.plugin_name = "AVWAP_V79.50_MA5_ANCHOR"
         self.leverage = 3.0       
 
+    # [제3헌법] 논리적 시계열 단일 소스 락온 (EST)
     def _get_logical_date_str(self, now_est):
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - datetime.timedelta(days=1)
@@ -74,6 +77,7 @@ class VAvwapHybridPlugin:
                     data['date'] = today_str
                     self.save_state(ticker, now_est, data)
                 
+                # [Case 05] 결측치 방어를 위한 float 형변환 및 폴백 락온
                 data['PM_H'] = float(data.get('PM_H', 0.0))
                 data['PM_L'] = float(data.get('PM_L', 0.0))
                 data['T_H'] = float(data.get('T_H', 0.0))
@@ -89,6 +93,7 @@ class VAvwapHybridPlugin:
             except Exception:
                 pass
 
+        # [Case 16] 변수 스코프 전진 배치 (기본값)
         return {
             "executed_buy": False, "shutdown": False, "strikes": 0, "qty": 0, 
             "avg_price": 0.0, "daily_bought_qty": 0, "daily_sold_qty": 0, 
@@ -97,6 +102,7 @@ class VAvwapHybridPlugin:
             "limit_order_placed": False, "placed_target_th": 0.0, "trap_placed_time": ""
         }
 
+    # MODIFIED: [제4헌법 & Case 08] 무조건 최신 팩트로 덮어쓰기 위한 OS 레벨 버퍼 동기화(fsync) 강제
     def save_state(self, ticker, now_est, state_data):
         file_path = self._get_state_file(ticker, now_est)
         today_str = self._get_logical_date_str(now_est)
@@ -109,6 +115,7 @@ class VAvwapHybridPlugin:
             except Exception:
                 pass
 
+        # 논리적 날짜가 변경되었을 경우 과거 장부를 즉시 영구 소각
         if merged_data.get('date') != today_str:
             merged_data = {}
 
@@ -124,15 +131,16 @@ class VAvwapHybridPlugin:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(merged_data, f, ensure_ascii=False, indent=4)
                 f.flush()
-                os.fsync(f.fileno())
+                os.fsync(f.fileno()) # 원자적 쓰기 무결성 보장
             os.replace(temp_path, file_path)
         except Exception as e:
             logging.error(f"🚨 [V_AVWAP] 상태 저장 실패 (원자적 쓰기 에러): {e}")
 
     def fetch_macro_context(self, base_ticker):
+        # NEW: [Case 33] 외부 통신 3단 지수 백오프 (Exponential Backoff)
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                time.sleep(0.06) # NEW: [Case 32] 스레드 내부 TPS 캡핑 (이벤트 루프 차단 없음)
                 tkr = yf.Ticker(base_ticker)
                 df_1m = tkr.history(period="5d", interval="1m", prepost=False, timeout=5)
     
@@ -161,7 +169,8 @@ class VAvwapHybridPlugin:
                         df_prev_day = df_prev_day.between_time('09:30', '15:59')
     
                         if not df_prev_day.empty:
-                            prev_close = float(df_prev_day['Close'].iloc[-1])
+                            # MODIFIED: [Case 05] Pandas 벡터화 연산 중 발생할 수 있는 결측치(NaN) 0.0 쉴드 처리
+                            prev_close = float(np.nan_to_num(df_prev_day['Close'].iloc[-1], nan=0.0))
                             df_prev_day['tp'] = (df_prev_day['High'].astype(float) + df_prev_day['Low'].astype(float) + df_prev_day['Close'].astype(float)) / 3.0
                             df_prev_day['vol'] = df_prev_day['Volume'].astype(float)
                             df_prev_day['vol_tp'] = df_prev_day['tp'] * df_prev_day['vol']
@@ -185,9 +194,9 @@ class VAvwapHybridPlugin:
                     past_first_30m = first_30m[first_30m.index.date < today_est]
     
                     if len(past_first_30m) >= 20:
-                        avg_vol_20 = float(past_first_30m['Volume'].tail(20).mean())
+                        avg_vol_20 = float(np.nan_to_num(past_first_30m['Volume'].tail(20).mean(), nan=0.0))
                     elif len(past_first_30m) > 0:
-                        avg_vol_20 = float(past_first_30m['Volume'].mean())
+                        avg_vol_20 = float(np.nan_to_num(past_first_30m['Volume'].mean(), nan=0.0))
     
                 if prev_vwap == 0.0:
                     prev_vwap = prev_close
@@ -213,7 +222,7 @@ class VAvwapHybridPlugin:
         prev_c = float(kwargs.get('prev_close', 0.0))
         ma_5day = float(kwargs.get('ma_5day', 0.0))
         
-        # 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭] 결측 시 prev_c 폴백 락온
+        # 🚨 MODIFIED: [V79.50 MA5 앵커 스위칭] 결측 시 prev_c 폴백 락온 유지
         anchor_price = ma_5day if ma_5day > 0 else prev_c
         
         curr_pm_h = 0.0
@@ -265,8 +274,8 @@ class VAvwapHybridPlugin:
                     df_pm = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= slice_end_str)]
                     
                     if not df_pm.empty:
-                        curr_pm_h = float(df_pm['close'].max())
-                        curr_pm_l = float(df_pm['close'].min())
+                        curr_pm_h = float(df_pm['close'].astype(float).max())
+                        curr_pm_l = float(df_pm['close'].astype(float).min())
                     else:
                         curr_pm_h = 0.0
                         curr_pm_l = 0.0
@@ -329,7 +338,7 @@ class VAvwapHybridPlugin:
                     self.save_state(exec_ticker, now_est, persistent_state)
                 return _build_res('SELL', '동적_덤핑_타임라인_도달_전량_시장가_덤핑', qty=avwap_qty, target_price=exec_curr_p)
 
-            # 🚨 MODIFIED: [결함 1 수술] 익절 타겟 2.0% 하향 락온
+            # 🚨 MODIFIED: [결함 1 수술] 익절 타겟 2.0% 하향 락온 (슬리피지 가산 전면 소각 유지)
             exit_target_price = round(safe_avg * 1.02, 2)
             if exec_curr_p >= exit_target_price:
                 return _build_res('SELL', '목표가(+2.0%)_도달_순수모멘텀_익절_격발', qty=avwap_qty, target_price=exit_target_price)
@@ -394,7 +403,7 @@ class VAvwapHybridPlugin:
                 else:
                     return _build_res('WAIT', '조건_충족이나_예산부족(0주)_덫장전_보류')
         else:
-            # 🚨 MODIFIED: [Case 31] 1분봉 시차 패러독스 방어 60초 타임 쉴드
+            # 🚨 MODIFIED: [Case 31] 1분봉 시차 패러독스 방어 60초 타임 쉴드 구축
             is_time_shield_active = False
             if trap_placed_time and curr_candle_time_str:
                 try:
