@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 MODIFIED: [V-REV 및 AVWAP 디커플링 누수 차단] 액면분할 감지 시 모든 장부 소급 보정
 # 🚨 MODIFIED: [제1헌법 준수] 비동기 함수 내 QueueLedger 인스턴스화 격리
+# 🚨 MODIFIED: [제1헌법 준수] os.path.exists 및 open() 동기 파일 I/O 뇌관 비동기 래핑 100% 완료
 # ==========================================================
 import logging
 import datetime
@@ -55,7 +56,6 @@ class TelegramSyncEngine:
                     now_est = datetime.datetime.now(est)
                     await asyncio.to_thread(self.cfg.apply_stock_split, ticker, split_ratio)
                     
-                    # 🚨 MODIFIED: [멱등성 수술] 액면분할 상태 불일치 패러독스 차단
                     if not getattr(self, 'queue_ledger', None):
                         from queue_ledger import QueueLedger
                         self.queue_ledger = await asyncio.to_thread(QueueLedger)
@@ -119,7 +119,6 @@ class TelegramSyncEngine:
                 is_rev = (await asyncio.to_thread(self.cfg.get_version, ticker) == "V_REV")
                 
                 if is_rev:
-                    # 🚨 MODIFIED: [제1헌법] 객체 생성 비동기화
                     if not getattr(self, 'queue_ledger', None):
                         from queue_ledger import QueueLedger
                         self.queue_ledger = await asyncio.to_thread(QueueLedger)
@@ -470,7 +469,9 @@ class TelegramSyncEngine:
                                         yield_pct=snapshot['realized_pnl_pct'], invested=snapshot['avg_price'] * snapshot['cleared_qty'], 
                                         revenue=snapshot['clear_price'] * snapshot['cleared_qty'], end_date=cap_dt_str[:10]
                                     )
-                                    if img_path and os.path.exists(img_path):
+                                    # 🚨 MODIFIED: [제1헌법] os.path.exists 비동기 격리 락온
+                                    is_img_exist = await asyncio.to_thread(os.path.exists, img_path) if img_path else False
+                                    if img_path and is_img_exist:
                                         def _read_img2(p):
                                             with open(p, 'rb') as f_in: return f_in.read()
                                         img_bytes2 = await asyncio.to_thread(_read_img2, img_path)
@@ -487,7 +488,10 @@ class TelegramSyncEngine:
                         if adjusted_actual_qty > 0 and adjusted_actual_qty < vrev_ledger_qty:
                             gap_qty = vrev_ledger_qty - adjusted_actual_qty
                             vwap_state_file = f"data/vwap_state_REV_{ticker}.json"
-                            if os.path.exists(vwap_state_file):
+                            
+                            # 🚨 MODIFIED: [제1헌법] os.path.exists 비동기 격리 락온
+                            v_state_exists = await asyncio.to_thread(os.path.exists, vwap_state_file)
+                            if v_state_exists:
                                 try:
                                     def _read_v_state(f_path):
                                         with open(f_path, 'r', encoding='utf-8') as vf: return json.load(vf)
@@ -576,7 +580,9 @@ class TelegramSyncEngine:
                                         ticker=ticker, profit=new_hist['profit'], yield_pct=new_hist['yield'],
                                         invested=new_hist['invested'], revenue=new_hist['revenue'], end_date=new_hist['end_date']
                                     )
-                                    if img_path and os.path.exists(img_path):
+                                    # 🚨 MODIFIED: [제1헌법] os.path.exists 비동기 격리 락온
+                                    is_img_exist = await asyncio.to_thread(os.path.exists, img_path) if img_path else False
+                                    if img_path and is_img_exist:
                                         def _read_img3(p):
                                             with open(p, 'rb') as f_in: return f_in.read()
                                         img_bytes3 = await asyncio.to_thread(_read_img3, img_path)

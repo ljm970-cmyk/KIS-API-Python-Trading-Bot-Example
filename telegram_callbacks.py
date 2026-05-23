@@ -11,7 +11,7 @@
 # 🚨 MODIFIED: [Insight 12] 딕셔너리 맹독성 캐스팅 쉴드 (isinstance).
 # 🚨 MODIFIED: [Insight 11] 궁극의 이터러블 Null-Coalescing 쉴드 이식 (or []).
 # 🚨 MODIFIED: [Insight 08, 09, 32, 33] 3단 지수 백오프, TPS 캡핑(0.06s), wait_for(10.0) 래핑 완료.
-# 🚨 MODIFIED: [제1헌법 준수] EMERGENCY 라우터 내 QueueLedger 동기 생성 뇌관 영구 소각.
+# 🚨 MODIFIED: [제1헌법 교정] os.path.exists 파일 스캔 동기 뇌관 비동기 래핑 100% 완료 및 QueueLedger 동기 인스턴스화 차단.
 # ==========================================================
 import logging
 import datetime
@@ -358,6 +358,7 @@ class TelegramCallbacks:
                         except Exception:
                             pass
                      
+                # 🚨 MODIFIED: [제1헌법] os.path.exists 비동기 격리 락온
                 await asyncio.to_thread(_process_reset_files)
             
                 if getattr(self, 'queue_ledger', None):
@@ -531,12 +532,16 @@ class TelegramCallbacks:
                         end_date=target_hist.get('end_date')
                     )
             
-                    if img_path and os.path.exists(img_path):
-                        with open(img_path, 'rb') as f_out:
-                            if img_path.lower().endswith('.gif'):
-                                await context.bot.send_animation(chat_id=chat_id, animation=f_out)
-                            else:
-                                await context.bot.send_photo(chat_id=chat_id, photo=f_out)
+                    # 🚨 MODIFIED: [제1헌법] os.path.exists 비동기 격리 락온
+                    is_img_exist = await asyncio.to_thread(os.path.exists, img_path) if img_path else False
+                    if img_path and is_img_exist:
+                        def _read_img4(p):
+                            with open(p, 'rb') as f_in: return f_in.read()
+                        img_bytes4 = await asyncio.to_thread(_read_img4, img_path)
+                        if img_path.lower().endswith('.gif'):
+                            await context.bot.send_animation(chat_id=chat_id, animation=img_bytes4)
+                        else:
+                            await context.bot.send_photo(chat_id=chat_id, photo=img_bytes4)
                         try:
                             await query.delete_message()
                         except Exception:
@@ -637,7 +642,6 @@ class TelegramCallbacks:
                 try:
                     def get_yf_close():
                         time.sleep(0.06)
-                        # 🚨 MODIFIED: [Insight 22] YFinance 결측 DataFrame 및 NaN Math 증발 차단.
                         df = yf.Ticker(t).history(period="5d", interval="1d")
                         if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
                             val = float(df['Close'].iloc[-1])

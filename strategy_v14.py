@@ -4,6 +4,7 @@
 # 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
 # 🚨 MODIFIED: [Case 21] 후반전 별값 매수 예산 통합 100% 팩트 이식
 # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍 5단 폭포수 덫 공식 진공 압축 팩트 이식 완료
+# 🚨 MODIFIED: [Case 16] 임시 파일 변수 스코프 전진 배치(Hoisting)로 UnboundLocalError 런타임 붕괴 완벽 차단
 # ==========================================================
 import math
 import os
@@ -48,17 +49,25 @@ class V14Strategy:
         }
         
         os.makedirs(os.path.dirname(snap_file), exist_ok=True)
+        # 🚨 MODIFIED: [Case 16] temp_path 및 fd 스코프 최상단 전진 배치 (UnboundLocalError 런타임 붕괴 원천 봉쇄)
+        fd = None
+        temp_path = None
         try:
             fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(snap_file), text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                fd = None
                 json.dump(data, f, ensure_ascii=False, indent=4)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temp_path, snap_file)
+            temp_path = None
         except Exception:
-            if os.path.exists(temp_path):
+            if fd is not None:
+                try: os.close(fd)
+                except OSError: pass
+            if temp_path and os.path.exists(temp_path):
                 try: os.remove(temp_path)
-                except: pass
+                except OSError: pass
 
     def load_daily_snapshot(self, ticker):
         today_str = self._get_logical_date_str()
@@ -201,7 +210,6 @@ class V14Strategy:
                 if target_price > 0 and rem_qty > 0:
                     core_orders.append({"side": "SELL", "price": target_price, "qty": rem_qty, "type": "LIMIT", "desc": "🎯목표매도(잔여)"})
 
-            # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍(Jubjub) 5단 폭포수 1줄 진공 압축 및 안정 정렬 팩트 이식
             q_base = sum(o['qty'] for o in core_orders if o['side'] == 'BUY')
             if q_base > 0:
                 bonus_orders.extend(sorted([{"side": "BUY", "price": math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"} for n in range(1, 6) if math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0 > 0.01], key=lambda x: x['price'], reverse=True))

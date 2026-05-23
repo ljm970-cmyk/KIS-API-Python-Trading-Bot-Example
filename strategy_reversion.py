@@ -3,6 +3,7 @@
 # ==========================================================
 # MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
 # 🚨 MODIFIED: [Float 정밀도 오염 차단] upper_inv 음수 발생 시 0.0으로 바운딩하는 max() 쉴드 적용
+# 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기 UnboundLocalError 방어막(스코프 전진배치) 결속
 # ==========================================================
 import math
 import os
@@ -70,18 +71,28 @@ class ReversionStrategy:
                 "SELL_QTY": int(self.executed.get("SELL_QTY", {}).get(ticker, 0))
             }
         }
+        # 🚨 MODIFIED: [Case 16] 변수 스코프 전진 배치 (UnboundLocalError 방어)
+        fd = None
+        temp_path = None
         try:
             dir_name = os.path.dirname(state_file)
             if dir_name and not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True)
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                fd = None
                 json.dump(data, f, ensure_ascii=False, indent=4)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temp_path, state_file)
+            temp_path = None
         except Exception:
-            pass
+            if fd is not None:
+                try: os.close(fd)
+                except OSError: pass
+            if temp_path and os.path.exists(temp_path):
+                try: os.remove(temp_path)
+                except OSError: pass
 
     def save_daily_snapshot(self, ticker, plan_data):
         snap_file = self._get_snapshot_file(ticker)
@@ -90,18 +101,28 @@ class ReversionStrategy:
             "date": today_str,
             "plan": plan_data
         }
+        # 🚨 MODIFIED: [Case 16] 변수 스코프 전진 배치 (UnboundLocalError 방어)
+        fd = None
+        temp_path = None
         try:
             dir_name = os.path.dirname(snap_file)
             if not os.path.exists(dir_name):
                 os.makedirs(dir_name, exist_ok=True)
             fd, temp_path = tempfile.mkstemp(dir=dir_name or '.', text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                fd = None
                 json.dump(data, f, ensure_ascii=False, indent=4)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temp_path, snap_file)
+            temp_path = None
         except Exception:
-            pass
+            if fd is not None:
+                try: os.close(fd)
+                except OSError: pass
+            if temp_path and os.path.exists(temp_path):
+                try: os.remove(temp_path)
+                except OSError: pass
 
     def load_daily_snapshot(self, ticker):
         snap_file = self._get_snapshot_file(ticker)
@@ -176,7 +197,6 @@ class ReversionStrategy:
 
         trigger_l1 = round(l1_price * 1.006, 2)
         
-        # 🚨 MODIFIED: [Float 정밀도 오염 차단] 음수 붕괴 방어용 max 바운딩 결속
         if upper_qty > 0:
             upper_inv = max(0.0, total_inv - (l1_price * l1_qty))
             upper_price = upper_inv / upper_qty if upper_qty > 0 else 0.0
