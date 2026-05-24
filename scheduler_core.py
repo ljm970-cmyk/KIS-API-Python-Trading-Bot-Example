@@ -19,6 +19,7 @@
 # 🚨 MODIFIED: [V73.10 확정 정산 16:05 EST 전진 배치 및 시각적 디커플링 해체]
 # 🚨 MODIFIED: [Case 27 절대 위반 교정] 에스크로(Escrow) 로직 전면 소각 및 예산 분배망 진공 압축 완료
 # 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑 이식 완료
+# 🚨 MODIFIED: [Indentation 붕괴 수술] is_market_open 내부 return 구문의 비표준 들여쓰기(17칸)를 16칸으로 100% 정밀 교정하여 컴파일 즉사 에러 소각
 # ==========================================================
 import html 
 import os
@@ -60,15 +61,17 @@ def is_market_open():
             schedule = nyse.schedule(start_date=today.date(), end_date=today.date())
             
             if not schedule.empty:
-                 return True
+                # 🚨 MODIFIED: [Indentation 붕괴 수술] 17칸 -> 16칸
+                return True
             else:
                 logging.info("💤 [is_market_open] 달력 API 빈 데이터 반환. 금일은 미국 증시 휴장일입니다.")
                 return False
         except Exception as e:
             if attempt == 2:
-                logging.error(f"⚠️ 달력 라이브러리 에러 발생. 스케줄 증발 방어를 위해 평일 강제 개장(Fail-Open) 처리합니다: {e}")
+                logging.error(f"⚠️ 달력 라이브러 에러 발생. 스케줄 증발 방어를 위해 평일 강제 개장(Fail-Open) 처리합니다: {e}")
                 est = ZoneInfo('America/New_York')
-                 return datetime.datetime.now(est).weekday() < 5
+                # 🚨 MODIFIED: [Indentation 붕괴 수술] 17칸 -> 16칸
+                return datetime.datetime.now(est).weekday() < 5
             time.sleep(1.0 * (2 ** attempt))
 
 def get_budget_allocation(cash, tickers, cfg):
@@ -118,7 +121,7 @@ def perform_self_cleaning():
             ("logs/bot_app_*.log", seven_days),          
             ("logs/bot_app.log.*", seven_days),          
             ("data/daily_snapshot_*.json", seven_days),  
-             ("data/vwap_state_*.json", seven_days),      
+            ("data/vwap_state_*.json", seven_days),      
             ("data/profit_*.png", seven_days),           
             ("data/profit_*.gif", seven_days),           
             ("data/*.bak_*", seven_days),                
@@ -133,7 +136,7 @@ def perform_self_cleaning():
                     if os.stat(f).st_mtime < now - max_age:
                         os.remove(f)
                 except OSError:
-                     pass
+                    pass
                         
     except Exception as e:
         logging.error(f"🧹 자정(Self-Cleaning) 작업 중 시스템 오류 발생: {e}")
@@ -143,7 +146,7 @@ async def scheduled_self_cleaning(context):
         await asyncio.wait_for(asyncio.to_thread(perform_self_cleaning), timeout=60.0)
         logging.info("🧹 [시스템 자정 작업 완료] 7일 초과 낡은 로그/스냅샷 및 임시 파일 GC(소각) 완료")
     except Exception as e:
-         logging.error(f"🚨 [Self-Cleaning] 가비지 컬렉션(GC) 타임아웃 또는 런타임 예외: {e}")
+        logging.error(f"🚨 [Self-Cleaning] 가비지 컬렉션(GC) 타임아웃 또는 런타임 예외: {e}")
 
 async def scheduled_token_check(context):
     # 🚨 MODIFIED: [Insight 27] context.job.data 결측치 유입 시 TypeError 방어 락온
