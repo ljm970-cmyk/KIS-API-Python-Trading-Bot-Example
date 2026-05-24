@@ -7,6 +7,10 @@
 # 🚨 NEW: [Case 32] 고성능 서버 KIS API 초당 20건 통신 제한(TPS) 완벽 방어를 위한 0.06초 캡핑 주입
 # 🚨 NEW: [Case 33] yfinance 및 외부 통신 타임아웃 대응 3단 지수 백오프(Exponential Backoff) 및 재시도 엔진 전면 이식
 # 🚨 MODIFIED: [Case 30 팩트 교정] 취소 주문(cancel_order) API 응답 객체 누락 맹점을 소각하고 return 배선 개통 완료.
+# 🚨 MODIFIED: [Insight 14 팩트 교정] KIS 응답값 콤마(,) 맹독성 런타임 붕괴 방어용 _safe_float 래핑 전면 결속.
+# 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기 실패 시 임시 파일 고아화 및 OS 용량 고갈을 막기 위한 스코프 전진 배치(Hoisting).
+# 🚨 MODIFIED: [치명적 논리 결함 수술] 딕셔너리 언패킹 오버라이드로 인한 체결량 누락 맹점 완벽 교정.
+# 🚨 MODIFIED: [엣지 케이스 수술] yf 중복 인덱스 유입 시 pd.Series 반환으로 인한 JSON 직렬화 붕괴 방어.
 # ==========================================================
 
 import requests
@@ -89,18 +93,26 @@ class KoreaInvestmentBroker:
                     if dir_name and not os.path.exists(dir_name):
                         os.makedirs(dir_name, exist_ok=True)
        
-                    # 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제
-                    fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
+                    # 🚨 MODIFIED: [Case 16 & 제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 및 POSIX 표준 os.replace 주입
+                    fd = None
+                    temp_path = None
                     try:
+                        fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
                         with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                            fd = None
                             json.dump({'token': self.token, 'expire': expire_str}, f)
                             f.flush()
                             os.fsync(f.fileno())
-                        shutil.move(temp_path, self.token_file)
-                    finally:
-                        if os.path.exists(temp_path):
+                        os.replace(temp_path, self.token_file)
+                        temp_path = None
+                    except Exception as inner_e:
+                        if fd is not None:
+                            try: os.close(fd)
+                            except OSError: pass
+                        if temp_path and os.path.exists(temp_path):
                             try: os.remove(temp_path)
-                            except Exception: pass
+                            except OSError: pass
+                        raise inner_e
                     break # 성공 시 루프 탈출
                 else:
                     if attempt == 2:
@@ -121,7 +133,7 @@ class KoreaInvestmentBroker:
             "custtype": "P"
         }
 
-    # 🚨 MODIFIED: [Case 32 & 33] 3단 지수 백오프 및 TPS 초과 방어 로직 주입
+    # 🚨 MODIFIED: [Case 32 & 33] 3단 지수 백오프 및 TPS 초 초과 방어 로직 주입
     def _api_request(self, method, url, headers, params=None, data=None):
         TOKEN_EXPIRY_KEYWORDS = frozenset([
             'expired', '인증', 'authorization', 'egt0001', 'egt0002', 'oauth', 
@@ -418,7 +430,8 @@ class KoreaInvestmentBroker:
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
                
-                if res.get('rt_cd') == '0': return float(res.get('output', {}).get('last', 0.0))
+                # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 포맷팅 쉴드 래핑
+                if res.get('rt_cd') == '0': return self._safe_float(res.get('output', {}).get('last', 0.0))
                 break
             except Exception:
                 if attempt == 2: pass
@@ -433,10 +446,11 @@ class KoreaInvestmentBroker:
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200100", "/uapi/overseas-price/v1/quotations/inquire-asking-price", "GET", params=params)
          
+                # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 포맷팅 쉴드 래핑
                 if res.get('rt_cd') == '0':
                     o2 = res.get('output2', [])
-                    if isinstance(o2, list) and len(o2) > 0: return float(o2[0].get('pask1', 0.0))
-                    elif isinstance(o2, dict): return float(o2.get('pask1', 0.0))
+                    if isinstance(o2, list) and len(o2) > 0: return self._safe_float(o2[0].get('pask1', 0.0))
+                    elif isinstance(o2, dict): return self._safe_float(o2.get('pask1', 0.0))
                 break
             except Exception:
                 if attempt == 2: pass
@@ -450,11 +464,11 @@ class KoreaInvestmentBroker:
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200100", "/uapi/overseas-price/v1/quotations/inquire-asking-price", "GET", params=params)
+                # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 포맷팅 쉴드 래핑
                 if res.get('rt_cd') == '0':
                     o2 = res.get('output2', [])
-     
-                    if isinstance(o2, list) and len(o2) > 0: return float(o2[0].get('pbid1', 0.0))
-                    elif isinstance(o2, dict): return float(o2.get('pbid1', 0.0))
+                    if isinstance(o2, list) and len(o2) > 0: return self._safe_float(o2[0].get('pbid1', 0.0))
+                    elif isinstance(o2, dict): return self._safe_float(o2.get('pbid1', 0.0))
                 break
             except Exception:
                 if attempt == 2: pass
@@ -488,8 +502,9 @@ class KoreaInvestmentBroker:
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
+                # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 포맷팅 쉴드 래핑
                 if res.get('rt_cd') == '0': 
-                    return float(res.get('output', {}).get('base', 0.0))
+                    return self._safe_float(res.get('output', {}).get('base', 0.0))
                 break
             except Exception:
                 if attempt == 2: pass
@@ -514,10 +529,11 @@ class KoreaInvestmentBroker:
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker, "GUBN": "0", "BYMD": "", "MODP": "1"}
                 res = self._call_api("HHDFS76240000", "/uapi/overseas-price/v1/quotations/dailyprice", "GET", params=params)
+                # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 포맷팅 쉴드 래핑
                 if res.get('rt_cd') == '0':
                     o2 = res.get('output2', [])
                     if isinstance(o2, list) and len(o2) >= 5:
-                        closes = [float(x['clos']) for x in o2[:5]]
+                        closes = [self._safe_float(x['clos']) for x in o2[:5]]
                         return sum(closes) / len(closes)
                 break
             except Exception:
@@ -548,8 +564,13 @@ class KoreaInvestmentBroker:
                 try:
                     max_high, min_low = float(df['high'].max()), float(df['low'].min())
                     time_high_idx, time_low_idx = df['high'].astype(float).idxmax(), df['low'].astype(float).idxmin()
-                    time_high_str = df.loc[time_high_idx, 'time_est'] if not pd.isna(time_high_idx) else ""
-                    time_low_str = df.loc[time_low_idx, 'time_est'] if not pd.isna(time_low_idx) else ""
+                    
+                    # 🚨 MODIFIED: [엣지 케이스 수술] yf 중복 인덱스 유입 시 pd.Series 반환으로 인한 JSON 직렬화 붕괴 방어
+                    time_high_raw = df.loc[time_high_idx, 'time_est'] if not pd.isna(time_high_idx) else ""
+                    time_high_str = str(time_high_raw.iloc[0] if isinstance(time_high_raw, pd.Series) else time_high_raw)
+                    
+                    time_low_raw = df.loc[time_low_idx, 'time_est'] if not pd.isna(time_low_idx) else ""
+                    time_low_str = str(time_low_raw.iloc[0] if isinstance(time_low_raw, pd.Series) else time_low_raw)
         
                     cache_file = "data/avwap_cache.json"
                     cache_data = {}
@@ -559,14 +580,27 @@ class KoreaInvestmentBroker:
                         except Exception: pass
                     cache_data[ticker] = {'day_high': max_high, 'day_low': min_low, 'time_high': time_high_str, 'time_low': time_low_str, 'date': datetime.datetime.now(est).strftime("%Y-%m-%d")}
                     os.makedirs('data', exist_ok=True)
-                    # 🚨 MODIFIED: [제4헌법] 원자적 쓰기 락온
-                    fd, tmp_path = tempfile.mkstemp(dir='data', text=True)
-                    with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
-                        json.dump(cache_data, f_out, ensure_ascii=False, indent=4)
-                        f_out.flush()
-                        os.fsync(f_out.fileno())
-                    os.replace(tmp_path, cache_file)
-                except Exception as e: logging.debug(f"🚨 [{ticker}] 시계열 체력 팩트 캐싱 실패: {e}")
+                    # 🚨 MODIFIED: [Case 16] 원자적 쓰기 실패 시 OS 스토리지 고갈 방어를 위한 temp_path 스코프 전진 배치 및 finally 정리
+                    fd = None
+                    tmp_path = None
+                    try:
+                        fd, tmp_path = tempfile.mkstemp(dir='data', text=True)
+                        with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
+                            fd = None
+                            json.dump(cache_data, f_out, ensure_ascii=False, indent=4)
+                            f_out.flush()
+                            os.fsync(f_out.fileno())
+                        os.replace(tmp_path, cache_file)
+                        tmp_path = None
+                    except Exception as e:
+                        if fd is not None:
+                            try: os.close(fd)
+                            except OSError: pass
+                        if tmp_path and os.path.exists(tmp_path):
+                            try: os.remove(tmp_path)
+                            except OSError: pass
+                        logging.debug(f"🚨 [{ticker}] 시계열 체력 팩트 캐싱 실패: {e}")
+                except Exception as e: logging.debug(f"🚨 [{ticker}] 체력 팩트 캐싱 연산 에러: {e}")
                 return df[['open', 'high', 'low', 'close', 'volume', 'time_est']]
             except Exception:
                 if attempt == 2: return None
@@ -680,9 +714,9 @@ class KoreaInvestmentBroker:
              if o.get('sll_buy_dvsn_cd') == sll_buy_cd:
                 o_price = 0.0
                 for rp in [o.get('ft_ord_unpr3', 0), o.get('ord_unpr', 0), o.get('ovrs_ord_unpr', 0)]:
-     
+                    # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
                     try: 
-                        val = float(rp)
+                        val = self._safe_float(rp)
                         if val > 0: o_price = val; break 
                     except (TypeError, ValueError): 
                         pass
@@ -695,7 +729,8 @@ class KoreaInvestmentBroker:
         return len(target_orders)
 
     def send_order(self, ticker, side, qty, price, order_type="LIMIT", start_time=None, end_time=None):
-        try: order_qty = int(float(qty))
+        # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
+        try: order_qty = int(self._safe_float(qty))
         except (TypeError, ValueError): return {'rt_cd': '999', 'msg1': f'유효하지 않은 주문 수량: {qty!r}'}
         if order_qty <= 0: return {'rt_cd': '999', 'msg1': f'수량 오류: {qty}'}
 
@@ -741,7 +776,8 @@ class KoreaInvestmentBroker:
 
     def send_daytime_order(self, ticker, side, qty, price):
         time.sleep(0.06)
-        try: order_qty = int(float(qty))
+        # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
+        try: order_qty = int(self._safe_float(qty))
         except: return {'rt_cd': '999', 'msg1': '수량 오류'}
         if order_qty <= 0: return {'rt_cd': '999', 'msg1': '수량 오류'}
         tr_id = "TTTS6036U" if side == "BUY" else "TTTS6037U"
@@ -758,7 +794,8 @@ class KoreaInvestmentBroker:
 
     def send_reservation_order(self, ticker, side, qty, price, order_type="LIMIT"):
         time.sleep(0.06)
-        try: order_qty = int(float(qty))
+        # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
+        try: order_qty = int(self._safe_float(qty))
         except: return {'rt_cd': '999', 'msg1': '수량 오류'}
         
         tr_id = "TTTT3014U" if side == "BUY" else "TTTT3016U"
@@ -804,7 +841,8 @@ class KoreaInvestmentBroker:
                 if isinstance(output, dict): output = [output] 
                 for item in output:
                     try:
-                        iq, ip = float(item.get('ft_ccld_qty', 0)), float(item.get('ft_ccld_unpr3', 0))
+                        # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
+                        iq, ip = self._safe_float(item.get('ft_ccld_qty', 0)), self._safe_float(item.get('ft_ccld_unpr3', 0))
                         odno = item.get('odno', f"__nk_{id(item)}")
                         if iq > 0:
                             if odno not in odno_map: 
@@ -816,7 +854,8 @@ class KoreaInvestmentBroker:
                 if res.headers.get('tr_cont', '') in ['M', 'F']: time.sleep(0.3); continue
                 else: break
             else: break
-        return [{"ft_ccld_qty": str(d["total_qty"]), "ft_ccld_unpr3": str(d["total_amt"]/d["total_qty"] if d["total_qty"]>0 else 0), **d["item"]} for d in odno_map.values()]
+        # 🚨 MODIFIED: [치명적 논리 결함 수술] 딕셔너리 언패킹 오버라이드 맹점 교정 (원본 데이터 우선 배치)
+        return [{**d["item"], "ft_ccld_qty": str(d["total_qty"]), "ft_ccld_unpr3": str(d["total_amt"]/d["total_qty"] if d["total_qty"]>0 else 0)} for d in odno_map.values()]
 
     def get_genesis_ledger(self, ticker, limit_date_str=None):
         _, h = self.get_account_balance()
@@ -835,7 +874,8 @@ class KoreaInvestmentBroker:
             if execs:
                 execs.sort(key=lambda x: x.get('ord_tmd', '000000'), reverse=True)
                 for ex in execs:
-                    side, eq, ep = ex.get('sll_buy_dvsn_cd'), int(float(ex.get('ft_ccld_qty', 0))), float(ex.get('ft_ccld_unpr3', 0))
+                    # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
+                    side, eq, ep = ex.get('sll_buy_dvsn_cd'), int(self._safe_float(ex.get('ft_ccld_qty', 0))), self._safe_float(ex.get('ft_ccld_unpr3', 0))
             
                     rq = eq
                     if side == "02":
@@ -901,9 +941,10 @@ class KoreaInvestmentBroker:
             try:
                 time.sleep(0.06)
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params={"AUTH": "", "EXCD": self._get_exchange_code(ticker, target_api="PRICE"), "SYMB": ticker})
+                # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
                 if res.get('rt_cd') == '0':
                     out = res.get('output', {})
-                    return float(out.get('high', 0.0)), float(out.get('low', 0.0))
+                    return self._safe_float(out.get('high', 0.0)), self._safe_float(out.get('low', 0.0))
                 break
             except Exception:
                 if attempt == 2: pass

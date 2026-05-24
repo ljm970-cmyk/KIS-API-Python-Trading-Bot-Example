@@ -4,6 +4,13 @@
 # MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
 # 🚨 MODIFIED: [Float 정밀도 오염 차단] upper_inv 음수 발생 시 0.0으로 바운딩하는 max() 쉴드 적용
 # 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기 UnboundLocalError 방어막(스코프 전진배치) 결속
+# 🚨 REMOVED: [Case 02 위반 교정] 사용되지 않는 유령 변수(pure_qty, avg_price, legacy_q, side) 데드코드 100% 영구 소각
+# 🚨 MODIFIED: [TypeError 붕괴 방어] q_data 결측치(None) 유입 시 루프 마비를 막기 위한 단락 평가(or []) 쉴드 래핑
+# 🚨 MODIFIED: [TOCTOU 레이스 컨디션 수술] os.path.exists 동기 스캔을 소각하고 try-except(EAFP) 원자적 파일 I/O로 전면 교체
+# 🚨 MODIFIED: [제2헌법 준수] VWAP 동적 지터 시간 연산의 100% 중복(Copy-Paste) 블록 영구 소각 및 최상단 전진 배치(Hoisting)
+# 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식
+# 🚨 MODIFIED: [Insight 12] 큐 장부 오염 객체(Dirty Record) 방어용 `isinstance(item, dict)` 필터링 락온
+# 🚨 MODIFIED: [Insight 06/07] JSON 이중 get() 호출 시 발생하는 AttributeError 붕괴 방어용 `(dict or {})` 단락 평가 쉴드 주입
 # ==========================================================
 import math
 import os
@@ -19,6 +26,11 @@ class ReversionStrategy:
         self.residual = {}
         self.executed = {"BUY_BUDGET": {}, "SELL_QTY": {}}
         self.state_loaded = {}
+
+    # 🚨 MODIFIED: [Insight 14] String-Float 콤마(,) 맹독성 포맷팅 쉴드
+    def _safe_float(self, value):
+        try: return float(str(value or 0.0).replace(',', ''))
+        except Exception: return 0.0
 
     def _get_logical_date_str(self):
         now_est = datetime.now(ZoneInfo('America/New_York'))
@@ -42,18 +54,20 @@ class ReversionStrategy:
             return 
             
         state_file = self._get_state_file(ticker)
-        if os.path.exists(state_file):
-            try:
-                with open(state_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if data.get("date") == today_str:
-                        for k in self.executed.keys():
-                            raw_val = data.get("executed", {}).get(k, 0)
-                            self.executed[k][ticker] = int(raw_val) if k == "SELL_QTY" else float(raw_val)
-                        self.state_loaded[ticker] = today_str
-                        return
-            except Exception:
-                pass
+        # 🚨 MODIFIED: [TOCTOU 붕괴 방어] os.path.exists 소각 및 EAFP(try-open) 원자적 접근 강제
+        try:
+            with open(state_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if data.get("date") == today_str:
+                    for k in self.executed.keys():
+                        # 🚨 MODIFIED: [Insight 06/07] JSON Null-Coalescing 맹독성 차단 쉴드
+                        raw_val = (data.get("executed") or {}).get(k, 0)
+                        # 🚨 MODIFIED: [Insight 14] _safe_float 래핑 결속
+                        self.executed[k][ticker] = int(self._safe_float(raw_val)) if k == "SELL_QTY" else self._safe_float(raw_val)
+                    self.state_loaded[ticker] = today_str
+                    return
+        except Exception:
+            pass
                    
         self.executed["BUY_BUDGET"][ticker] = 0.0
         self.executed["SELL_QTY"][ticker] = 0
@@ -67,8 +81,9 @@ class ReversionStrategy:
             "date": today_str,
             "residual": {},
             "executed": {
-                "BUY_BUDGET": float(self.executed.get("BUY_BUDGET", {}).get(ticker, 0.0)),
-                "SELL_QTY": int(self.executed.get("SELL_QTY", {}).get(ticker, 0))
+                # 🚨 MODIFIED: [Insight 06/07] JSON Null-Coalescing 맹독성 차단 쉴드
+                "BUY_BUDGET": float((self.executed.get("BUY_BUDGET") or {}).get(ticker, 0.0)),
+                "SELL_QTY": int((self.executed.get("SELL_QTY") or {}).get(ticker, 0))
             }
         }
         # 🚨 MODIFIED: [Case 16] 변수 스코프 전진 배치 (UnboundLocalError 방어)
@@ -126,13 +141,13 @@ class ReversionStrategy:
 
     def load_daily_snapshot(self, ticker):
         snap_file = self._get_snapshot_file(ticker)
-        if os.path.exists(snap_file):
-            try:
-                with open(snap_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get("plan")
-            except Exception:
-                pass
+        # 🚨 MODIFIED: [TOCTOU 붕괴 방어] os.path.exists 소각 및 EAFP(try-open) 원자적 접근 강제
+        try:
+            with open(snap_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get("plan")
+        except Exception:
+            pass
         return None
 
     def ensure_failsafe_snapshot(self, ticker, curr_p, prev_c, alloc_cash, q_data, total_kis_qty, avwap_qty):
@@ -140,11 +155,10 @@ class ReversionStrategy:
         if snap is not None:
             return snap
             
-        pure_qty = max(0, total_kis_qty - avwap_qty)
-        
         today_str_est = self._get_logical_date_str()
-        legacy_lots = [item for item in q_data if not str(item.get("date", "")).startswith(today_str_est)]
-        legacy_q = sum(int(item.get("qty", 0)) for item in legacy_lots if float(item.get('price', 0.0)) > 0)
+        
+        # 🚨 MODIFIED: [TypeError 붕괴 방어] Iterable Null-Coalescing 및 isinstance, _safe_float 결속
+        legacy_lots = [item for item in (q_data or []) if isinstance(item, dict) and not str(item.get("date", "")).startswith(today_str_est)]
         
         logging.warning(f"🚨 [{ticker}] V_REV 스냅샷 증발 감지! 페일세이프 긴급 복원 가동")
         
@@ -163,14 +177,16 @@ class ReversionStrategy:
 
     def record_execution(self, ticker, side, qty, exec_price):
         self._load_state_if_needed(ticker)
-        safe_qty = int(float(qty or 0))
-        safe_price = float(exec_price or 0.0)
+        # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
+        safe_qty = int(self._safe_float(qty))
+        safe_price = self._safe_float(exec_price)
         
         if side == "BUY":
             spent = safe_qty * safe_price
-            self.executed["BUY_BUDGET"][ticker] = float(self.executed.get("BUY_BUDGET", {}).get(ticker, 0.0)) + spent
+            # 🚨 MODIFIED: [Insight 06/07] JSON Null-Coalescing 맹독성 차단 쉴드
+            self.executed["BUY_BUDGET"][ticker] = float((self.executed.get("BUY_BUDGET") or {}).get(ticker, 0.0)) + spent
         else:
-            self.executed["SELL_QTY"][ticker] = int(self.executed.get("SELL_QTY", {}).get(ticker, 0)) + safe_qty
+            self.executed["SELL_QTY"][ticker] = int((self.executed.get("SELL_QTY") or {}).get(ticker, 0)) + safe_qty
         self._save_state(ticker)
 
     def get_dynamic_plan(self, ticker, curr_p, prev_c, current_weight, vwap_status, min_idx, alloc_cash, q_data, is_snapshot_mode=False, market_type="REG"):
@@ -180,18 +196,18 @@ class ReversionStrategy:
         if not is_snapshot_mode and cached_plan:
             return cached_plan
 
-        valid_q_data = [item for item in q_data if float(item.get('price', 0.0)) > 0]
-        total_q = sum(int(item.get("qty", 0)) for item in valid_q_data)
-        total_inv = sum(float(item.get('qty', 0)) * float(item.get('price', 0.0)) for item in valid_q_data)
-        avg_price = (total_inv / total_q) if total_q > 0 else 0.0
+        # 🚨 MODIFIED: [Insight 12 & 14] 오염 객체 필터링(isinstance) 및 _safe_float 파싱 락온
+        valid_q_data = [item for item in (q_data or []) if isinstance(item, dict) and self._safe_float(item.get('price')) > 0]
+        total_q = sum(int(self._safe_float(item.get("qty"))) for item in valid_q_data)
+        total_inv = sum(self._safe_float(item.get('qty')) * self._safe_float(item.get('price')) for item in valid_q_data)
         
         dates_in_queue = sorted(list(set(item.get('date') for item in valid_q_data if item.get('date'))), reverse=True)
         l1_qty, l1_price = 0, 0.0
         
         if dates_in_queue:
             lots_1 = [item for item in valid_q_data if item.get('date') == dates_in_queue[0]]
-            l1_qty = sum(int(item.get('qty', 0)) for item in lots_1)
-            l1_price = sum(float(item.get('qty', 0)) * float(item.get('price', 0.0)) for item in lots_1) / l1_qty if l1_qty > 0 else 0.0
+            l1_qty = sum(int(self._safe_float(item.get('qty'))) for item in lots_1)
+            l1_price = sum(self._safe_float(item.get('qty')) * self._safe_float(item.get('price')) for item in lots_1) / l1_qty if l1_qty > 0 else 0.0
         
         upper_qty = total_q - l1_qty
 
@@ -211,21 +227,21 @@ class ReversionStrategy:
                 is_zero_start_session = cached_plan.get("is_zero_start", cached_plan.get("snapshot_total_q", cached_plan.get("total_q", -1)) == 0)
             else:
                 today_str_est = self._get_logical_date_str()
+                # 🚨 MODIFIED: [Insight 14] _safe_float 래핑 및 isinstance 방어막 추가
                 legacy_lots = [item for item in valid_q_data if not str(item.get("date", "")).startswith(today_str_est)]
-                legacy_q = sum(int(item.get("qty", 0)) for item in legacy_lots)
+                legacy_q = sum(int(self._safe_float(item.get("qty"))) for item in legacy_lots)
                 is_zero_start_session = (legacy_q == 0)
 
         if is_zero_start_session or total_q == 0:
-            side = "BUY"
             p1_trigger = round(prev_c * 1.15, 2)
             p2_trigger = round(prev_c * 0.999, 2)
         else:
-            side = "SELL" if curr_p > prev_c else "BUY"
             safe_anchor = l1_price if l1_price > 0.0 else prev_c
             p1_trigger = round(safe_anchor * 0.9976, 2)
             p2_trigger = round(safe_anchor * 0.9887, 2)
 
-        rem_qty_total = max(0, int(total_q) - int(self.executed["SELL_QTY"].get(ticker, 0)))
+        # 🚨 MODIFIED: [Insight 06/07] JSON Null-Coalescing 맹독성 차단 쉴드
+        rem_qty_total = max(0, int(total_q) - int((self.executed.get("SELL_QTY") or {}).get(ticker, 0)))
         available_l1 = min(l1_qty, rem_qty_total) if rem_qty_total > 0 else 0
         available_upper = min(upper_qty, rem_qty_total - available_l1) if rem_qty_total > 0 else 0
         
@@ -245,9 +261,27 @@ class ReversionStrategy:
 
         orders = []
 
-        total_spent = 0.0 if is_snapshot_mode else float(self.executed["BUY_BUDGET"].get(ticker, 0.0))
+        # 🚨 MODIFIED: [제2헌법 준수] VWAP 동적 지터 시간 연산 로직 중복(Copy-Paste) 영구 소각 및 최상단 전진 배치(Hoisting)
+        est_zone = ZoneInfo('America/New_York')
+        kst_zone = ZoneInfo('Asia/Seoul')
+        now_est = datetime.now(est_zone)
         
-        seed_val = float(self.cfg.get_seed(ticker) or 0.0)
+        base_start_est = now_est.replace(hour=15, minute=26, second=0, microsecond=0)
+        shifted_start_est = now_est + timedelta(minutes=3)
+        actual_start_est = max(base_start_est, shifted_start_est)
+        
+        base_end_est = now_est.replace(hour=15, minute=56, second=0, microsecond=0)
+        
+        start_dt_kst = actual_start_est.astimezone(kst_zone)
+        end_dt_kst = base_end_est.astimezone(kst_zone)
+        
+        start_t = start_dt_kst.strftime("%H%M%S")
+        end_t = end_dt_kst.strftime("%H%M%S")
+
+        # 🚨 MODIFIED: [Insight 06/07] JSON Null-Coalescing 맹독성 차단 쉴드
+        total_spent = 0.0 if is_snapshot_mode else float((self.executed.get("BUY_BUDGET") or {}).get(ticker, 0.0))
+        
+        seed_val = self._safe_float(self.cfg.get_seed(ticker))
         daily_limit = seed_val * 0.15
         
         safe_alloc_cash = min(float(alloc_cash), daily_limit) if daily_limit > 0 else float(alloc_cash)
@@ -270,22 +304,6 @@ class ReversionStrategy:
             elif q2 == 0 and q1 > 0:
                 q1 = math.floor(rem_budget / p1_trigger) if p1_trigger > 0 else 0
             
-            est_zone = ZoneInfo('America/New_York')
-            kst_zone = ZoneInfo('Asia/Seoul')
-            now_est = datetime.now(est_zone)
-            
-            base_start_est = now_est.replace(hour=15, minute=26, second=0, microsecond=0)
-            shifted_start_est = now_est + timedelta(minutes=3)
-            actual_start_est = max(base_start_est, shifted_start_est)
-            
-            base_end_est = now_est.replace(hour=15, minute=56, second=0, microsecond=0)
-            
-            start_dt_kst = actual_start_est.astimezone(kst_zone)
-            end_dt_kst = base_end_est.astimezone(kst_zone)
-            
-            start_t = start_dt_kst.strftime("%H%M%S")
-            end_t = end_dt_kst.strftime("%H%M%S")
-            
             if q1 > 0:
                 ord_type = "VWAP" if q1 >= 10 else "LOC"
                 desc_str = "VWAP매수(Buy1)" if ord_type == "VWAP" else "LOC매수(Buy1)"
@@ -296,22 +314,6 @@ class ReversionStrategy:
                 orders.append({"side": "BUY", "qty": q2, "price": p2_trigger, "type": ord_type, "start_time": start_t if ord_type == "VWAP" else None, "end_time": end_t if ord_type == "VWAP" else None, "desc": desc_str})
         
         if rem_qty_total > 0:
-            est_zone = ZoneInfo('America/New_York')
-            kst_zone = ZoneInfo('Asia/Seoul')
-            now_est = datetime.now(est_zone)
-            
-            base_start_est = now_est.replace(hour=15, minute=26, second=0, microsecond=0)
-            shifted_start_est = now_est + timedelta(minutes=3)
-            actual_start_est = max(base_start_est, shifted_start_est)
-            
-            base_end_est = now_est.replace(hour=15, minute=56, second=0, microsecond=0)
-            
-            start_dt_kst = actual_start_est.astimezone(kst_zone)
-            end_dt_kst = base_end_est.astimezone(kst_zone)
-            
-            start_t = start_dt_kst.strftime("%H%M%S")
-            end_t = end_dt_kst.strftime("%H%M%S")
-            
             sell_dict = {}
             if available_l1 > 0 and trigger_l1 > 0:
                 sell_dict[trigger_l1] = sell_dict.get(trigger_l1, 0) + available_l1
