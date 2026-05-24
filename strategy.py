@@ -17,6 +17,7 @@
 # 🚨 MODIFIED: [유령 종목 I/O 차단] 빈 문자열 렌더링 시 하위 플러그인 I/O 호출을 차단하는 조기 종료(Early Return) 락온
 # 🚨 MODIFIED: [Config Null-Pointer 방어] get_plan 진입 시 cfg 인스턴스 결측으로 인한 연쇄 붕괴를 막는 절대 쉴드 락온
 # 🚨 MODIFIED: [음수 오염 방어] capture_vrev_snapshot 내 수수료 음수 오입력 시 수익률이 뻥튀기되는 논리적 결함 원천 봉쇄 (max 0.0 바운딩)
+# 🚨 MODIFIED: [Indentation 붕괴 수술] analyze_vwap_dominance 내부 except 블록의 비표준 들여쓰기(9칸)로 인한 컴파일 즉사 에러 완벽 교정.
 # ==========================================================
 import logging
 import pandas as pd
@@ -107,13 +108,13 @@ class InfiniteStrategy:
             is_strong_down = is_down_day and (vwap_slope < 0) and ((1 - vol_above_pct) > 0.60)
             
             return {
-                 "vwap_price": round(vwap_price, 2),
+                "vwap_price": round(vwap_price, 2),
                 "is_strong_up": bool(is_strong_up),
                 "is_strong_down": bool(is_strong_down),
                 "vol_above_pct": round(vol_above_pct, 4),
                 "vwap_slope": round(vwap_slope, 4)
             }
-         except Exception as e:
+        except Exception as e:
             logging.debug(f"⚠️ VWAP Dominance 분석 에러: {e}")
             return {"vwap_price": 0.0, "is_strong_up": False, "is_strong_down": False}
 
@@ -192,7 +193,7 @@ class InfiniteStrategy:
                 plan['bonus_orders'] = []
                 plan['is_reverse'] = True
                 plan['t_val'] = 0.0
-                 plan['star_price'] = 0.0
+                plan['star_price'] = 0.0
                 plan['one_portion'] = 0.0
             except Exception as e:
                 logging.error(f"🚨 V-REV 플랜 생성 실패 (런타임 예외): {e}")
@@ -243,7 +244,7 @@ class InfiniteStrategy:
         
         # 🚨 MODIFIED: [I/O 붕괴 방어 및 음수 오염 차단] cfg.get_fee 호출 실패 및 오입력(음수) 시 수익률 뻥튀기 원천 봉쇄
         try:
-            if not self.cfg: raise ValueError("Config 인스턴스 결측")
+            if not self.cfg: raise ValueError("Config 인스턴 결측")
             fee_rate = max(0.0, self._safe_float(self.cfg.get_fee(safe_ticker)) / 100.0)
         except Exception as e:
             logging.debug(f"⚠️ [{safe_ticker}] 수수료율 캐싱 실패. 기본값 0.07% 락온: {e}")
@@ -255,7 +256,7 @@ class InfiniteStrategy:
         net_invested = raw_total_buy * (1.0 + fee_rate)
         net_revenue = raw_total_sell * (1.0 - fee_rate)
         
-         realized_pnl = net_revenue - net_invested
+        realized_pnl = net_revenue - net_invested
         # 🚨 MODIFIED: [ZeroDivision 방어] net_invested가 0보다 클 때만 수익률 산출
         realized_pnl_pct = (realized_pnl / net_invested) * 100 if net_invested > 0 else 0.0
     
@@ -263,7 +264,7 @@ class InfiniteStrategy:
             "ticker": safe_ticker,
             "clear_price": clear_price,
             "avg_price": avg_price,
-             "cleared_qty": qty,
+            "cleared_qty": qty,
             "realized_pnl": realized_pnl,
             "realized_pnl_pct": realized_pnl_pct,
             "captured_at": pd.Timestamp.now(tz=ZoneInfo('America/New_York'))
