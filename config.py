@@ -10,7 +10,8 @@
 # MODIFIED: [ValueError 붕괴 방어] 텔레그램 chat_id.dat 오염 시 발생하는 정수 캐스팅 에러(ValueError) 원천 차단
 # MODIFIED: [TypeError 붕괴 방어] 외부 매개변수 결측치(None/str) 유입에 대비한 Iterable(`or []`) 및 객체(`isinstance`) 안전망 100% 결속
 # MODIFIED: [외부 오염 붕괴 방어] `version_history.py` 오염 시 `get_latest_version`에서 발생하는 TypeError 즉사 버그 원천 차단 (`isinstance(history, list)` 락온)
-# 🚨 MODIFIED: [데드코드 소각] 정적 분석 결과 호출되지 않는 유령 함수 11종 영구 소각 완료.
+# MODIFIED: [데드코드 소각] 정적 분석 결과 호출되지 않는 유령 함수 11종 영구 소각 완료.
+# 🚨 MODIFIED: [IndentationError 교정] 파이썬 PEP-8 표준 규격에 맞춘 전역 들여쓰기(Alignment) 수술 완벽 적용 완료.
 # ==========================================================
 
 import json
@@ -280,9 +281,9 @@ class ConfigManager:
             max_id = max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0])
             
             for i, rec in enumerate(new_today_records or []):
-                 if not isinstance(rec, dict): continue
-                 max_id += 1
-                 new_row = {
+                if not isinstance(rec, dict): continue
+                max_id += 1
+                new_row = {
                     "id": max_id,
                     "date": rec.get('date'),
                     "ticker": ticker,
@@ -292,13 +293,13 @@ class ConfigManager:
                     "avg_price": self._safe_float(rec.get('avg_price', 0.0)),
                     "exec_id": rec.get("exec_id", f"FASTTRACK_{int(time.time())}_{i}"),
                     "is_reverse": current_rev_state
-                 }
-                 if "desc" in rec:
+                }
+                if "desc" in rec:
                     new_row["desc"] = rec.get("desc")
                     
-                 updated_ticker_recs.append(new_row)
+                updated_ticker_recs.append(new_row)
                  
-             remaining.extend(updated_ticker_recs)
+            remaining.extend(updated_ticker_recs)
             self._save_json(self.FILES["LEDGER"], remaining)
 
     def calibrate_avg_price(self, ticker, actual_avg):
@@ -657,7 +658,7 @@ class ConfigManager:
         
     def set_manual_vwap_mode(self, ticker, v):
         with self._io_lock:
-             d = self._load_json(self.FILES["MANUAL_VWAP_CFG"], {})
+            d = self._load_json(self.FILES["MANUAL_VWAP_CFG"], {})
             d[ticker] = bool(v)
             self._save_json(self.FILES["MANUAL_VWAP_CFG"], d)
 
@@ -702,7 +703,7 @@ class ConfigManager:
         if v:
             try:
                 return int(v)
-             except ValueError:
+            except ValueError:
                 return None
         return None
         
