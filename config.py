@@ -10,6 +10,7 @@
 # MODIFIED: [ValueError 붕괴 방어] 텔레그램 chat_id.dat 오염 시 발생하는 정수 캐스팅 에러(ValueError) 원천 차단
 # MODIFIED: [TypeError 붕괴 방어] 외부 매개변수 결측치(None/str) 유입에 대비한 Iterable(`or []`) 및 객체(`isinstance`) 안전망 100% 결속
 # MODIFIED: [외부 오염 붕괴 방어] `version_history.py` 오염 시 `get_latest_version`에서 발생하는 TypeError 즉사 버그 원천 차단 (`isinstance(history, list)` 락온)
+# 🚨 MODIFIED: [Indentation 붕괴 수술] set_manual_vwap_mode 등 여러 메서드 내부의 띄어쓰기(Space) 불일치로 인한 IndentationError 즉사 버그 완벽 교정
 # ==========================================================
 
 import json
@@ -250,7 +251,7 @@ class ConfigManager:
                 locks[f"ORDER_LOCKED_{ticker}"] = True
             else:
                 if f"ORDER_LOCKED_{ticker}" in locks:
-                     del locks[f"ORDER_LOCKED_{ticker}"]
+                    del locks[f"ORDER_LOCKED_{ticker}"]
         self._atomic_update_locks(_update)
 
     def set_lock(self, ticker, market_type):
@@ -348,9 +349,9 @@ class ConfigManager:
             max_id = max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0])
             
             for i, rec in enumerate(new_today_records or []):
-                 if not isinstance(rec, dict): continue
-                 max_id += 1
-                 new_row = {
+                if not isinstance(rec, dict): continue
+                max_id += 1
+                new_row = {
                     "id": max_id,
                     "date": rec.get('date'),
                     "ticker": ticker,
@@ -360,11 +361,11 @@ class ConfigManager:
                     "avg_price": self._safe_float(rec.get('avg_price', 0.0)),
                     "exec_id": rec.get("exec_id", f"FASTTRACK_{int(time.time())}_{i}"),
                     "is_reverse": current_rev_state
-                 }
-                 if "desc" in rec:
+                }
+                if "desc" in rec:
                     new_row["desc"] = rec.get("desc")
                     
-                 updated_ticker_recs.append(new_row)
+                updated_ticker_recs.append(new_row)
                  
             remaining.extend(updated_ticker_recs)
             self._save_json(self.FILES["LEDGER"], remaining)
@@ -694,6 +695,7 @@ class ConfigManager:
     def set_version(self, t, v):
         with self._io_lock:
             if t == "TQQQ": v = "V14"
+            # 🚨 MODIFIED: [Indentation 붕괴 수술] 들여쓰기 4칸 정밀 락온
             d = self._load_json(self.FILES["VERSION_CFG"], self.DEFAULT_VERSION)
             d[t] = v
             self._save_json(self.FILES["VERSION_CFG"], d)
@@ -719,9 +721,10 @@ class ConfigManager:
         
     def set_sniper_multiplier(self, t, v):
         with self._io_lock:
-             d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
-             d[t] = self._safe_float(v)
-             self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
+            # 🚨 MODIFIED: [Indentation 붕괴 수술] 13칸->12칸 정밀 교정
+            d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
+            d[t] = self._safe_float(v)
+            self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
 
     def get_upward_sniper_mode(self, ticker): 
         return bool(self._load_json(self.FILES["UPWARD_SNIPER"], {}).get(ticker, False))
@@ -755,7 +758,8 @@ class ConfigManager:
         
     def set_manual_vwap_mode(self, ticker, v):
         with self._io_lock:
-             d = self._load_json(self.FILES["MANUAL_VWAP_CFG"], {})
+            # 🚨 MODIFIED: [Indentation 붕괴 수술] 13칸->12칸 정밀 교정
+            d = self._load_json(self.FILES["MANUAL_VWAP_CFG"], {})
             d[ticker] = bool(v)
             self._save_json(self.FILES["MANUAL_VWAP_CFG"], d)
 
@@ -807,7 +811,7 @@ class ConfigManager:
         if v:
             try:
                 return int(v)
-             except ValueError:
+            except ValueError:
                 return None
         return None
         
