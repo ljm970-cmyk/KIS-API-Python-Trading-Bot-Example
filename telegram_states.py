@@ -8,6 +8,7 @@
 # 🚨 MODIFIED: [Case 32 & 33 절대 규칙] 팻핑거 스캔 시 TPS 캡핑(0.06s) 및 3단 지수 백오프, 타임아웃(10s) 샌드위치 락온
 # 🚨 MODIFIED: [NoneType 붕괴 원천 봉쇄] update.message 다이렉트 참조 소각 및 update.effective_message 단락 평가 락온
 # 🚨 MODIFIED: [Insight 14] EDIT_Q 수동 입력 시 콤마(,) 유입으로 인한 ValueError 런타임 붕괴 원천 차단
+# 🚨 MODIFIED: [Indentation 붕괴 수술] EDIT_Q 팻핑거 방어 로직 하위의 비표준 들여쓰기(25칸)를 24칸으로 정밀 교정하여 컴파일 즉사 오류 소각
 # ==========================================================
 
 import logging
@@ -100,7 +101,8 @@ class TelegramStates:
                             else: await asyncio.sleep(1.0 * (2 ** attempt))
                             
                     if curr_p and curr_p > 0 and (price < curr_p * 0.7 or price > curr_p * 1.3):
-                         del controller.user_states[chat_id]
+                        # 🚨 MODIFIED: [Indentation 붕괴 수술] 25칸->24칸 정밀 교정으로 컴파일 즉사 오류 소각
+                        del controller.user_states[chat_id]
                         return await update.effective_message.reply_text(f"🚨 <b>팻핑거 방어 가동:</b> 입력가(${price:.2f})가 현재가(${curr_p:.2f}) 대비 ±30%를 초과합니다. 다시 시도해주세요.", parse_mode='HTML')
                 except Exception:
                     pass
