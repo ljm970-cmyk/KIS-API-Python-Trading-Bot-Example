@@ -10,6 +10,7 @@
 # 🚨 VERIFIED: [디렉토리 파싱 붕괴 방어] _ensure_file 내 os.path.dirname 반환값이 빈 문자열일 때 발생하는 os.makedirs 에러를 `or '.'` 단락 평가로 원천 차단
 # 🚨 VERIFIED: [제4헌법 절대 사수] 메인 장부뿐만 아니라 백업 파일(.bak) 생성 시에도 임시 파일(.bak.tmp)을 거치는 원자적 복사(Atomic Copy)를 강제하여 OS 커널 패닉 시 백업본 오염 원천 차단
 # 🚨 VERIFIED: [무한 디스크 I/O 패러독스 방어] 메인 파일 손상 후 백업에서 복원 시, 손상된 메인 장부를 즉각 덮어쓰는 자가 치유(Self-Healing) 로직 결속 완료
+# 🚨 MODIFIED: [Indentation 붕괴 수술] apply_stock_split 내부 if changed: 하위 블록의 비표준 들여쓰기(17칸)를 16칸으로 100% 정밀 교정하여 컴파일 즉사 에러 소각
 # ==========================================================
 import os
 import json
@@ -164,7 +165,8 @@ class QueueLedger:
                     lot["price"] = round(old_price / ratio, 4)
                     changed = True
             if changed:
-                 data[ticker] = q
+                # 🚨 MODIFIED: [Indentation 붕괴 수술] 17칸 -> 16칸 정밀 교정
+                data[ticker] = q
                 self._save_unsafe(data)
 
     def get_queue(self, ticker):
