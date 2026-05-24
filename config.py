@@ -10,6 +10,7 @@
 # MODIFIED: [ValueError 붕괴 방어] 텔레그램 chat_id.dat 오염 시 발생하는 정수 캐스팅 에러(ValueError) 원천 차단
 # MODIFIED: [TypeError 붕괴 방어] 외부 매개변수 결측치(None/str) 유입에 대비한 Iterable(`or []`) 및 객체(`isinstance`) 안전망 100% 결속
 # MODIFIED: [외부 오염 붕괴 방어] `version_history.py` 오염 시 `get_latest_version`에서 발생하는 TypeError 즉사 버그 원천 차단 (`isinstance(history, list)` 락온)
+# MODIFIED: [데드코드 소각] 정적 분석 결과 호출되지 않는 유령 함수 11종 영구 소각 완료.
 # ==========================================================
 
 import json
@@ -93,12 +94,6 @@ class ConfigManager:
             return f_val
         except Exception:
             return 0.0
-
-    def get_vwap_profile(self, ticker: str) -> dict:
-        target_ticker = str(ticker).upper() if ticker else ""
-        if target_ticker not in VWAP_PROFILES:
-            return {}
-        return VWAP_PROFILES[target_ticker]
 
     def _atomic_update_locks(self, update_fn):
         with self._locks_mutex:
@@ -217,15 +212,6 @@ class ConfigManager:
             d = self._load_json(self.FILES["VREV_GAP_SWITCH_CFG"], {})
             d[ticker] = bool(v)
             self._save_json(self.FILES["VREV_GAP_SWITCH_CFG"], d)
-            
-    def get_avwap_gap_threshold(self, ticker):
-        return self._safe_float(self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
-
-    def set_avwap_gap_threshold(self, ticker, v):
-        with self._io_lock:
-            d = self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {})
-            d[ticker] = self._safe_float(v)
-            self._save_json(self.FILES["AVWAP_GAP_THRESH_CFG"], d)
 
     def get_last_split_date(self, ticker):
         return str(self._load_json(self.FILES["SPLIT_HISTORY"], {}).get(ticker, ""))
@@ -239,19 +225,6 @@ class ConfigManager:
     def get_ledger(self):
         raw_data = self._load_json(self.FILES["LEDGER"], [])
         return [r for r in raw_data if isinstance(r, dict)]
-
-    def get_order_locked(self, ticker):
-        locks = self._load_json(self.FILES["LOCKS"], {})
-        return bool(locks.get(f"ORDER_LOCKED_{ticker}", False))
-
-    def set_order_locked(self, ticker, is_locked):
-        def _update(locks):
-            if is_locked:
-                locks[f"ORDER_LOCKED_{ticker}"] = True
-            else:
-                if f"ORDER_LOCKED_{ticker}" in locks:
-                     del locks[f"ORDER_LOCKED_{ticker}"]
-        self._atomic_update_locks(_update)
 
     def set_lock(self, ticker, market_type):
         est = ZoneInfo('America/New_York')
@@ -311,33 +284,6 @@ class ConfigManager:
             if changed:
                 self._save_json(self.FILES["LEDGER"], ledger)
 
-    def overwrite_genesis_ledger(self, ticker, genesis_records, actual_avg):
-        with self._io_lock:
-            ledger = self.get_ledger()
-            target_recs = [r for r in ledger if r.get('ticker') == ticker]
-            
-            if len(target_recs) > 0:
-                print(f"⚠️ [보안 차단] {ticker}의 장부 기록이 이미 존재하여 파괴적 Genesis 덮어쓰기를 차단했습니다.")
-                return
-
-            max_id = max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0])
-            for i, rec in enumerate(genesis_records or []):
-                if not isinstance(rec, dict): continue
-                max_id += 1
-                ledger.append({
-                    "id": max_id,
-                    "date": rec.get('date'),
-                    "ticker": ticker,
-                    "side": rec.get('side'),
-                    "price": self._safe_float(rec.get('price', 0.0)),
-                    "qty": int(self._safe_float(rec.get('qty', 0))),
-                    "avg_price": self._safe_float(actual_avg), 
-                    "exec_id": f"GENESIS_{int(time.time())}_{i}",
-                    "desc": "✨과거기록복원",
-                    "is_reverse": False 
-                })
-            self._save_json(self.FILES["LEDGER"], ledger)
-
     def overwrite_incremental_ledger(self, ticker, temp_recs, new_today_records):
         with self._io_lock:
             ledger = self.get_ledger()
@@ -368,26 +314,6 @@ class ConfigManager:
                  
             remaining.extend(updated_ticker_recs)
             self._save_json(self.FILES["LEDGER"], remaining)
-
-    def overwrite_ledger(self, ticker, actual_qty, actual_avg):
-        with self._io_lock:
-            ledger = self.get_ledger()
-            target_recs = [r for r in ledger if r.get('ticker') == ticker]
-            
-            if len(target_recs) > 0:
-                print(f"⚠️ [보안 차단] {ticker}의 장부 기록이 이미 존재하여 파괴적 INIT 덮어쓰기를 차단했습니다.")
-                return
-                
-            est = ZoneInfo('America/New_York')
-            today_str = datetime.datetime.now(est).strftime('%Y-%m-%d')
-            new_id = 1 if not ledger else max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0]) + 1
-            
-            ledger.append({
-                "id": new_id, "date": today_str, "ticker": ticker, "side": "BUY",
-                "price": self._safe_float(actual_avg), "qty": int(self._safe_float(actual_qty)), "avg_price": self._safe_float(actual_avg), 
-                "exec_id": f"INIT_{int(time.time())}", "desc": "✨최초스냅샷", "is_reverse": False
-            })
-            self._save_json(self.FILES["LEDGER"], ledger)
 
     def calibrate_avg_price(self, ticker, actual_avg):
         with self._io_lock:
@@ -713,16 +639,6 @@ class ConfigManager:
             d[t] = self._safe_float(v)
             self._save_json(self.FILES["FEE_CFG"], d)
 
-    def get_sniper_multiplier(self, t):
-        default_val = self.DEFAULT_SNIPER_MULTIPLIER.get(t, 1.0)
-        return self._safe_float(self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER).get(t, default_val))
-        
-    def set_sniper_multiplier(self, t, v):
-        with self._io_lock:
-             d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
-             d[t] = self._safe_float(v)
-             self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
-
     def get_upward_sniper_mode(self, ticker): 
         return bool(self._load_json(self.FILES["UPWARD_SNIPER"], {}).get(ticker, False))
         
@@ -786,13 +702,6 @@ class ConfigManager:
             d[ticker] = bool(v)
             self._save_json(self.FILES["SNIPER_SELL_LOCKED"], d)
 
-    def get_secret_mode(self): 
-        return self._load_file(self.FILES["SECRET_MODE"]) == 'True'
-        
-    def set_secret_mode(self, v): 
-        with self._io_lock:
-            self._save_file(self.FILES["SECRET_MODE"], str(v))
-    
     def get_active_tickers(self): 
         tickers = self._load_json(self.FILES["TICKER"], ["SOXL", "TQQQ"])
         if not isinstance(tickers, list): tickers = ["SOXL", "TQQQ"]

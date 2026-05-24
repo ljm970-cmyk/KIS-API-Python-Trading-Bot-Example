@@ -7,6 +7,7 @@
 # 🚨 MODIFIED: [Case 16] 임시 파일 변수 스코프 전진 배치(Hoisting)로 UnboundLocalError 런타임 붕괴 완벽 차단
 # 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 및 NaN/Inf 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식
 # 🚨 MODIFIED: [Insight 06/07] JSON/Dict 결측치 붕괴를 막는 단락 평가(`or {}`, `or []`) 방어막 결속
+# 🚨 MODIFIED: [데드코드 소각] 정적 분석 결과 호출되지 않는 유령 함수(_floor) 영구 소각 완료.
 # ==========================================================
 import math
 import os
@@ -30,7 +31,6 @@ class V14Strategy:
             return 0.0
 
     def _ceil(self, val): return math.ceil(self._safe_float(val) * 100) / 100.0
-    def _floor(self, val): return math.floor(self._safe_float(val) * 100) / 100.0
 
     def _get_logical_date_str(self):
         now_est = datetime.now(ZoneInfo('America/New_York'))

@@ -13,6 +13,7 @@
 # 🚨 MODIFIED: [IndexError 붕괴 방어] 큐 장부 날짜 문자열 슬라이싱(item_date[:10]) 시 문자열 길이가 짧을 경우 발생하는 런타임 붕괴 방어 로직 주입 유지
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어용 순수 텍스트 변수에 한정된 html.escape 쉴드 락온 유지
 # 🚨 MODIFIED: [Case 16 위반 교정] 졸업 카드 이미지 저장 시 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 전진 배치(Hoisting) 유지
+# 🚨 REMOVED: [데드코드 소각] 사용되지 않는 get_update_confirm_menu 함수 영구 삭제
 # ==========================================================
 import os
 import math
@@ -107,20 +108,6 @@ class TelegramView:
         
         msg += "⚠️ /update : 🚀 시스템 자가 업데이트 (경고: 로컬 코드가 초기화됨)"
         return msg
-
-    def get_update_confirm_menu(self):
-        msg = "🚨 <b>[ 시스템 코어 자가 업데이트 (Self-Update) ]</b>\n\n"
-        msg += "깃허브(GitHub) 원격 서버에 접속하여 <b>최신 퀀트 엔진 코드</b>를 로컬에 강제로 동기화(Hard Reset)합니다.\n\n"
-        msg += "⚠️ <b>[ 파괴적 동기화 경고 ]</b>\n"
-        msg += "▫️ 사용자가 직접 수정한 파이버 코드는 <b>전부 초기화</b>됩니다.\n"
-        msg += "▫️ 단, 개인 설정(.env)과 장부 데이터(data/ 폴더)는 완벽히 <b>보존</b>됩니다.\n\n"
-        msg += "포트폴리오 매니저의 최종 승인을 대기합니다."
-
-        keyboard = [
-            [InlineKeyboardButton("🔥 네, 즉시 업데이트를 강행합니다", callback_data="UPDATE:CONFIRM")],
-            [InlineKeyboardButton("❌ 아니오, 취소합니다", callback_data="UPDATE:CANCEL")]
-        ]
-        return msg, InlineKeyboardMarkup(keyboard)
 
     def get_reset_menu(self, active_tickers):
         msg = "🔥 <b>[ 삼위일체 소각 (Nuke) 프로토콜 ]</b>\n\n"

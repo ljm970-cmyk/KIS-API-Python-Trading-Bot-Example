@@ -14,8 +14,9 @@
 # 🚨 MODIFIED: [V14 코어 무결성 동기화] 후반전 도달 시 목표가 관통에 대응하는 '대박익절(Jackpot Sell)' 파이프라인 전면 이식
 # 🚨 REMOVED: [제2헌법 준수] 사용되지 않는 유령 변수(residual) 데드코드 100% 영구 소각
 # 🚨 MODIFIED: [TypeError 붕괴 방어] get_ledger() 결측치(None) 유입 시 루프 마비를 막기 위한 단락 평가(or []) 쉴드 래핑
-# 🚨 MODIFIED: [최후의 맹점 수술] get_plan 및 ensure_failsafe_snapshot 진입부의 모든 파라미터와 config 반환값에 _safe_float 쉴드를 100% 강제 래핑하여 TypeError 런타임 붕괴 원천 봉쇄
+# 🚨 MODIFIED: [최후의 맹점 수술] get_plan 진입부의 모든 파라미터와 config 반환값에 _safe_float 쉴드를 100% 강제 래핑하여 TypeError 런타임 붕괴 원천 봉쇄
 # 🚨 MODIFIED: [상태 참조 오염 수술] _load_state_if_needed 에서 딕셔너리를 통째로 float 캐스팅하려던 ValueError 맹점 교정 (종목 Drill-down 결속)
+# 🚨 REMOVED: [데드코드 소각] 사용되지 않는 ensure_failsafe_snapshot 함수 영구 삭제
 # ==========================================================
 import math
 import logging
@@ -166,47 +167,6 @@ class V14VwapStrategy:
         except Exception:
             pass
         return None
-
-    def ensure_failsafe_snapshot(self, ticker, current_price, total_qty, avwap_qty, avg_price, prev_close, alloc_cash):
-        current_price = self._safe_float(current_price)
-        total_qty = int(self._safe_float(total_qty))
-        avwap_qty = int(self._safe_float(avwap_qty))
-        avg_price = self._safe_float(avg_price)
-        prev_close = self._safe_float(prev_close)
-        alloc_cash = self._safe_float(alloc_cash)
-
-        snap = self.load_daily_snapshot(ticker)
-        if snap is not None:
-            return snap
-            
-        pure_qty = max(0, total_qty - avwap_qty)
-        
-        today_str_est = self._get_logical_date_str()
-        legacy_qty = pure_qty
-        legacy_avg = avg_price
-        
-        try:
-            recs = [r for r in (self.cfg.get_ledger() or []) if isinstance(r, dict) and r.get('ticker') == ticker and not str(r.get("date", "")).startswith(today_str_est)]
-            ledger_qty, ledger_avg, _, _ = self.cfg.calculate_holdings(ticker, recs)
-            legacy_qty = ledger_qty
-            legacy_avg = ledger_avg if ledger_qty > 0 else avg_price
-        except Exception:
-            pass
-            
-        logging.warning(f"🚨 [{ticker}] V14_VWAP 스냅샷 증발 감지! 페일세이프 긴급 복원 가동")
-        
-        return self.get_plan(
-            ticker=ticker,
-            current_price=current_price,
-            avg_price=legacy_avg,
-            qty=legacy_qty,
-            prev_close=prev_close,
-            ma_5day=0.0,
-            market_type="REG",
-            available_cash=alloc_cash,
-            is_simulation=True,
-            is_snapshot_mode=True
-        )
 
     def _ceil(self, val): return math.ceil(self._safe_float(val) * 100) / 100.0
 

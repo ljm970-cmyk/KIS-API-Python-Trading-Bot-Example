@@ -11,6 +11,7 @@
 # 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기 실패 시 임시 파일 고아화 및 OS 용량 고갈을 막기 위한 스코프 전진 배치(Hoisting).
 # 🚨 MODIFIED: [치명적 논리 결함 수술] 딕셔너리 언패킹 오버라이드로 인한 체결량 누락 맹점 완벽 교정.
 # 🚨 MODIFIED: [엣지 케이스 수술] yf 중복 인덱스 유입 시 pd.Series 반환으로 인한 JSON 직렬화 붕괴 방어.
+# 🚨 MODIFIED: [데드코드 소각] 정적 분석 결과 호출되지 않는 유령 함수 7종 영구 소각 완료.
 # ==========================================================
 
 import requests
@@ -354,62 +355,6 @@ class KoreaInvestmentBroker:
                 time.sleep(1.0 * (2 ** attempt))
         return 0.0, 0.0
 
-    # 🚨 MODIFIED: [Case 33] 3단 지수 백오프 이식
-    def get_current_5min_candle(self, ticker):
-        for attempt in range(3):
-            try:
-                time.sleep(0.06)
-                stock = yf.Ticker(ticker)
-                df = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
-                if df.empty: 
-                    if attempt == 2: return None
-                    time.sleep(1.0 * (2 ** attempt))
-                    continue
-                df = _flatten_columns(df)
-                est = ZoneInfo('America/New_York')
-                if df.index.tz is None: df.index = df.index.tz_localize('UTC').tz_convert(est)
-                else: df.index = df.index.tz_convert(est)
-       
-                regular_market = df.between_time('09:30', '15:59')
-                if regular_market.empty: return None
-                today_date = pd.Timestamp.now(tz=est).normalize()
-                regular_market = regular_market[regular_market.index >= today_date]
-                if regular_market.empty: return None
-                
-                regular_market = regular_market.dropna(subset=['Volume', 'High', 'Low', 'Close'])
-                typical_price = (regular_market['High'] + regular_market['Low'] + regular_market['Close']) / 3.0
-                vol_price = typical_price * regular_market['Volume']
-                cum_vol_price = vol_price.cumsum()
-                cum_vol = regular_market['Volume'].cumsum()
-                
-                safe_cum_vol = np.where(cum_vol == 0, 1.0, cum_vol)
-                vwap_array = np.where(cum_vol > 0, cum_vol_price / safe_cum_vol, np.nan)
-                vwap_series = pd.Series(vwap_array, index=cum_vol.index).ffill() 
-          
-                current_vwap = float(vwap_series.iloc[-1]) if not vwap_series.empty else 0.0
-                if pd.isna(current_vwap): current_vwap = 0.0
-        
-                resampled = regular_market.resample('5min', label='left', closed='left').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
-                if resampled.empty: return None
-                resampled['Vol_MA10'] = resampled['Volume'].rolling(10, min_periods=1).mean()
-             
-                resampled['Vol_MA20'] = resampled['Volume'].rolling(20, min_periods=1).mean()
-                last_candle = resampled.iloc[-1]
-                latest_1m = regular_market.iloc[-1] 
-      
-                return {
-                    'open': float(last_candle['Open']), 'high': float(last_candle['High']), 'low': float(last_candle['Low']),    
-                    'close': float(latest_1m['Close']), 'volume': float(last_candle['Volume']), 
-                    'vol_ma10': float(last_candle.get('Vol_MA10', last_candle['Volume'])),
-                    'vol_ma20': float(last_candle.get('Vol_MA20', last_candle['Volume'])),
-                    'vwap': current_vwap  
-                }
-            except Exception as e:
-                logging.debug(f"⚠️ [Broker] 실시간 5분봉 조회 실패 (시도 {attempt+1}/3): {e}")
-                if attempt == 2: return None
-                time.sleep(1.0 * (2 ** attempt))
-        return None
-
     def get_current_price(self, ticker, is_market_closed=False):
         for attempt in range(3):
             try:
@@ -673,55 +618,12 @@ class KoreaInvestmentBroker:
            
         return valid_orders
 
-    def cancel_all_orders_safe(self, ticker, side=None):
-        for i in range(3):
-            orders = self.get_unfilled_orders_detail(ticker)
-            if orders is False: return False
-            if not orders: return True
-            target_orders = orders
-       
-            if side == "BUY": target_orders = [o for o in orders if o.get('sll_buy_dvsn_cd') == '02']
-            elif side == "SELL": target_orders = [o for o in orders if o.get('sll_buy_dvsn_cd') == '01']
-            if not target_orders: return True
-            for o in target_orders: 
-                time.sleep(0.06)
-                self.cancel_order(ticker, o.get('odno'))
-            time.sleep(5)
-       
-        final_orders = self.get_unfilled_orders_detail(ticker)
-        if final_orders is False: return False
-        failed_orders = [o for o in final_orders if (side == "BUY" and o.get('sll_buy_dvsn_cd') == '02') or (side == "SELL" and o.get('sll_buy_dvsn_cd') == '01')]
-        return len(failed_orders) == 0
-         
     def cancel_targeted_orders(self, ticker, side, target_ord_dvsn):
         sll_buy_cd = '02' if side == "BUY" else '01'
        
         orders = self.get_unfilled_orders_detail(ticker)
         if not orders: return 0
         target_orders = [o for o in orders if o.get('sll_buy_dvsn_cd') == sll_buy_cd and (o.get('ord_dvsn_cd') or o.get('ord_dvsn') or '') == target_ord_dvsn]
-        for o in target_orders: 
-            time.sleep(0.06)
-            self.cancel_order(ticker, o.get('odno'))
-            time.sleep(0.3)
-        return len(target_orders)
-
-    def cancel_orders_by_price(self, ticker, side, target_prices):
-        sll_buy_cd = '02' if side == "BUY" else '01'
-        orders = self.get_unfilled_orders_detail(ticker)
-        if not orders: return 0
-        target_orders = []
-        for o in orders:
-             if o.get('sll_buy_dvsn_cd') == sll_buy_cd:
-                o_price = 0.0
-                for rp in [o.get('ft_ord_unpr3', 0), o.get('ord_unpr', 0), o.get('ovrs_ord_unpr', 0)]:
-                    # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
-                    try: 
-                        val = self._safe_float(rp)
-                        if val > 0: o_price = val; break 
-                    except (TypeError, ValueError): 
-                        pass
-                for tp in target_prices:
-                    if o_price > 0 and abs(o_price - tp) < 0.005: target_orders.append(o); break
         for o in target_orders: 
             time.sleep(0.06)
             self.cancel_order(ticker, o.get('odno'))
@@ -773,24 +675,6 @@ class KoreaInvestmentBroker:
         body = {"CANO": self.cano, "ACNT_PRDT_CD": self.acnt_prdt_cd, "OVRS_EXCG_CD": excg_cd, "PDNO": ticker, "ORGN_ODNO": order_id, "RVSE_CNCL_DVSN_CD": "02", "ORD_QTY": "0", "OVRS_ORD_UNPR": "0", "ORD_SVR_DVSN_CD": "0"}
         # 🚨 MODIFIED: [Case 30 팩트 교정] 취소 주문 API 응답 객체 반환 배선 강제 이식
         return self._call_api("TTTT1004U", "/uapi/overseas-stock/v1/trading/order-rvsecncl", "POST", body=body)
-
-    def send_daytime_order(self, ticker, side, qty, price):
-        time.sleep(0.06)
-        # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
-        try: order_qty = int(self._safe_float(qty))
-        except: return {'rt_cd': '999', 'msg1': '수량 오류'}
-        if order_qty <= 0: return {'rt_cd': '999', 'msg1': '수량 오류'}
-        tr_id = "TTTS6036U" if side == "BUY" else "TTTS6037U"
-        excg_cd = self._get_exchange_code(ticker, target_api="ORDER")
-        body = {"CANO": self.cano, "ACNT_PRDT_CD": self.acnt_prdt_cd, "OVRS_EXCG_CD": excg_cd, "PDNO": ticker, "ORD_QTY": str(order_qty), "OVRS_ORD_UNPR": str(self._ceil_2(price)), "CTAC_TLNO": "", "MGCO_APTM_ODNO": "", "ORD_SVR_DVSN_CD": "0", "ORD_DVSN": "00"}
-        res = self._call_api(tr_id, "/uapi/overseas-stock/v1/trading/daytime-order", "POST", body=body)
-        return {'rt_cd': res.get('rt_cd', '999'), 'msg1': res.get('msg1', '오류'), 'odno': res.get('output', {}).get('ODNO', '') if isinstance(res.get('output'), dict) else ''}
-
-    def cancel_daytime_order(self, ticker, order_id, qty="100", price="0"):
-        time.sleep(0.06)
-        excg_cd = self._get_exchange_code(ticker, target_api="ORDER")
-        body = {"CANO": self.cano, "ACNT_PRDT_CD": self.acnt_prdt_cd, "OVRS_EXCG_CD": excg_cd, "PDNO": ticker, "ORGN_ODNO": order_id, "RVSE_CNCL_DVSN_CD": "02", "ORD_QTY": str(qty), "OVRS_ORD_UNPR": str(price), "CTAC_TLNO": "", "MGCO_APTM_ODNO": "", "ORD_SVR_DVSN_CD": "0"}
-        return self._call_api("TTTS6038U", "/uapi/overseas-stock/v1/trading/daytime-order-rvsecncl", "POST", body=body)
 
     def send_reservation_order(self, ticker, side, qty, price, order_type="LIMIT"):
         time.sleep(0.06)
@@ -857,40 +741,6 @@ class KoreaInvestmentBroker:
         # 🚨 MODIFIED: [치명적 논리 결함 수술] 딕셔너리 언패킹 오버라이드 맹점 교정 (원본 데이터 우선 배치)
         return [{**d["item"], "ft_ccld_qty": str(d["total_qty"]), "ft_ccld_unpr3": str(d["total_amt"]/d["total_qty"] if d["total_qty"]>0 else 0)} for d in odno_map.values()]
 
-    def get_genesis_ledger(self, ticker, limit_date_str=None):
-        _, h = self.get_account_balance()
-        if not h: return None, 0, 0.0
-        t_info = h.get(ticker, {'qty': 0, 'avg': 0.0})
-        curr_qty = int(t_info.get('qty', 0))
-        if curr_qty == 0: return [], 0, 0.0
-        ledger_records, est, target_date, loop = [], ZoneInfo('America/New_York'), datetime.datetime.now(ZoneInfo('America/New_York')), 0
-        while curr_qty > 0 and loop < 365:
-            time.sleep(0.06)
-            if target_date.weekday() < 5: loop += 1
-            date_str = target_date.strftime('%Y%m%d')
-            if limit_date_str and date_str < limit_date_str: break 
-           
-            execs = self.get_execution_history(ticker, date_str, date_str)
-            if execs:
-                execs.sort(key=lambda x: x.get('ord_tmd', '000000'), reverse=True)
-                for ex in execs:
-                    # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
-                    side, eq, ep = ex.get('sll_buy_dvsn_cd'), int(self._safe_float(ex.get('ft_ccld_qty', 0))), self._safe_float(ex.get('ft_ccld_unpr3', 0))
-            
-                    rq = eq
-                    if side == "02":
-                        if curr_qty <= eq: rq, curr_qty = curr_qty, 0
-                        else: curr_qty -= eq
-     
-                    else: curr_qty += eq
-                    ledger_records.append({'date': f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}", 'side': "BUY" if side=="02" else "SELL", 'qty': rq, 'price': ep})
-                    if curr_qty == 0: break
-            target_date -= datetime.timedelta(days=1); time.sleep(0.1) 
-        
-        if curr_qty > 0: ledger_records.append({'date': 'INCOMPLETE', 'side': 'UNKNOWN', 'qty': curr_qty, 'price': float(t_info.get('avg', 0.0)), 'is_incomplete': True})
-        ledger_records.reverse()
-        return ledger_records, int(t_info.get('qty', 0)), float(t_info.get('avg', 0.0))
-
     def get_recent_stock_split(self, ticker, last_date_str):
         for attempt in range(3):
             try:
@@ -949,28 +799,6 @@ class KoreaInvestmentBroker:
             except Exception:
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
-        return 0.0, 0.0
-
-    def get_atr_data(self, ticker):
-        for attempt in range(3):
-            try:
-                time.sleep(0.06)
-                hist = yf.Ticker(ticker).history(period="30d", prepost=True, timeout=5)
-                if hist.empty or len(hist) < 15:
-                    if attempt == 2: return 0.0, 0.0
-                    time.sleep(1.0 * (2 ** attempt))
-                    continue
-                hist['Prev_Close'] = hist['Close'].shift(1)
-                hist = hist.dropna(subset=['High', 'Low', 'Close']).copy()
-             
-                hist['TR'] = hist.apply(lambda row: max(row['High']-row['Low'], abs(row['High']-row['Prev_Close']), abs(row['Low']-row['Prev_Close'])), axis=1)
-                hist['ATR5'], hist['ATR14'] = hist['TR'].rolling(window=5).mean(), hist['TR'].rolling(window=14).mean()
-                last = hist.iloc[-1]
-                if last['Close'] > 0: return round((float(last['ATR5'])/last['Close'])*100, 1), round((float(last['ATR14'])/last['Close'])*100, 1)
-                break
-            except Exception:
-                if attempt == 2: return 0.0, 0.0
-                time.sleep(1.0 * (2 ** attempt))
         return 0.0, 0.0
 
     def get_amp_5d_data(self, ticker):

@@ -11,6 +11,7 @@
 # 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식
 # 🚨 MODIFIED: [Insight 12] 큐 장부 오염 객체(Dirty Record) 방어용 `isinstance(item, dict)` 필터링 락온
 # 🚨 MODIFIED: [Insight 06/07] JSON 이중 get() 호출 시 발생하는 AttributeError 붕괴 방어용 `(dict or {})` 단락 평가 쉴드 주입
+# 🚨 MODIFIED: [데드코드 소각] 정적 분석 결과 호출되지 않는 유령 함수(ensure_failsafe_snapshot) 영구 소각 완료.
 # ==========================================================
 import math
 import os
@@ -149,31 +150,6 @@ class ReversionStrategy:
         except Exception:
             pass
         return None
-
-    def ensure_failsafe_snapshot(self, ticker, curr_p, prev_c, alloc_cash, q_data, total_kis_qty, avwap_qty):
-        snap = self.load_daily_snapshot(ticker)
-        if snap is not None:
-            return snap
-            
-        today_str_est = self._get_logical_date_str()
-        
-        # 🚨 MODIFIED: [TypeError 붕괴 방어] Iterable Null-Coalescing 및 isinstance, _safe_float 결속
-        legacy_lots = [item for item in (q_data or []) if isinstance(item, dict) and not str(item.get("date", "")).startswith(today_str_est)]
-        
-        logging.warning(f"🚨 [{ticker}] V_REV 스냅샷 증발 감지! 페일세이프 긴급 복원 가동")
-        
-        return self.get_dynamic_plan(
-            ticker=ticker,
-            curr_p=curr_p,
-            prev_c=prev_c,
-            current_weight=0.0,
-            vwap_status={},
-            min_idx=-1,
-            alloc_cash=alloc_cash,
-            q_data=legacy_lots,
-            is_snapshot_mode=True,
-            market_type="REG"
-        )
 
     def record_execution(self, ticker, side, qty, exec_price):
         self._load_state_if_needed(ticker)
