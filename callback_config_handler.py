@@ -3,10 +3,13 @@
 # ==========================================================
 # 🚨 MODIFIED: [환경설정/뷰어 도메인] 장부 초기화, 버전 스위칭, 이미지 생성 등 뷰/환경설정 로직 분리
 # 🚨 MODIFIED: [Case 08, 16] os.path.exists 동기스캔 배제, EAFP 적용 및 temp_path 원자적 쓰기 스코프 전진 배치 유지
-# 🚨 MODIFIED: [Insight 14, 26] Float 정밀도 보호(_safe_float) 및 html.escape HTML 파서 붕괴 방어막 유지
+# 🚨 MODIFIED: [Insight 14, 26] Float 정밀도 보호(_safe_float) 및 html.escape HTML 파서 붕괴 방어막 강화
+# 🚨 MODIFIED: [AttributeError 궁극 수술] SET_VER(모드 전환) 시 증발한 _get_max_holdings_qty 의존성을 해체하고 인라인 3중 검증망 락온
+# 🚨 MODIFIED: [Float 붕괴 궁극 소각] 클래스 내부에 _safe_float 래퍼를 전면 이식하여 NaN, Inf, String-Comma로 인한 런타임 즉사 원천 차단
 # ==========================================================
 import logging
 import datetime
+import math
 from zoneinfo import ZoneInfo
 import os
 import json
@@ -26,6 +29,16 @@ class CallbackConfigHandler:
         self.view = view
         self.tx_lock = tx_lock
 
+    # 🚨 MODIFIED: [Insight 14] String-Float 콤마 및 NaN/Inf 맹독성 런타임 붕괴 방어용 절대 쉴드 락온
+    def _safe_float(self, val):
+        try:
+            f_val = float(str(val or 0.0).replace(',', ''))
+            if math.isnan(f_val) or math.isinf(f_val):
+                return 0.0
+            return f_val
+        except Exception:
+            return 0.0
+
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, controller, action: str, sub: str, data: list):
         query = update.callback_query
         chat_id = update.effective_chat.id
@@ -42,7 +55,7 @@ class CallbackConfigHandler:
                     success, msg = await updater.pull_latest_code()
                     safe_msg = html.escape(str(msg)) 
                     if success:
-                        await query.edit_message_text(f"✅ <b>[업데이트 완료]</b> {safe_msg}\n\n🔄 데몬을 재가동합니다. 잠시 후 봇이 응답할 것입니다.", parse_mode='HTML')
+                        await query.edit_message_text(f"✅ <b>[업데이트 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML')
                         await updater.restart_daemon()
                     else:
                         await query.edit_message_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML')
@@ -131,7 +144,7 @@ class CallbackConfigHandler:
                     try:
                         await asyncio.sleep(0.06)
                         prev_c_val = await asyncio.wait_for(asyncio.to_thread(self.broker.get_previous_close, ticker), timeout=10.0)
-                        prev_c = float(str(prev_c_val or 0.0).replace(',', ''))
+                        prev_c = self._safe_float(prev_c_val)
                         break
                     except Exception as e:
                         if attempt == 2: logging.error(f"🚨 수동 소각 후 전일 종가 스캔 에러: {e}")
@@ -151,12 +164,12 @@ class CallbackConfigHandler:
                                     if attempt == 2: cash_val = 0.0
                                     else: await asyncio.sleep(1.0 * (2 ** attempt))
                                     
-                            cash = float(str(cash_val or 0.0).replace(',', ''))
+                            cash = self._safe_float(cash_val)
                             from scheduler_core import get_budget_allocation
                             active_tickers_list = await asyncio.to_thread(self.cfg.get_active_tickers) or []
                             _, alloc_cash_dict = await asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, self.cfg)
                             alloc_cash_dict = alloc_cash_dict or {}
-                            available_cash = float(str(alloc_cash_dict.get(ticker) or 0.0).replace(',', ''))
+                            available_cash = self._safe_float(alloc_cash_dict.get(ticker))
                             
                             await asyncio.to_thread(
                                 self.strategy.get_plan, 
@@ -196,7 +209,7 @@ class CallbackConfigHandler:
                 if not ticker: return
                 if ticker not in self.sync_engine.sync_locks:
                     self.sync_engine.sync_locks[ticker] = asyncio.Lock()
-                     
+                    
                 if not self.sync_engine.sync_locks[ticker].locked():
                     try: await query.edit_message_text(f"🔄 <b>[{html.escape(str(ticker))}] 잔고 기반 대시보드 업데이트 중...</b>", parse_mode='HTML')
                     except Exception: pass
@@ -230,10 +243,9 @@ class CallbackConfigHandler:
                                 t_rec['ticker'] = target.get('ticker')
                             if 'side' not in t_rec:
                                 t_rec['side'] = 'BUY'
-                      
-                    qty, avg, invested, sold = await asyncio.to_thread(self.cfg.calculate_holdings, target.get('ticker'), safe_trades)
-  
+                       
                     try:
+                        qty, avg, invested, sold = await asyncio.to_thread(self.cfg.calculate_holdings, target.get('ticker'), safe_trades)
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True, history_id=hid)
                     except TypeError:
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True)
@@ -250,7 +262,7 @@ class CallbackConfigHandler:
                 if not ticker: return
                 hist_data = await asyncio.to_thread(self.cfg.get_history) or []
                 hist_list = [h for h in hist_data if isinstance(h, dict) and str(h.get('ticker')) == str(ticker)]
-                 
+                  
                 if not hist_list:
                     await context.bot.send_message(chat_id, f"📭 <b>[{html.escape(str(ticker))}]</b> 발급 가능한 졸업 기록이 존재하지 않습니다.", parse_mode='HTML')
                     return
@@ -265,13 +277,18 @@ class CallbackConfigHandler:
                 try:
                     await query.edit_message_text(f"🎨 <b>[{html.escape(str(ticker))}] 프리미엄 졸업 카드를 렌더링 중입니다...</b>", parse_mode='HTML')
 
+                    profit_val = self._safe_float(target_hist.get('profit'))
+                    yield_pct_val = self._safe_float(target_hist.get('yield'))
+                    invested_val = self._safe_float(target_hist.get('invested'))
+                    revenue_val = self._safe_float(target_hist.get('revenue'))
+
                     img_path = await asyncio.to_thread(
                         self.view.create_profit_image,
                         ticker=target_hist.get('ticker'),
-                        profit=target_hist.get('profit'),
-                        yield_pct=target_hist.get('yield'),
-                        invested=target_hist.get('invested'),
-                        revenue=target_hist.get('revenue'),
+                        profit=profit_val,
+                        yield_pct=yield_pct_val,
+                        invested=invested_val,
+                        revenue=revenue_val,
                         end_date=target_hist.get('end_date')
                     )
             
@@ -312,13 +329,31 @@ class CallbackConfigHandler:
                         if attempt == 2: holdings = {}
                         else: await asyncio.sleep(1.0 * (2 ** attempt))
                 if not isinstance(holdings, dict): holdings = {}
-                kis_qty = int(float(str(holdings.get(ticker, {}).get('qty') or 0).replace(',', '')))
+                kis_qty = int(self._safe_float(holdings.get(ticker, {}).get('qty')))
             except Exception:
                 kis_qty = 0
             
-            from telegram_callbacks import TelegramCallbacks
-            temp_tc = TelegramCallbacks(self.cfg, self.broker, self.strategy, self.queue_ledger, self.sync_engine, self.view, self.tx_lock)
-            max_qty = await temp_tc._get_max_holdings_qty(ticker, kis_qty)
+            # 🚨 MODIFIED: [AttributeError 궁극 수술] TelegramCallbacks에서 증발한 _get_max_holdings_qty 의존성을 전면 해체하고,
+            # 현재 파일 내에서 KIS 잔고, V14 장부, V-REV 큐 장부를 직접 비동기 락온하여 max_qty를 연산하도록 무결점 수술 완료
+            max_qty = kis_qty
+            
+            try:
+                full_ledger = await asyncio.to_thread(self.cfg.get_ledger) or []
+                recs = [r for r in full_ledger if isinstance(r, dict) and str(r.get('ticker')) == ticker]
+                if recs:
+                    ledger_qty, _, _, _ = await asyncio.to_thread(self.cfg.calculate_holdings, ticker, recs)
+                    if ledger_qty > max_qty: max_qty = ledger_qty
+            except Exception as e:
+                logging.error(f"🚨 모드 전환 전 V14 장부 검증 에러: {e}")
+                
+            try:
+                if getattr(self, 'queue_ledger', None):
+                    q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker) or []
+                    if q_data:
+                        vrev_qty = sum(int(self._safe_float(item.get('qty'))) for item in q_data if isinstance(item, dict))
+                        if vrev_qty > max_qty: max_qty = vrev_qty
+            except Exception as e:
+                logging.error(f"🚨 모드 전환 전 V-REV 큐 장부 검증 에러: {e}")
             
             if max_qty > 0:
                 try:
