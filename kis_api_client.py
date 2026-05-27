@@ -6,6 +6,9 @@
 # 🚨 MODIFIED: [Case 16] 원자적 쓰기(Atomic Write) 강제 및 tempfile 스코프 전진 배치
 # 🚨 MODIFIED: [Case 32 & 33] KIS API 초당 20건 통신 제한(TPS) 방어용 0.06초 캡핑 및 3단 지수 백오프 락온
 # 🚨 MODIFIED: [Insight 14 & 25] NaN, Infinity 및 String-Comma 맹독성 데이터 정밀 필터링 절대 쉴드 내재화
+# 🚨 MODIFIED: [제3헌법 준수] 토큰 만료 연산 시 잔존하던 KST 혼용 뇌관 전면 소각 및 EST 타임라인 100% 통합
+# 🚨 MODIFIED: [AttributeError 궁극 수술] 서버 응답(msg1, msg_cd) NoneType 유입 시 .lower() 붕괴 원천 차단
+# 🚨 MODIFIED: [로깅 증발 방어] 헤드리스(Headless) 환경에서 증발하는 print() 데드코드 전면 소각 및 logging 체계 100% 락온
 # ==========================================================
 
 import requests
@@ -31,7 +34,8 @@ class KisApiClient:
         self._get_access_token()
 
     def _get_access_token(self, force=False):
-        kst = ZoneInfo('Asia/Seoul')
+        # 🚨 MODIFIED: [제3헌법 절대 락온] KST 혼용 파이프라인 전면 소각 및 EST 100% 매핑
+        est = ZoneInfo('America/New_York')
         
         # 🚨 MODIFIED: [Case 08] os.path.exists 소각 및 EAFP 패턴으로 TOCTOU 레이스 컨디션 차단
         if not force:
@@ -40,9 +44,9 @@ class KisApiClient:
                     saved = json.load(f)
                
                 expire_time = datetime.datetime.strptime(saved['expire'], '%Y-%m-%d %H:%M:%S')
-                now_kst_naive = datetime.datetime.now(kst).replace(tzinfo=None)
+                now_est_naive = datetime.datetime.now(est).replace(tzinfo=None)
         
-                if expire_time > now_kst_naive + datetime.timedelta(hours=1):
+                if expire_time > now_est_naive + datetime.timedelta(hours=1):
                     self.token = saved['token']
                     return
             except OSError: pass
@@ -72,7 +76,7 @@ class KisApiClient:
                     self.token = data['access_token']
                     # 🚨 MODIFIED: [Float 붕괴 방어] expires_in 데이터 오염 시 ValueError 차단을 위한 _safe_float 래핑
                     safe_expires_in = int(self._safe_float(data.get('expires_in', 86400)))
-                    expire_str = (datetime.datetime.now(kst).replace(tzinfo=None) + datetime.timedelta(seconds=safe_expires_in)).strftime('%Y-%m-%d %H:%M:%S')
+                    expire_str = (datetime.datetime.now(est).replace(tzinfo=None) + datetime.timedelta(seconds=safe_expires_in)).strftime('%Y-%m-%d %H:%M:%S')
                 
                     dir_name = os.path.dirname(self.token_file)
                     if dir_name:
@@ -102,11 +106,13 @@ class KisApiClient:
                     break # 성공 시 루프 탈출
                 else:
                     if attempt == 2:
-                        print(f"❌ [Broker] 토큰 발급 실패: {data.get('error_description', '알 수 알 없는 오류')}")
+                        # 🚨 MODIFIED: [로깅 증발 방어] print() 소각 및 logging.error 락온
+                        logging.error(f"❌ [Broker] 토큰 발급 실패: {data.get('error_description') or '알 수 없는 오류'}")
                     time.sleep(1.0 * (2 ** attempt))
             except Exception as e:
                 if attempt == 2:
-                    print(f"❌ [Broker] 토큰 통신 에러: {e}")
+                    # 🚨 MODIFIED: [로깅 증발 방어] print() 소각 및 logging.error 락온
+                    logging.error(f"❌ [Broker] 토큰 통신 에러: {e}")
                 time.sleep(1.0 * (2 ** attempt))
 
     def _get_header(self, tr_id):
@@ -119,7 +125,7 @@ class KisApiClient:
             "custtype": "P"
         }
 
-    # 🚨 MODIFIED: [Case 32 & 33] 3단 지수 백오프 및 TPS 초 초 초과 방어 로직 주입
+    # 🚨 MODIFIED: [Case 32 & 33] 3단 지수 백오프 및 TPS 초과 방어 로직 주입
     def _api_request(self, method, url, headers, params=None, data=None):
         TOKEN_EXPIRY_KEYWORDS = frozenset([
             'expired', '인증', 'authorization', 'egt0001', 'egt0002', 'oauth', 
@@ -145,17 +151,19 @@ class KisApiClient:
                     resp_json = {}
          
                 if resp_json.get('rt_cd') != '0':
-                    msg1_lower = resp_json.get('msg1', '').lower()
-                    msg_cd = resp_json.get('msg_cd', '').lower()
+                    # 🚨 MODIFIED: [AttributeError 궁극 수술] msg1, msg_cd가 None일 경우 발생하는 .lower() 즉사 버그 방어 쉴드
+                    msg1_lower = str(resp_json.get('msg1') or '').lower()
+                    msg_cd = str(resp_json.get('msg_cd') or '').lower()
        
                     if any(x in msg1_lower or x in msg_cd for x in TOKEN_EXPIRY_KEYWORDS):
                         if attempt == 0: 
                             old_token = self.token 
-                            print(f"\n🚨 [안전장치 가동] API 토큰 만료 감지! : {msg1_lower}")
+                            # 🚨 MODIFIED: [로깅 증발 방어] print() 소각 및 logging.warning 락온
+                            logging.warning(f"🚨 [안전장치 가동] API 토큰 만료 감지! : {msg1_lower}")
                             self._get_access_token(force=True)
                             
                             if self.token == old_token or self.token is None:
-                                print("🚨 [Broker] 토큰 갱신 실패. 재시도 중단.")
+                                logging.error("🚨 [Broker] 토큰 갱신 실패. 재시도 중단.")
                                 return res, resp_json
                             
                             headers["authorization"] = f"Bearer {self.token}"
@@ -229,7 +237,8 @@ class KisApiClient:
                 if dynamic_success: break
             except Exception as e:
                 if attempt == 2:
-                    print(f"⚠️ [Broker] 거래소 동적 획득 실패: {ticker} - {e}")
+                    # 🚨 MODIFIED: [로깅 증발 방어] print() 소각 및 logging.warning 락온
+                    logging.warning(f"⚠️ [Broker] 거래소 동적 획득 실패: {ticker} - {e}")
                 time.sleep(1.0 * (2 ** attempt))
 
         if not dynamic_success:

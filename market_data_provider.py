@@ -4,6 +4,7 @@
 # 🚨 MODIFIED: [파사드 패턴 2단계] yfinance 및 KIS 시세 데이터 연산 도메인 분리
 # 🚨 MODIFIED: [미래 참조 데이터 누수 전면 차단] get_amp_5d_data, get_5day_ma, get_atr_data 당일 미확정 라이브 캔들(Live Candle) 절단 100% 복제 이식.
 # 🚨 MODIFIED: [선형 상속 락온] KisApiClient를 상속하여 공통 캐시 및 방어막(_safe_float, _call_api 등)을 100% 활용
+# 🚨 MODIFIED: [Case 16] 시계열 데이터 원자적 쓰기 시 디렉토리 동적 파싱 보강 및 스토리지 고갈 방어 락온
 # ==========================================================
 
 import time
@@ -348,14 +349,15 @@ class MarketDataProvider(KisApiClient):
 
                     cache_data[ticker] = {'day_high': max_high, 'day_low': min_low, 'time_high': time_high_str, 'time_low': time_low_str, 'date': datetime.datetime.now(est).strftime("%Y-%m-%d")}
                     
-                    try: os.makedirs('data', exist_ok=True)
+                    # 🚨 MODIFIED: [Case 16] 디렉토리 파싱 무결성 강화 및 스토리지 고갈 방어 락온
+                    dir_name = os.path.dirname(cache_file) or '.'
+                    try: os.makedirs(dir_name, exist_ok=True)
                     except OSError: pass
                     
-                    # 🚨 MODIFIED: [Case 16] 원자적 쓰기 실패 시 OS 스토리지 고갈 방어를 위한 temp_path 스코프 전진 배치 및 finally 정리
                     fd = None
                     tmp_path = None
                     try:
-                        fd, tmp_path = tempfile.mkstemp(dir='data', text=True)
+                        fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
                         with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
                             fd = None
                             json.dump(cache_data, f_out, ensure_ascii=False, indent=4)
@@ -364,7 +366,6 @@ class MarketDataProvider(KisApiClient):
                         os.replace(tmp_path, cache_file)
                         tmp_path = None
                     except Exception as e:
-                        # 🚨 MODIFIED: [Indentation 붕괴 수술] 들여쓰기 25칸->24칸 정밀 락온
                         if fd is not None:
                             try: os.close(fd)
                             except OSError: pass
