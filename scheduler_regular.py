@@ -20,7 +20,8 @@
 # 🚨 MODIFIED: [최후의 맹점 수술] cfg 모듈 및 get_budget_allocation의 반환값이 None일 경우 발생하는 Iterable 언패킹 붕괴 방어 절대 쉴드 락온
 # 🚨 MODIFIED: [Silent Failure 수술] KIS 서버가 1차 필수 주문을 거절(rt_cd != 0)할 경우, 파이썬 예외가 없어도 외부 15단 재시도를 폭발시키도록 팩트 교정
 # 🚨 MODIFIED: [마이크로 정화] is_success 중복 평가 데드코드 블록 통합(Merge) 최적화 완료
-# 🚨 MODIFIED: [Case 19 중복 매매 방어] 부분 실패 후 재시도(Retry) 시 보너스 덫이 이중으로 장전되는 Double-Entry 버그 완벽 차단
+# 🚨 MODIFIED: [Case 19 부분 실패 이중 장전 패러독스 방어] 기장전된 덫은 API 통신 전면 바이패스 및 캐시 락온 결속
+# 🚨 MODIFIED: [Case 32 팩트 교정] 개별 주문 전송 루프 내부 누락된 await asyncio.sleep(0.06) (TPS 캡핑) 및 샌드박싱 복구 완료
 # ==========================================================
 import logging
 import datetime
@@ -88,6 +89,7 @@ async def scheduled_early_regular_trade(context):
 
     MAX_RETRIES = 5
     RETRY_DELAY = 10
+    successful_orders_cache = set() # 🚨 NEW: [Case 19] 부분 실패 시 이중 장전 방지용 캐시
 
     async def _do_early_trade():
         est_z = ZoneInfo('America/New_York')
@@ -195,51 +197,23 @@ async def scheduled_early_regular_trade(context):
                         # 🚨 MODIFIED: [Insight 06/07] Iterable NoneType 붕괴 방어용 단락 평가
                         target_orders = plan.get('core_orders') or plan.get('orders') or []
                         for o in target_orders:
-                            if not isinstance(o, dict): continue
-                            # 🚨 MODIFIED: [Type Boundary] 페이로드 강제 캐스팅 락온
-                            o_type = str(o.get('type', 'LOC'))
-                            o_side = str(o.get('side', 'BUY'))
-                            o_qty = int(_safe_float(o.get('qty')))
-                            o_price = _safe_float(o.get('price'))
-                            o_desc = str(o.get('desc', '주문'))
-
-                            # 🚨 MODIFIED: [제1헌법] 주문 전송 시 wait_for(15.0) 강제 주입
-                            if o_type == 'VWAP':
-                                res = await asyncio.wait_for(
-                                    asyncio.to_thread(broker.send_order, t, o_side, o_qty, o_price, o_type, start_time=dyn_start_t, end_time=dyn_end_t),
-                                    timeout=15.0
-                                )
-                            else:
-                                res = await asyncio.wait_for(
-                                    asyncio.to_thread(broker.send_reservation_order, t, o_side, o_qty, o_price, o_type),
-                                    timeout=15.0
-                                )
-                            
-                            safe_res = res if isinstance(res, dict) else {}
-                            is_success = safe_res.get('rt_cd') == '0'
-                            
-                            err_msg = html.escape(str(safe_res.get('msg1') or '오류'))
-                            
-                            if not is_success: 
-                                all_success_map[t] = False
-                                loop_fully_successful = False
-                                loop_fail_reason = f"[{t}] 1차 주문 거절: {err_msg}"
-
-                            status_icon = '✅' if is_success else f'❌({err_msg})'
-                            msgs[t] += f"└ 1차 필수: {o_desc} {o_qty}주 (${o_price}): {status_icon}\n"
-                            await asyncio.sleep(0.2)
-                            
-                        target_bonus = plan.get('bonus_orders') or []
-                        
-                        # 🚨 MODIFIED: [Case 19 중복 매매 방어] 1차 필수 주문 실패 시 보너스 덫 장전 원천 차단
-                        if all_success_map[t]:
-                            for o in target_bonus:
+                            try:
                                 if not isinstance(o, dict): continue
+                                # 🚨 MODIFIED: [Type Boundary] 페이로드 강제 캐스팅 락온
                                 o_type = str(o.get('type', 'LOC'))
                                 o_side = str(o.get('side', 'BUY'))
                                 o_qty = int(_safe_float(o.get('qty')))
                                 o_price = _safe_float(o.get('price'))
                                 o_desc = str(o.get('desc', '주문'))
+
+                                # 🚨 MODIFIED: [Case 19 중복 매매 방어] 기장전된 덫은 API 통신 전면 바이패스
+                                order_key = f"{t}_{o_desc}"
+                                if order_key in successful_orders_cache:
+                                    msgs[t] += f"└ 1차 필수: {o_desc} {o_qty}주 (${o_price}): ✅(기장전 보존)\n"
+                                    continue
+
+                                # 🚨 MODIFIED: [Case 32] 주문 전송 시 TPS 캡핑 락온
+                                await asyncio.sleep(0.06)
 
                                 # 🚨 MODIFIED: [제1헌법] 주문 전송 시 wait_for(15.0) 강제 주입
                                 if o_type == 'VWAP':
@@ -256,10 +230,79 @@ async def scheduled_early_regular_trade(context):
                                 safe_res = res if isinstance(res, dict) else {}
                                 is_success = safe_res.get('rt_cd') == '0'
                                 
-                                err_msg = html.escape(str(safe_res.get('msg1') or '잔금패스'))
+                                err_msg = html.escape(str(safe_res.get('msg1') or '오류'))
+                                
+                                if is_success:
+                                    successful_orders_cache.add(order_key)
+                                else: 
+                                    all_success_map[t] = False
+                                    loop_fully_successful = False
+                                    loop_fail_reason = f"[{t}] 1차 주문 거절: {err_msg}"
+
                                 status_icon = '✅' if is_success else f'❌({err_msg})'
-                                msgs[t] += f"└ 2차 보너스: {o_desc} {o_qty}주 (${o_price}): {status_icon}\n"
+                                msgs[t] += f"└ 1차 필수: {o_desc} {o_qty}주 (${o_price}): {status_icon}\n"
                                 await asyncio.sleep(0.2)
+                            except Exception as e:
+                                all_success_map[t] = False
+                                loop_fully_successful = False
+                                loop_fail_reason = f"[{t}] 1차 주문 오류"
+                                logging.error(f"🚨 [{t}] early_trade 1차 주문 오류: {e}")
+                                msgs[t] += f"└ 1차 필수 오류: {html.escape(str(e))}\n"
+                            
+                        target_bonus = plan.get('bonus_orders') or []
+                        
+                        # 🚨 MODIFIED: [Case 19 중복 매매 방어] 1차 필수 주문 실패 시 보너스 덫 장전 원천 차단
+                        if all_success_map[t]:
+                            for o in target_bonus:
+                                try:
+                                    if not isinstance(o, dict): continue
+                                    o_type = str(o.get('type', 'LOC'))
+                                    o_side = str(o.get('side', 'BUY'))
+                                    o_qty = int(_safe_float(o.get('qty')))
+                                    o_price = _safe_float(o.get('price'))
+                                    o_desc = str(o.get('desc', '주문'))
+
+                                    # 🚨 MODIFIED: [Case 19 중복 매매 방어] 기장전된 덫은 API 통신 전면 바이패스
+                                    order_key = f"{t}_{o_desc}"
+                                    if order_key in successful_orders_cache:
+                                        msgs[t] += f"└ 2차 보너스: {o_desc} {o_qty}주 (${o_price}): ✅(기장전 보존)\n"
+                                        continue
+
+                                    # 🚨 MODIFIED: [Case 32] 주문 전송 시 TPS 캡핑 락온
+                                    await asyncio.sleep(0.06)
+
+                                    # 🚨 MODIFIED: [제1헌법] 주문 전송 시 wait_for(15.0) 강제 주입
+                                    if o_type == 'VWAP':
+                                        res = await asyncio.wait_for(
+                                            asyncio.to_thread(broker.send_order, t, o_side, o_qty, o_price, o_type, start_time=dyn_start_t, end_time=dyn_end_t),
+                                            timeout=15.0
+                                        )
+                                    else:
+                                        res = await asyncio.wait_for(
+                                            asyncio.to_thread(broker.send_reservation_order, t, o_side, o_qty, o_price, o_type),
+                                            timeout=15.0
+                                        )
+                                    
+                                    safe_res = res if isinstance(res, dict) else {}
+                                    is_success = safe_res.get('rt_cd') == '0'
+                                    err_msg = html.escape(str(safe_res.get('msg1') or '잔금패스'))
+                                    
+                                    if is_success:
+                                        successful_orders_cache.add(order_key)
+                                    else:
+                                        all_success_map[t] = False
+                                        loop_fully_successful = False
+                                        loop_fail_reason = f"[{t}] 2차 보너스 거절: {err_msg}"
+                                    
+                                    status_icon = '✅' if is_success else f'❌({err_msg})'
+                                    msgs[t] += f"└ 2차 보너스: {o_desc} {o_qty}주 (${o_price}): {status_icon}\n"
+                                    await asyncio.sleep(0.2)
+                                except Exception as e:
+                                    all_success_map[t] = False
+                                    loop_fully_successful = False
+                                    loop_fail_reason = f"[{t}] 2차 보너스 오류"
+                                    logging.error(f"🚨 [{t}] early_trade 2차 보너스 오류: {e}")
+                                    msgs[t] += f"└ 2차 보너스 오류: {html.escape(str(e))}\n"
                         elif target_bonus:
                             msgs[t] += f"⚠️ 1차 필수 장전 실패로 2차 보너스 덫 보류 (중복 매매 방어)\n"
                         
@@ -397,6 +440,7 @@ async def scheduled_regular_trade_delayed(context):
 
     MAX_RETRIES = 15
     RETRY_DELAY = 60
+    successful_orders_cache = set() # 🚨 NEW: [Case 19] 부분 실패 시 이중 장전 방지용 캐시
 
     async def _do_delayed_trade():
         async with tx_lock:
@@ -470,6 +514,15 @@ async def scheduled_regular_trade_delayed(context):
                         o_price = _safe_float(o.get('price'))
                         o_desc = str(o.get('desc', '주문'))
 
+                        # 🚨 MODIFIED: [Case 19 중복 매매 방어] 기장전된 덫은 API 통신 전면 바이패스
+                        order_key = f"{t}_{o_desc}"
+                        if order_key in successful_orders_cache:
+                            msgs[t] += f"└ 1차 필수: {o_desc} {o_qty}주 (${o_price}): ✅(기장전 보존)\n"
+                            continue
+
+                        # 🚨 MODIFIED: [Case 32] 주문 전송 시 TPS 캡핑 락온
+                        await asyncio.sleep(0.06)
+
                         # 🚨 MODIFIED: [제1헌법] 주문 전송 시 wait_for(15.0) 강제 주입
                         res = await asyncio.wait_for(
                             asyncio.to_thread(
@@ -485,7 +538,9 @@ async def scheduled_regular_trade_delayed(context):
                         is_success = safe_res.get('rt_cd') == '0'
                         err_msg = html.escape(str(safe_res.get('msg1') or '오류'))
                         
-                        if not is_success: 
+                        if is_success:
+                            successful_orders_cache.add(order_key)
+                        else: 
                             all_success_map[t] = False
                             loop_fully_successful = False
                             loop_fail_reason = f"[{t}] 1차 주문 거절: {err_msg}"
@@ -518,6 +573,15 @@ async def scheduled_regular_trade_delayed(context):
                         o_price = _safe_float(o.get('price'))
                         o_desc = str(o.get('desc', '주문'))
 
+                        # 🚨 MODIFIED: [Case 19 중복 매매 방어] 기장전된 덫은 API 통신 전면 바이패스
+                        order_key = f"{t}_{o_desc}"
+                        if order_key in successful_orders_cache:
+                            msgs[t] += f"└ 2차 보너스: {o_desc} {o_qty}주 (${o_price}): ✅(기장전 보존)\n"
+                            continue
+
+                        # 🚨 MODIFIED: [Case 32] 주문 전송 시 TPS 캡핑 락온
+                        await asyncio.sleep(0.06)
+
                         # 🚨 MODIFIED: [제1헌법] 주문 전송 시 wait_for(15.0) 강제 주입
                         res = await asyncio.wait_for(
                             asyncio.to_thread(
@@ -532,10 +596,19 @@ async def scheduled_regular_trade_delayed(context):
                         safe_res = res if isinstance(res, dict) else {}
                         is_success = safe_res.get('rt_cd') == '0'
                         err_msg = html.escape(str(safe_res.get('msg1') or '잔금패스'))
+                        
+                        if is_success:
+                            successful_orders_cache.add(order_key)
+                        else:
+                            all_success_map[t] = False
+                            loop_fully_successful = False
+                            loop_fail_reason = f"[{t}] 2차 보너스 거절: {err_msg}"
+                            
                         status_icon = '✅' if is_success else f'❌({err_msg})'
                         msgs[t] += f"└ 2차 보너스: {o_desc} {o_qty}주 (${o_price}): {status_icon}\n"
                         await asyncio.sleep(0.2) 
                     except Exception as e:
+                        all_success_map[t] = False
                         loop_fully_successful = False
                         loop_fail_reason = f"[{t}] 2차 보너스 오류"
                         logging.error(f"🚨 [{t}] delayed_trade 2차 보너스 오류: {e}")
