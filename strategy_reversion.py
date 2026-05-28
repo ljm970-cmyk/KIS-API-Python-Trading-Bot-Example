@@ -14,6 +14,7 @@
 # 🚨 MODIFIED: [Insight 06/07] JSON 이중 get() 호출 시 발생하는 AttributeError 붕괴 방어용 `(dict or {})` 단락 평가 쉴드 주입
 # 🚨 NEW: [Case 20] KIS 서버 VWAP 알고리즘 10주 최소 수량 제약(10주 미만 시 LOC 강제 폴백) 데드코드 전면 소각. 자체 로컬 1분 슬라이싱 엔진은 수량 무관하게 쪼개기(Slicing)가 가능하므로 전량 'VWAP' 태그로 락온하여 섀도우 엔진에 100% 인계
 # 🚨 MODIFIED: [궁극의 Type-Safety 아머 결속] get_dynamic_plan 및 ensure_failsafe_snapshot 진입부의 모든 파라미터에 _safe_float 쉴드를 100% 강제 래핑하여 TypeError 런타임 붕괴 원천 봉쇄
+# 🚨 MODIFIED: [당일 지층 매수 앵커 최우선 락온] is_zero_start_session 조건을 해체하고 오직 실제 물량(total_q) 유무만을 기준으로 매수 앵커를 산출하도록 교정. 당일 연속 체결 시 허공 타점(1.15배수) 파괴 및 1지층 평단가 연계 100% 락온.
 # ==========================================================
 import math
 import os
@@ -243,7 +244,9 @@ class ReversionStrategy:
                 legacy_q = sum(int(self._safe_float(item.get("qty"))) for item in legacy_lots)
                 is_zero_start_session = (legacy_q == 0)
 
-        if is_zero_start_session or total_q == 0:
+        # 🚨 MODIFIED: [당일 지층 매수 앵커 최우선 락온] is_zero_start_session 플래그를 철저히 배제하고, 오직 팩트 물량(total_q)에 의존하여 타점을 연산.
+        # 당일 0주 새출발로 대규모 1차/2차 물량이 연속 체결되었음에도 1지층 평단가가 아닌 1.15배수(허공) 타점이 재생성되는 렌더링/논리 패러독스 완벽 소각.
+        if total_q == 0:
             p1_trigger = round(prev_c * 1.15, 2)
             p2_trigger = round(prev_c * 0.999, 2)
         else:
@@ -341,7 +344,7 @@ class ReversionStrategy:
                 elif price == trigger_l1:
                     desc_str = "1층탈출"
                 elif price == trigger_upper:
-                     desc_str = "상위층탈출"
+                    desc_str = "상위층탈출"
                 else:
                     desc_str = "잔여탈출"
                     
