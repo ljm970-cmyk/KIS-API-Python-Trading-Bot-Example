@@ -4,6 +4,8 @@
 # 🚨 MODIFIED: [딥-레스큐 아키텍처 V84.00 전면 리빌딩]
 # 🚨 MODIFIED: [사후 하락장 절대 판별 락온] main_actual_avg(본진 평단가) > Open(시가) 일 때만 100% 자율 개방.
 # 🚨 MODIFIED: [시가 앵커링 덫 산출] PM_H, 가변 오프셋 등 데드코드 전면 소각. 오직 `Open - (Open * Amp5 * 0.45)` 고정 타점(T_H) 도출.
+# 🚨 NEW: [Kwargs Overwrite 붕괴 수술] Named Parameter로 전달된 amp5가 내부 kwargs 탐색에 의해 0.0으로 강제 덮어쓰기되어 T_H가 시가(Open)로 고정되던 치명적 파이썬 문법 맹점 원천 교정.
+# 🚨 NEW: [Amp5 결측 붕괴 절대 방어] API 지연으로 Amp5가 0.0으로 유입될 경우, 딥-매수 타점(T_H)이 하방 버퍼 없이 시가(Open)로 직결되는 치명적 버그를 원천 차단하기 위해 조기 반환(Early Return) 쉴드 결속.
 # 🚨 MODIFIED: [100% 자율 격발] 시가 확정 및 하락장 판별 즉시 T_H 타점에 100% 잉여 현금 지정가 매수(PLACE_TRAP) 즉각 반환.
 # 🚨 MODIFIED: [Fire & Forget 락온] 암살자 체결 물량(avwap_qty > 0) 존재 시 더 이상 개입하지 않고 즉시 'HOLD(퇴근)' 반환. 타임스탑 시장가 덤핑 영구 소각.
 # 🚨 MODIFIED: [상태 다이어트] 다중 출격(sortie_mode), PM_H, PM_L, T_L, offset, dump_jitter_sec 등 불필요한 레거시 파라미터 100% 진공 압축.
@@ -93,7 +95,7 @@ class VAvwapHybridPlugin:
                 data['trap_placed_time'] = ""
                 data['buy_odno'] = ""  
 
-            # 🚨 MODIFIED: [상태 다이어트] 레거시 파라미터(PM_H, PM_L, T_L, offset, dump_jitter_sec 등) 영구 소각 및 파일 최적화
+            # 🚨 MODIFIED: [상태 다이어트] 레거시 파라미터 영구 소각 및 파일 최적화
             data['T_H'] = 0.0
             data['date'] = today_str
             self.save_state(ticker, now_est, data)
@@ -258,7 +260,10 @@ class VAvwapHybridPlugin:
         if avwap_alloc_cash == 0.0:
             avwap_alloc_cash = self._safe_float(kwargs.get('alloc_cash', kwargs.get('avwap_alloc_cash', 0.0)))
         
-        amp5 = self._safe_float(kwargs.get('amp5', 0.0))
+        # 🚨 MODIFIED: [Kwargs Overwrite 붕괴 수술] Named Parameter로 전달된 amp5가 내부 kwargs.get 탐색에 의해 0.0으로 덮어쓰여져 T_H가 시가(Open)로 고정되던 치명적 맹점 원천 교정.
+        safe_amp5 = self._safe_float(amp5)
+        if safe_amp5 == 0.0:
+            safe_amp5 = self._safe_float(kwargs.get('amp5', 0.0))
         
         # 🚨 MODIFIED: [사후 하락장 게이트] 본진(V-REV)의 KIS 실제 평단가를 kwargs에서 정밀 추출
         main_actual_avg = self._safe_float(kwargs.get('main_actual_avg', 0.0))
@@ -322,8 +327,12 @@ class VAvwapHybridPlugin:
         if exec_day_open <= 0.0:
             return _build_res('WAIT', '정규장 시가(Open) 확정 대기중')
 
-        # 🚨 MODIFIED: [시가 앵커링 고정 덫 산출]
-        t_h = exec_day_open - (exec_day_open * amp5 * 0.45)
+        # 🚨 NEW: [Amp5 결측 붕괴 절대 방어] API 지연 등으로 Amp5가 0.0이 되면 버퍼 0%로 시가(Open)에 덫이 꽂히는 치명적 파괴 현상을 원천 차단.
+        if safe_amp5 <= 0.0:
+            return _build_res('WAIT', 'Amp5 데이터 결측(0.0). 비정상 타점(버퍼 0%) 산출 방어 대기')
+
+        # 🚨 MODIFIED: [시가 앵커링 고정 덫 산출] Overwrite 붕괴 방어용 safe_amp5 맵핑
+        t_h = exec_day_open - (exec_day_open * safe_amp5 * 0.45)
         persistent_state['T_H'] = t_h
         if not is_simulation:
             self.save_state(exec_ticker, now_est, persistent_state)
@@ -367,6 +376,6 @@ class VAvwapHybridPlugin:
             return _build_res('WAIT', '예산 고갈 ZeroDivision 방어 (1주 미만 산출)')
 
         buy_qty = int(math.floor(avwap_alloc_cash / t_h))
-        logging.info(f"🚀 [V84.00 딥-레스큐 덫 장전] 사후 하락장 팩트 확정. 시가 앵커링 덫 즉시 장전! (타겟가: ${t_h:.2f}, 수량: {buy_qty}주)")
+        logging.info(f"🚀 [V84.00 딥-레스큐 덫 장전] 사후 하락장 팩트 확정. 시가 앵커링 고정 덫 즉시 장전! (타겟가: ${t_h:.2f}, 수량: {buy_qty}주)")
         
         return _build_res('PLACE_TRAP', '사후 하락장 판별 확정. 시가 앵커링 고정 덫 즉시 장전', qty=buy_qty, target_price=t_h, t_time=curr_candle_time_str)
