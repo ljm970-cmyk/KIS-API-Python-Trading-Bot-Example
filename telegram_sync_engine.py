@@ -2,7 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
-# 🚨 MODIFIED: [좀비 기록 부활 패러독스 궁극 차단] KIS 원장 스캔 윈도우를 4일에서 1일로 축소하여, 이미 수동 청산/소각된 과거(D-2 이상)의 체결 내역이 새로운 사이클의 장부를 오염시키는 현상 원천 봉쇄.
+# 🚨 MODIFIED: [주말/휴일 블라인드 붕괴 방어] 1일 고정 스캔의 치명적 결함(월요일 동기화 시 금요일 원장 증발 및 CALIB 오염) 원천 차단 및 4일 윈도우 복구 락온.
 # 🚨 MODIFIED: [중복 증식 버그 수술] process_auto_sync 내부에 무한 증식하던 캘리브레이션 데드코드를 100% 영구 소각하고 선형(Linear) 아키텍처로 진공 압축.
 # 🚨 NEW: [Blueprint 4] V-REV 자체 슬라이싱 엔진(15:27~15:56 EST) 가동으로 인해 다분할(Slice) 체결된 내역들을 합산(Sum)하여 정확한 가중평균 체결 단가(VWAP)를 산출하는 로직 정밀 락온 완료
 # 🚨 MODIFIED: [메모리 오염 뇌관 궁극 소각] context.bot_data 하위 메모리 탐색 시 다른 플러그인에 의해 문자열/리스트로 오염되었을 경우 발생하는 AttributeError 즉사 버그를 막기 위해 isinstance 3중 필터링 락온.
@@ -72,12 +72,12 @@ class TelegramSyncEngine:
                             split_ratio, split_date = 0.0, ""
                             logging.warning(f"⚠️ [{ticker}] 야후 파이낸스 액면분할 조회 타임아웃, 이번 싱크에서 스킵")
                         else: await asyncio.sleep(1.0 * (2 ** attempt))
-                
+                 
                 if split_ratio > 0.0 and split_date != "":
                     est = ZoneInfo('America/New_York')
                     now_est = datetime.datetime.now(est)
                     await asyncio.to_thread(self.cfg.apply_stock_split, ticker, split_ratio)
-                    
+                     
                     if not getattr(self, 'queue_ledger', None):
                         from queue_ledger import QueueLedger
                         self.queue_ledger = await asyncio.to_thread(QueueLedger)
@@ -87,7 +87,7 @@ class TelegramSyncEngine:
                         
                     if hasattr(self.strategy, 'v_avwap_plugin'):
                         await asyncio.to_thread(self.strategy.v_avwap_plugin.apply_stock_split, ticker, split_ratio, now_est)
-                        
+                     
                     await asyncio.to_thread(self.cfg.set_last_split_date, ticker, split_date)
                     split_type = "액면분할" if split_ratio > 1.0 else "액면병합(역분할)"
                     await context.bot.send_message(chat_id, f"✂️ <b>[{html.escape(str(ticker))}] 야후 파이낸스 {split_type} 자동 감지!</b>\n▫️ 감지된 비율: <b>{split_ratio}배</b> (발생일: {html.escape(str(split_date))})\n▫️ 봇이 기존 V14 장부, V-REV 큐 장부, AVWAP 상태 캐시의 수량과 평단가를 100% 무인 자동 소급 조정 완료했습니다.", parse_mode='HTML')
@@ -158,11 +158,12 @@ class TelegramSyncEngine:
                         actual_avg = round(vrev_total_invested / vrev_ledger_qty_for_check, 4)
                     else:
                         actual_avg = 0.0
-                
+                 
                 max_check_qty = max(ledger_qty_for_check, vrev_ledger_qty_for_check)
 
-                # 🚨 MODIFIED: [좀비 기록 부활 패러독스 차단] KIS 원장 섀도우 스캔 기간을 4일 -> 1일로 축소
-                kis_search_start = (now_kst - datetime.timedelta(days=1)).strftime('%Y%m%d')
+                # 🚨 MODIFIED: [주말/휴일 블라인드 붕괴 방어] 1일 고정 스캔의 치명적 결함(월요일 동기화 시 금요일 원장 증발 및 CALIB 오염) 원천 차단.
+                # 내부 filter_to_est 엔진이 target_ledger_str 단 하루 치만 정밀 추출하므로 좀비 기록 부활은 발생하지 않음. 주말 맹점을 덮기 위해 4일 윈도우 복구 락온.
+                kis_search_start = (now_kst - datetime.timedelta(days=4)).strftime('%Y%m%d')
                 query_end_dt = now_kst.strftime('%Y%m%d')
 
                 def filter_to_est(execs_raw):
@@ -415,7 +416,7 @@ class TelegramSyncEngine:
                                             derived_price = pure_manual_amt / pure_manual_q
                                             missing_price = round(derived_price, 4)
                                         else: missing_price = round(b_tot_amt / b_tot_q, 4)
-                            
+                             
                                 q_data_before.append({"date": now_est.strftime('%Y-%m-%d %H:%M:%S'), "qty": missing_qty, "price": missing_price, "exec_id": "MANUAL_SYNC"})
                                 vrev_ledger_qty = tot_q
                                 await asyncio.to_thread(self.queue_ledger.overwrite_queue, ticker, q_data_before)
@@ -467,7 +468,7 @@ class TelegramSyncEngine:
                         except Exception as e:
                             logging.error(f"🚨 스냅샷 캡처 및 복리 정산 중 치명적 오류 감지: {e}\n{traceback.format_exc()}")
                             snapshot = None
-                            
+                             
                         if getattr(self, 'queue_ledger', None):
                             await asyncio.to_thread(self.queue_ledger.sync_with_broker, ticker, 0)
                          
@@ -508,7 +509,7 @@ class TelegramSyncEngine:
                         
                         try:
                             def _read_v_state(f_path):
-                                with open(f_path, 'r', encoding='utf-8') as vf: return json.load(vf)
+                                 with open(f_path, 'r', encoding='utf-8') as vf: return json.load(vf)
                             v_state = await asyncio.to_thread(_read_v_state, vwap_state_file)
                             if isinstance(v_state, dict) and "executed" in v_state and isinstance(v_state["executed"], dict) and "SELL_QTY" in v_state["executed"]:
                                 old_sell_qty = v_state["executed"]["SELL_QTY"]
@@ -546,11 +547,11 @@ class TelegramSyncEngine:
                                 t_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in sell_execs_sync)
                                 t_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in sell_execs_sync)
                                 if t_q > 0: actual_clear_price_for_sync = round(t_amt / t_q, 4)
-                         
+                        
                         calibrated = False
                         if getattr(self, 'queue_ledger', None):
                             calibrated = await asyncio.to_thread(self.queue_ledger.sync_with_broker, ticker, adjusted_actual_qty, 0.0, actual_clear_price_for_sync)
-                         
+                        
                         if calibrated: await context.bot.send_message(chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 비파괴 보정 및 리앵커링 완료!</b>\n▫️ 수동 매도 물량(<b>{gap_qty}주</b>)을 LIFO 큐에서 안전하게 차감하고, 수익금만큼 잔여 지층의 평단가를 일괄 차감했습니다.", parse_mode='HTML')
                          
                     elif adjusted_actual_qty > 0 and adjusted_actual_qty > vrev_ledger_qty:
@@ -801,7 +802,7 @@ class TelegramSyncEngine:
                 actual_qty = int(self._safe_float(h.get('qty', 0)))
                 
                 safe_prev_close = prev_close if prev_close else 0.0
-                
+                 
                 if status_code in ["AFTER", "CLOSE", "PRE"]:
                     try:
                         def get_yf_close():
@@ -883,7 +884,7 @@ class TelegramSyncEngine:
                         if "total_q" in cached_snap:
                             logic_qty = int(self._safe_float(cached_snap.get("total_q", 0)))
                         elif "initial_qty" in cached_snap:
-                            logic_qty = int(self._safe_float(cached_snap.get("initial_qty", 0)))
+                             logic_qty = int(self._safe_float(cached_snap.get("initial_qty", 0)))
                         is_zero_start_fact = bool(cached_snap.get("is_zero_start", logic_qty == 0))
 
                 try:
@@ -935,7 +936,7 @@ class TelegramSyncEngine:
                     half_portion_cash = one_portion_cash * 0.5
                 
                     tag = "VWAP" if is_manual_vwap else "LOC"
-                    
+                   
                     snap_orders_raw = cached_snap.get("orders", []) if cached_snap else []
                     if not isinstance(snap_orders_raw, list): snap_orders_raw = []
                     snap_sells_for_ui = [o for o in snap_orders_raw if isinstance(o, dict) and o.get('side') == 'SELL']
@@ -964,7 +965,7 @@ class TelegramSyncEngine:
                          
                         sell_dict = {}
                         if available_l1 > 0 and trigger_l1 > 0:
-                             sell_dict[trigger_l1] = sell_dict.get(trigger_l1, 0) + available_l1
+                            sell_dict[trigger_l1] = sell_dict.get(trigger_l1, 0) + available_l1
                         if available_upper > 0 and trigger_upper > 0:
                             sell_dict[trigger_upper] = sell_dict.get(trigger_upper, 0) + available_upper
                        
@@ -976,7 +977,7 @@ class TelegramSyncEngine:
                             elif price == trigger_l1:
                                 desc_str = "1층탈출"
                             elif price == trigger_upper:
-                                  desc_str = "상위층탈출"
+                                desc_str = "상위층탈출"
                             else:
                                 desc_str = "잔여탈출"
                             v_rev_guidance += f" 🔵 {desc_str} ${price:.2f} <b>{s_qty}주</b> ({tag})\n"
@@ -1059,7 +1060,7 @@ class TelegramSyncEngine:
                                         sortie_mode=sortie_mode
                                     ),
                                     timeout=10.0
-                                )
+                                 )
                                 if not isinstance(decision, dict): decision = {}
                         
                                 avwap_base_price = decision.get('base_curr_p', base_curr_p)
@@ -1078,7 +1079,7 @@ class TelegramSyncEngine:
                         curr_time = now_est.time()
                         time_0930 = datetime.time(9, 30)
                         time_0934 = datetime.time(9, 34, 59)
-                        
+             
                         dump_jitter_sec = int(self._safe_float(tracking_cache.get(f"AVWAP_DUMP_JITTER_{t}", 0)))
                         base_dump_dt = datetime.datetime.combine(now_est.date(), datetime.time(15, 20)).replace(tzinfo=ZoneInfo('America/New_York'))
                         dynamic_dump_dt = base_dump_dt - datetime.timedelta(seconds=dump_jitter_sec)
@@ -1171,7 +1172,7 @@ class TelegramSyncEngine:
                 total_buy_needed += sum(
                     self._safe_float(o.get('price')) * self._safe_float(o.get('qty'))
                     for o in plan_orders_raw if isinstance(o, dict) and o.get('side') == 'BUY'
-                )
+                 )
             except Exception as e:
                 logging.error(f"🚨 [{t}] 개별 종목 지시서 연산 중 치명적 런타임 오류 발생 (해당 종목 격리): {e}")
                 continue
