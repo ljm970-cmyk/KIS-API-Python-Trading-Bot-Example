@@ -3,8 +3,9 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Async I/O 족쇄, State Mismatch 방어, Float 정밀도 사수) 통과 완료.
 # 🚨 MODIFIED: [딥-레스큐 V85.00 프리장 스캘퍼 전면 리빌딩] 기존 정규장 기반의 "실시간 딥-레스큐" 텍스트를 "프리장 스캘핑 모드"로 전면 교체.
+# 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 게이트웨이가 소각됨에 따라 '순수 갭 하락 스캔 중', '갭 하락 조건 충족' 등의 텍스트를 전면 소각하고 '무제한 딥-매수 타격 스캔 중', '시가 확정' 포맷으로 100% 교정 락온.
 # 🚨 MODIFIED: [뷰포트 팩트 교정] 당일 시가(Open) 및 Amp5 오프셋 기반의 타점 렌더링을 100% 소각. 오직 04:00 기준 "프리장 시가(Pre_Open)"를 추출하여 "-1.0% 딥-매수", "-0.5% 단독구출가" 절대 앵커링 좌표만 정밀 렌더링.
-# 🚨 MODIFIED: [진입 게이트 동기화] 본진 평단가(main_actual_avg) 비교 로직 UI 소각. 오직 "전일 종가 > 프리장 시가" (순수 갭 하락) 여부만 직관적으로 표출.
+# 🚨 MODIFIED: [진입 게이트 동기화] 본진 평단가(main_actual_avg) 비교 로직 UI 소각. 전일 종가 비교 역시 소각.
 # 🚨 MODIFIED: [Fire & Forget 락온] 타임스탑 청산 대기 메시지를 폐기하고, "🎯 0.5% 단독 구출 덫 가동 중 (Fire & Forget)" 상태 메시지 락온.
 # 🚨 MODIFIED: [Type-Safety 궁극 수술] 상위 모듈에서 `app_data`가 None 또는 List로 오염 유입 시 발생하는 `setdefault` 런타임 붕괴를 방어하기 위해 isinstance 타입 쉴드 강제 주입.
 # 🚨 MODIFIED: [Insight 14, 25] API String-Float 및 NaN/Inf 맹독성 포맷팅 쉴드. `_safe_float` 코어 래핑 전면 결속 완료.
@@ -99,13 +100,13 @@ class AvwapConsolePlugin:
             else:
                 status_code = "CLOSE"
 
-        # 🚨 MODIFIED: [V85.00 헤더 팩트 롤오버] 프리장 스캘핑 모드로 텍스트 정밀 교정
+        # 🚨 MODIFIED: [V85.00 헤더 팩트 롤오버] 프리장 스캘핑 모드로 텍스트 정밀 교정 (무제한 타격)
         if status_code == "HOLIDAY":
             header_status = "💤 <b>[ 미국 증시 휴장일 / 관망 모드 ]</b>"
         elif status_code in ["AFTER", "CLOSE"]:
             header_status = "🌙 <b>[ 애프터마켓 / 감시 종료 ]</b>"
         elif status_code == "PRE":
-            header_status = "🌅 <b>[ 프리장 스캘핑 모드 (순수 갭 하락 스캔 중) ]</b>"
+            header_status = "🌅 <b>[ 프리장 스캘핑 모드 (무제한 딥-매수 타격 스캔 중) ]</b>"
         else:
             header_status = "🔥 <b>[ 정규장 진입 (프리장 스캘퍼 퇴근 대기) ]</b>"
         
@@ -239,9 +240,10 @@ class AvwapConsolePlugin:
             elif avwap_qty > 0:
                 status_txt = "🎯 0.5% 단독 구출 덫 가동 중 (Fire & Forget)"
             elif limit_order_placed and t_h > 0:
-                status_txt = f"⚡ 갭 하락 조건 100% 충족 ➡️ [프리장 -1.0% 지정가 매수 덫 장전 집행: ${t_h:.2f}]"
+                # 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 조건 텍스트 소각
+                status_txt = f"⚡ 시가 확정 ➡️ [프리장 -1.0% 지정가 매수 덫 장전 집행: ${t_h:.2f}]"
             else:
-                status_txt = "⚡ 프리장 갭 하락 판별 대기 중"
+                status_txt = "⚡ 프리장 시가(Pre_Open) 확정 대기 중"
             
             try:
                 avwap_state_dict = {
@@ -301,10 +303,12 @@ class AvwapConsolePlugin:
                     elif avwap_qty > 0:
                         status_txt = "🎯 0.5% 단독 구출 덫 가동 중 (Fire & Forget)"
                     elif limit_order_placed and t_h > 0:
-                        status_txt = f"⚡ 갭 하락 확정 ➡️ [지정가 매수 덫 장전 중: ${t_h:.2f}]"
+                        # 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 조건 텍스트 소각
+                        status_txt = f"⚡ 시가 확정 ➡️ [지정가 매수 덫 장전 중: ${t_h:.2f}]"
                     else:
                         if action == "PLACE_TRAP":
-                            status_txt = f"⚡ 갭 하락 확정 ➡️ [지정가 매수 덫 장전 집행]"
+                            # 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 텍스트 소각
+                            status_txt = f"⚡ 시가 확정 ➡️ [지정가 매수 덫 장전 집행]"
                         elif action == "VERIFY_TRAP_FILL":
                             status_txt = f"🔥 덫 하향 관통 ➡️ [실체결 무결성 검증 격발]"
                         elif action == "TRAP_WAIT":

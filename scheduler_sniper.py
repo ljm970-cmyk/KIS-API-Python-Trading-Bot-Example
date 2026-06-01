@@ -2,6 +2,7 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 게이트웨이가 코어에서 소각됨에 따라, 텔레그램 타전망의 '갭 하락 타격 덫', '프리장 갭 하락 스캘핑' 등의 레거시 텍스트를 '프리장 시가 기준 무제한 덫' 포맷으로 전면 교정 완료.
 # 🚨 MODIFIED: [Indentation 붕괴 수술] V14 상방 감시 스나이퍼 매수/매도 체결 검증 파이프라인의 들여쓰기 붕괴(IndentationError) 완벽 팩트 교정 완료.
 # 🚨 MODIFIED: [딥-레스큐 V85.00 프리장 스캘퍼 리빌딩] 암살자 올인 매수(PLACE_TRAP) 및 단독 구출(VERIFY_TRAP_FILL) 투트랙 팩트 락온
 # 🚨 MODIFIED: [절대 앵커링 단독 탈출] KIS 평단가(kis_avg) 기반 목표가 산출 로직 100% 영구 소각. Strategy 엔진에서 하달받은 '프리장 시가 - 0.5% (placed_target_th)' 고정 좌표로 100% 단독 구출 덫 락온.
@@ -171,7 +172,7 @@ async def scheduled_sniper_monitor(context):
                     if version == "V_REV":
                         h = safe_holdings.get(t) or {}
                         actual_qty = int(_safe_float(h.get('qty', 0)))
-                         
+                        
                         if not is_avwap_hybrid:
                             continue
                 
@@ -216,7 +217,7 @@ async def scheduled_sniper_monitor(context):
                             except Exception:
                                 if attempt == 2: pass
                                 else: await asyncio.sleep(1.0 * (2 ** attempt))
-                              
+                               
                         if exec_curr_p <= 0 or base_curr_p <= 0: continue
                         
                         prev_c, amp5 = 0.0, 0.0
@@ -305,7 +306,8 @@ async def scheduled_sniper_monitor(context):
                                     tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = odno
                                     tracking_cache[f"AVWAP_TRAP_QTY_{t}"] = qty 
                                     
-                                    msg = f"🎯 <b>[프리장 스캘퍼 V85.00] 갭 하락 타격 지정가 덫 장전 완료!</b>\n"
+                                    # 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 텍스트 소각 및 무제한 덫 텍스트로 교체
+                                    msg = f"🎯 <b>[프리장 스캘퍼 V85.00] 프리장 시가 기준 무제한 덫 장전 완료!</b>\n"
                                     msg += f"▫️ 타겟: {html.escape(str(t))}\n"
                                     msg += f"▫️ 절대 앵커링(-1.0%) 덫 타점: <b>${exec_price:.2f}</b>\n"
                                     msg += f"▫️ 목표 수량: {qty}주 (단일 지갑 예산 100% 딥-다이브)\n"
@@ -332,8 +334,10 @@ async def scheduled_sniper_monitor(context):
                                 else:
                                     err_msg = html.escape(res.get('msg1', '응답 없음') if isinstance(res, dict) else '통신 장애')
                                     logging.error(f"🚨 [{t}] 프리장 스캘퍼 덫 장전 KIS 서버 거절: {err_msg}")
+                                    
+                                    # 🚨 MODIFIED: [텍스트 팩트 롤오버] 갭 하락 텍스트 소각 및 무제한 덫 텍스트로 교체
                                     reject_msg = (
-                                        f"🚨 <b>[{html.escape(str(t))}] 프리장 갭 하락 스캘핑 장전 서버 거절 (Reject)!</b>\n"
+                                        f"🚨 <b>[{html.escape(str(t))}] 프리장 시가 기준 무제한 덫 장전 서버 거절 (Reject)!</b>\n"
                                         f"▫️ 사유: <code>{err_msg}</code>\n"
                                         f"▫️ 조치: 다음 1분 사이클에서 재장전을 시도합니다."
                                     )
@@ -485,7 +489,8 @@ async def scheduled_sniper_monitor(context):
                                         await asyncio.sleep(0.06) 
                                         await asyncio.wait_for(asyncio.to_thread(broker.cancel_order, t, buy_odno), timeout=10.0)
                                         await asyncio.sleep(0.5)
-                                        msg_trap = "\n▫️ (장전된 프리장 스캘핑 매수 덫 전면 파기 완료)"
+                                        # 🚨 MODIFIED: [텍스트 팩트 롤오버] 무제한 타격 매수 덫 파기로 텍스트 교체
+                                        msg_trap = "\n▫️ (장전된 프리장 무제한 타격 매수 덫 전면 파기 완료)"
                                     except: msg_trap = "\n▫️ (장전된 덫 파기 시도 중 에러)"
                                 else: msg_trap = ""
                                     
@@ -596,12 +601,12 @@ async def scheduled_sniper_monitor(context):
                      
                             ask_price = 0.0
                             for attempt in range(3):
-                                try:
+                                 try:
                                     await asyncio.sleep(0.06) 
                                     bid_price_val = await asyncio.wait_for(asyncio.to_thread(broker.get_ask_price, t), timeout=10.0)
                                     ask_price = _safe_float(bid_price_val)
                                     break
-                                except Exception: 
+                                 except Exception: 
                                     if attempt == 2: ask_price = 0.0
                                     else: await asyncio.sleep(1.0 * (2**attempt))
                             exec_price = ask_price if ask_price > 0 else limit_p
@@ -680,7 +685,7 @@ async def scheduled_sniper_monitor(context):
                                 try:
                                     await context.bot.send_message(chat_id=chat_id, text=reject_msg, parse_mode='HTML')
                                 except: pass
-             
+              
                     # 🚨 MODIFIED: [Boolean String Paradox 방어] 문자열 오염 시 발생 가능한 평가 오류 완벽 차단
                     is_zero_start_session = False
                     try:
@@ -716,7 +721,7 @@ async def scheduled_sniper_monitor(context):
                         upward_mode = False
                         
                     is_upward_active = upward_mode and not is_rev and not sniper_sell_locked and master_switch != "DOWN_ONLY"
-                
+              
                     if is_zero_start_session: is_upward_active = False
 
                     if is_upward_active and action in ["SELL_QUARTER", "SELL_JACKPOT"]:
@@ -807,7 +812,7 @@ async def scheduled_sniper_monitor(context):
                                         # 🚨 [제1헌법] 비동기 파일 I/O 타임아웃 래핑
                                         try: await asyncio.wait_for(asyncio.to_thread(cfg.set_sniper_sell_locked, t, True), timeout=5.0)
                                         except Exception: pass
-            
+             
                                     try:
                                         await asyncio.sleep(0.06) 
                                         exec_history = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_est_str, today_est_str), timeout=15.0)

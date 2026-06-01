@@ -3,7 +3,7 @@
 # ==========================================================
 # 🚨 MODIFIED: [딥-레스큐 V85.00 프리장 스캘퍼 완전 개조]
 # 🚨 MODIFIED: [타임라인 팩트 롤오버] 정규장 스캔을 전면 소각하고 04:00~09:29 EST 프리장(Pre-market) 시간대 전용 작동 락온. 09:30 도달 시 미체결 덫 강제 파기(SHUTDOWN).
-# 🚨 MODIFIED: [진입 게이트 순수성] 본진 평단가 비교 로직 100% 영구 소각. 오직 "전일 종가 > 프리장 시가" (순수 갭 하락) 시에만 무조건 100% 개방.
+# 🚨 MODIFIED: [진입 게이트 순수성] 갭하락 필터 완벽 폐기. 본진 평단가 및 전일 종가 비교 로직을 100% 영구 소각. 매일 프리장 개장 시 무조건 100% 개방(무제한 타격 모드).
 # 🚨 MODIFIED: [절대 앵커링 타점] Amp5, 오프셋 등 가변 데드코드 전면 소각. 오직 프리장 시가 기준 "-1.0% 지정가 매수" ➔ "-0.5% 지정가 매도" 타점 고정 연산 락온.
 # 🚨 MODIFIED: [Fire & Forget 락온] 매수 체결(avwap_qty > 0) 확인 즉시 단독 탈출망(-0.5%) 장전 상태로 판단하여 추가 개입 없이 영구 동결(HOLD) 퇴근.
 # 🚨 MODIFIED: [State Mismatch 수술] 덫 산출 즉시 로컬 변수(placed_target_th)에도 최신 타겟가를 오버라이드하여 1틱 지연 패러독스 원천 차단.
@@ -257,11 +257,6 @@ class VAvwapHybridPlugin:
         if avwap_alloc_cash == 0.0:
             avwap_alloc_cash = self._safe_float(kwargs.get('alloc_cash', kwargs.get('avwap_alloc_cash', 0.0)))
         
-        # 🚨 MODIFIED: 본진 평단가 조건 완전 소각 (순수 갭 하락 팩트만 남김)
-        prev_close_val = self._safe_float(prev_close)
-        if prev_close_val == 0.0:
-            prev_close_val = self._safe_float(kwargs.get('prev_close', 0.0))
-
         curr_l = 0.0
         curr_candle_time_str = "" 
         pre_open = 0.0
@@ -327,15 +322,9 @@ class VAvwapHybridPlugin:
         if pre_open <= 0.0:
             return _build_res('WAIT', '프리장 시가(Pre_Open) 확정 대기중')
 
-        if prev_close_val <= 0.0:
-            return _build_res('WAIT', '전일 종가 확정 대기중')
-
-        # 🚨 MODIFIED: [사후 하락장 게이트 수술] 본진 평단가 비교 소각, 순수 갭 하락 판별 락온
-        if prev_close_val <= pre_open:
-            return _build_res('SHUTDOWN', f'갭 하락 미발생 (전일종가 ${prev_close_val:.2f} <= 프리장시가 ${pre_open:.2f}). 당일 작전 취소.')
-
-        # 🚨 NEW: [절대 앵커링 고정 덫 산출] 프리장 시가 기준 매수/매도 타점 절대 박제
-        t_h = round(pre_open * 0.990, 2)          # -1.0% 매수 덫
+        # 🚨 MODIFIED: [무조건 격발] 전일 종가 비교 로직 및 갭 하락 게이트웨이 전면 소각
+        # 🚨 NEW: [절대 앵커링 고정 덫 산출] 오직 프리장 시가 기준 매수/매도 타점 절대 박제 (무제한 타격 모드)
+        t_h = round(pre_open * 0.990, 2)  # -1.0% 매수 덫
         target_sell = round(pre_open * 0.995, 2)  # -0.5% 매도 덫
 
         # 🚨 MODIFIED: [State Mismatch 수술] 덫 산출 즉시 로컬 변수(placed_target_th)에도 최신 타겟가를 덮어씌워 1틱 지연 현상 원천 봉쇄
@@ -381,6 +370,7 @@ class VAvwapHybridPlugin:
             return _build_res('WAIT', '예산 고갈 ZeroDivision 방어 (1주 미만 산출)')
 
         buy_qty = int(math.floor(avwap_alloc_cash / t_h))
-        logging.info(f"🚀 [V85.00 프리장 스캘핑] 갭 하락 확정! 시가 앵커링(-1.0%) 고정 덫 즉시 장전! (타겟가: ${t_h:.2f}, 수량: {buy_qty}주)")
+        # 🚨 MODIFIED: [타전망 팩트 교정] 무제한 타격 모드 텍스트 롤오버
+        logging.info(f"🚀 [V85.00 프리장 스캘핑] 무제한 타격 개방! 시가 앵커링(-1.0%) 고정 덫 즉시 장전! (타겟가: ${t_h:.2f}, 수량: {buy_qty}주)")
         
-        return _build_res('PLACE_TRAP', '프리장 갭 하락 확정. 시가 앵커링(-1.0%) 고정 덫 즉시 장전', qty=buy_qty, target_price=t_h, t_time=curr_candle_time_str)
+        return _build_res('PLACE_TRAP', '프리장 시가 확정. 시가 앵커링(-1.0%) 고정 덫 무조건 장전', qty=buy_qty, target_price=t_h, t_time=curr_candle_time_str)
