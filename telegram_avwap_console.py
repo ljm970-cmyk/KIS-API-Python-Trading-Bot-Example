@@ -2,6 +2,8 @@
 # FILE: telegram_avwap_console.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Async I/O 족쇄, State Mismatch 방어, Float 정밀도 사수) 통과 완료.
+# 🚨 MODIFIED: [Time Paradox UI 렌더링 붕괴 수술] 관제탑(UI)에서 야후 파이낸스 1분봉 관통 시간을 연산할 때, 전일(Yesterday) 데이터 혼입을 막기 위해 무조건 `now_est.date()` 로 슬라이싱하도록 100% 팩트 교정 완료.
+# 🚨 MODIFIED: [UI 관통 시점 추적 팩트 롤오버] 매수 덫 관통 시점을 스캔할 때 04:01부터 전부 스캔하던 오류를 고치고, '실제 매수 덫이 장전/갱신된 시점(trap_placed_time)' 이후부터 스캔하도록 논리 팩트 락온.
 # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] asyncio.gather 로 인한 동시 격발 폭주(Rate Limit)를 막기 위해 순차적(Sequential) await 및 0.06초 샌드위치 지연 강제 락온.
 # 🚨 MODIFIED: [V86.50 텍스트 팩트 롤오버] '딥-레스큐', '암살자' 등 레거시 명칭을 영구 소각하고 '새벽 수금원', '프리장 스캘퍼' 퀀트 네이밍으로 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [Fire & Forget 락온] 매수 완료 시 "🎯 +2% 단독 구출 덫 장전 완료 및 조기 퇴근 (Fire & Forget)" 상태 메시지 락온.
@@ -34,7 +36,6 @@ class AvwapConsolePlugin:
         self.strategy = strategy
         self.tx_lock = tx_lock
 
-    # 🚨 [수학 연산 붕괴 방어] NaN, Infinity 및 String-Comma 맹독성 데이터 정밀 필터링 락온
     def _safe_float(self, val):
         try:
             f_val = float(str(val or 0.0).replace(',', ''))
@@ -45,16 +46,15 @@ class AvwapConsolePlugin:
             return 0.0
 
     async def get_console_message(self, app_data):
-        # 🚨 [Type-Safety 궁극 수술] app_data가 None이거나 List/Tuple로 오염 유입 시 발생하는 setdefault 붕괴 원천 차단
         if not isinstance(app_data, dict):
             app_data = {}
 
         est = ZoneInfo('America/New_York')
         now_est = datetime.datetime.now(est)
         curr_time = now_est.time()
+        today_est_date = now_est.date()
         
         time_0400 = datetime.time(4, 0)
-        # 🚨 MODIFIED: [Bad Print 맹독성 방어] 진입 게이트 04:01 EST 락온
         time_0401 = datetime.time(4, 1)
         time_0930 = datetime.time(9, 30)
         
@@ -80,7 +80,6 @@ class AvwapConsolePlugin:
         
         if schedule is None or schedule.empty:
             if schedule is None and now_est.weekday() < 5: 
-                # 🚨 [Fail-Open 팩트 교정] 무조건 가상 정규장 시간(Mock) 맵핑
                 market_open = now_est.replace(hour=9, minute=30, second=0, microsecond=0)
                 market_close = now_est.replace(hour=16, minute=0, second=0, microsecond=0)
             else: 
@@ -104,7 +103,6 @@ class AvwapConsolePlugin:
             else:
                 status_code = "CLOSE"
 
-        # 🚨 MODIFIED: [V86.50 헤더 팩트 롤오버] 새벽 수금원(스캘퍼) 모드로 텍스트 정밀 교정 (매수 4% 고가 추적)
         if status_code == "HOLIDAY":
             header_status = "💤 <b>[ 미국 증시 휴장일 / 관망 모드 ]</b>"
         elif status_code in ["AFTER", "CLOSE"]:
@@ -114,7 +112,6 @@ class AvwapConsolePlugin:
         else:
             header_status = "🔥 <b>[ 정규장 진입 (프리장 스캘퍼 퇴근 대기) ]</b>"
         
-        # 🚨 [제1헌법] File I/O 코루틴 타임아웃 족쇄 래핑
         try:
             active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
         except Exception as e:
@@ -128,9 +125,7 @@ class AvwapConsolePlugin:
            
         active_avwap = avwap_tickers
         
-        # 🚨 [메모리 멱등성 사수] get() 대신 setdefault()를 사용하여 전역 딕셔너리와 참조 연결 락온
         tracking_cache = app_data.setdefault('sniper_tracking', {})
-        # 🚨 [메모리 오염 붕괴 방어] None 타입 유입 시 발생하는 AttributeError 차단
         if not isinstance(tracking_cache, dict):
             tracking_cache = {}
             app_data['sniper_tracking'] = tracking_cache
@@ -139,7 +134,6 @@ class AvwapConsolePlugin:
         holdings = {}
         for attempt in range(3):
             try:
-                # 🚨 [Case 32] 잔고 조회 루프 내 누락된 TPS 캡핑 방어막 주입
                 await asyncio.sleep(0.06)
                 cash_val_tuple = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
                 cash_val = cash_val_tuple[0] if isinstance(cash_val_tuple, (list, tuple)) and len(cash_val_tuple) > 0 else 0.0
@@ -155,7 +149,6 @@ class AvwapConsolePlugin:
         
         available_cash = self._safe_float(cash_val)
         
-        # 🚨 MODIFIED: [V86.50 헤더 팩트 롤오버] 새벽 수금원 텍스트 교정
         msg = f"🔫 <b>[ 새벽 수금원(스캘퍼) V86.50 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
@@ -175,7 +168,6 @@ class AvwapConsolePlugin:
             
             if not tracking_cache.get(f"AVWAP_INIT_{t}"):
                 try:
-                    # 🚨 [제1헌법] File I/O 코루틴 타임아웃 족쇄 래핑
                     saved_state = await asyncio.wait_for(asyncio.to_thread(self.strategy.v_avwap_plugin.load_state, t, now_est), timeout=10.0) or {}
                     if saved_state:
                         tracking_cache[f"AVWAP_SHUTDOWN_{t}"] = bool(saved_state.get('shutdown'))
@@ -183,10 +175,10 @@ class AvwapConsolePlugin:
                         tracking_cache[f"AVWAP_AVG_{t}"] = self._safe_float(saved_state.get('avg_price'))
                         tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = str(saved_state.get('trap_odno') or "")
                         tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = bool(saved_state.get('limit_order_placed'))
-                        tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = self._safe_float(saved_state.get('sell_target')) # 🚨 MODIFIED: sell_target 로드
+                        tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = self._safe_float(saved_state.get('sell_target')) 
                         tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{t}"] = str(saved_state.get('trap_placed_time') or "")
                         tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = str(saved_state.get('buy_odno') or "")
-                        tracking_cache[f"AVWAP_T_H_{t}"] = self._safe_float(saved_state.get('buy_target')) # 🚨 MODIFIED: buy_target 로드
+                        tracking_cache[f"AVWAP_T_H_{t}"] = self._safe_float(saved_state.get('buy_target')) 
                         tracking_cache[f"AVWAP_TRACKING_HIGH_{t}"] = self._safe_float(saved_state.get('tracking_high'))
                         
                     tracking_cache[f"AVWAP_INIT_{t}"] = True
@@ -194,7 +186,6 @@ class AvwapConsolePlugin:
                     logging.debug(f"🚨 상태 캐시 로드 중 타임아웃/에러: {e}")
                     pass
 
-            # 🚨 [제1헌법] File I/O 코루틴 타임아웃 족쇄 래핑
             try:
                 is_avwap_active = await asyncio.wait_for(asyncio.to_thread(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
             except Exception:
@@ -203,7 +194,6 @@ class AvwapConsolePlugin:
             active_str = f"🟢 고가 추적 감시 중" if is_avwap_active else "⚪ 대기 (OFF)"
             
             try:
-                # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] asyncio.gather 동시 격발 해체 및 순차적(Sequential) await 로 100% KIS 서버 Rate Limit 캡핑 락온
                 curr_p_val = await _get_with_retry(self.broker.get_current_price, t)
                 curr_p = self._safe_float(curr_p_val)
                 await asyncio.sleep(0.06)
@@ -216,23 +206,22 @@ class AvwapConsolePlugin:
             except Exception as e:
                 curr_p, prev_c, df_1m = 0.0, 0.0, None
 
-            # 🚨 MODIFIED: [프리장 시가 및 절대 최고가 추출 락온]
             pre_open = 0.0
             pre_high = 0.0
             pre_high_time = "미도달"
 
-            # 🚨 MODIFIED: [Bad Print 맹독성 방어] 04:01부터 시가/고가 뷰포트 시뮬레이션 추출 락온 (04:00 노이즈 렌더링 원천 차단)
             if curr_time >= time_0401:
+                # 🚨 MODIFIED: [Time Paradox 붕괴 수술] YF 데이터에 어제(Yesterday) 데이터가 혼입되지 않도록 `now_est.date()` 로 완벽 슬라이싱
                 if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
-                    # 🚨 MODIFIED: [정규장 스파이크 오염 차단] 09:29:59 이후 데이터는 팩트 추출에서 영구 배제
-                    df_pre = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= '092959')]
+                    df_today = df_1m[df_1m.index.date == today_est_date]
+                    df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '092959')]
+                    
                     if not df_pre.empty:
                         pre_open = self._safe_float(df_pre['open'].iloc[0])
-                        pre_high = self._safe_float(df_pre['high'].max())
+                        safe_high_series = pd.to_numeric(df_pre['high'], errors='coerce')
+                        pre_high = self._safe_float(safe_high_series.max())
+                        
                         try:
-                            # 최고가를 기록한 행 필터링
-                            # 🚨 MODIFIED: [Float 정밀도 검사] astype 붕괴 방어용 to_numeric 강제 변환 쉴드
-                            safe_high_series = pd.to_numeric(df_pre['high'], errors='coerce')
                             h_row = df_pre[safe_high_series >= pre_high]
                             if not h_row.empty:
                                 raw_h_t = str(h_row['time_est'].iloc[0]).zfill(6)
@@ -248,38 +237,37 @@ class AvwapConsolePlugin:
             t_h = self._safe_float(tracking_cache.get(f"AVWAP_T_H_{t}"))
             tracking_high_cache = self._safe_float(tracking_cache.get(f"AVWAP_TRACKING_HIGH_{t}"))
             
-            # 본진 실제 평단가 수집
             h_t = holdings.get(t) or {}
             main_actual_avg = self._safe_float(h_t.get('avg', 0.0))
             actual_qty = int(self._safe_float(h_t.get('qty', 0)))
             
-            # 🚨 [매수 4% 고가 추적 뷰포트 오버라이드] 미장전 상태일지라도 시뮬레이션 값을 표출 (04:01 이후에만 pre_high가 0보다 큼)
             if t_h == 0.0 and pre_high > 0.0:
-                # 최고가 캐시가 더 높다면 팩트 보정 (YF 차트 스킵 방어)
                 effective_high = max(pre_high, tracking_high_cache)
                 t_h = round(effective_high * 0.960, 2)
             if placed_target_th == 0.0 and pre_high > 0.0:
                 effective_high = max(pre_high, tracking_high_cache)
-                placed_target_th = round((effective_high * 0.960) * 1.020, 2) # 예상 체결가 기준 +2%
+                placed_target_th = round((effective_high * 0.960) * 1.020, 2) 
 
-            # 🚨 MODIFIED: [시계열 모순(Time Paradox) 완벽 수술] 
-            # 04:00 시가 확정 캔들을 배제하고, 실제 주문이 전송된 04:01 캔들부터 관통 시각을 추적.
             pierce_buy_time = "미도달"
             pierce_sell_time = "미도달"
 
             if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
-                df_pre = df_1m[(df_1m['time_est'] >= '040000') & (df_1m['time_est'] <= '092959')]
+                df_today = df_1m[df_1m.index.date == today_est_date]
+                df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '092959')]
+                
                 if not df_pre.empty and t_h > 0.0:
                     try:
-                        # 매수 타점 관통 (시가 확정 이후인 04:01부터 스캔하여 룩어헤드 편향 원천 차단)
-                        df_buy_scan = df_pre[df_pre['time_est'] >= '040100']
+                        # 🚨 MODIFIED: [UI 렌더링 관통 시점 교정] 04:01부터 무조건 스캔하던 오류를 고치고, 덫이 장전/갱신된 시점 이후부터만 스캔하도록 팩트 락온
+                        trap_time_str = str(tracking_cache.get(f"AVWAP_TRAP_PLACED_TIME_{t}") or '040100')
+                        if trap_time_str < '040100': trap_time_str = '040100'
+                        
+                        df_buy_scan = df_pre[df_pre['time_est'] >= trap_time_str]
                         safe_low_series = pd.to_numeric(df_buy_scan['low'], errors='coerce')
                         b_rows = df_buy_scan[safe_low_series <= t_h]
                         if not b_rows.empty:
                             raw_b_t = str(b_rows['time_est'].iloc[0]).zfill(6)
                             pierce_buy_time = f"{raw_b_t[:2]}:{raw_b_t[2:4]}"
 
-                            # 매도 타점 관통 (매수가 관통된 시점보다 '무조건 나중(>)'의 캔들만 스캔)
                             if placed_target_th > 0.0:
                                 df_after = df_pre[df_pre['time_est'] > raw_b_t]
                                 safe_high_series_sell = pd.to_numeric(df_after['high'], errors='coerce')
@@ -289,13 +277,11 @@ class AvwapConsolePlugin:
                                     pierce_sell_time = f"{raw_s_t[:2]}:{raw_s_t[2:4]}"
                     except Exception: pass
             
-            # 🚨 [UI Rendering 무결성 수술] 통신 타임아웃 대비 사전 캐시 상태 평가로 Fallback 락온
             if is_holiday:
                 status_txt = f"💤 미국 증시 휴장일 (관측 오프라인)"
             elif is_shutdown and avwap_qty == 0: 
                 status_txt = "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
             elif avwap_qty > 0:
-                # 🚨 MODIFIED: [Fire & Forget 상태 표출]
                 status_txt = "🎯 +2% 단독 구출 덫 장전 완료 및 봇 조기 퇴근 (Fire & Forget)"
             elif limit_order_placed and t_h > 0:
                 status_txt = f"⚡ 동적 추적 ➡️ [지정가 매수 덫 갱신 중: ${t_h:.2f}]"
@@ -318,7 +304,6 @@ class AvwapConsolePlugin:
                     "tracking_high": tracking_high_cache
                 }
                 
-                # 🚨 [의사결정 엔진 동기화] 시뮬레이션 가동으로 실시간 상태 텍스트 정밀 도출
                 avwap_base_ticker = 'SOXX' if t == 'SOXL' else ('QQQ' if t == 'TQQQ' else t)
                 decision = await asyncio.wait_for(
                     asyncio.to_thread(
@@ -341,18 +326,17 @@ class AvwapConsolePlugin:
                     action = decision.get('action')
                     reason = html.escape(str(decision.get('reason', '')))
                     
-                    v_t_h = decision.get('T_H') # buy_target
+                    v_t_h = decision.get('T_H') 
                     if v_t_h and self._safe_float(v_t_h) > 0:
                         t_h = self._safe_float(v_t_h)
                     
                     v_limit_order_placed = decision.get('limit_order_placed')
                     limit_order_placed = bool(v_limit_order_placed) if v_limit_order_placed is not None else limit_order_placed
                     
-                    v_placed_target_th = decision.get('placed_target_th') # sell_target
+                    v_placed_target_th = decision.get('placed_target_th') 
                     if v_placed_target_th and self._safe_float(v_placed_target_th) > 0:
                         placed_target_th = self._safe_float(v_placed_target_th)
                     
-                    # 🚨 MODIFIED: 상태 동기화
                     tracking_cache[f"AVWAP_T_H_{t}"] = t_h
                     tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = limit_order_placed
                     tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = placed_target_th
@@ -362,7 +346,6 @@ class AvwapConsolePlugin:
                     elif is_shutdown and avwap_qty == 0: 
                         status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
                     elif avwap_qty > 0:
-                        # 🚨 MODIFIED: [Fire & Forget 상태 표출]
                         status_txt = "🎯 +2% 단독 구출 덫 장전 완료 및 봇 조기 퇴근 (Fire & Forget)"
                     elif limit_order_placed and t_h > 0:
                         status_txt = f"⚡ 동적 추적 ➡️ [지정가 매수 덫 갱신 중: ${t_h:.2f}]"
@@ -385,7 +368,6 @@ class AvwapConsolePlugin:
             except Exception as e:
                 pass
 
-            # 🚨 MODIFIED: [V86.50 시계열 정렬 팩트 교정] 프리장 4% 동적 추적 레이아웃
             msg += f"🎯 <b>[ {ticker_clean} 프리장 스캘퍼 관제탑 - {active_str} ]</b>\n"
             msg += f"▫️ 전일 종가(Prev): <b>${prev_c:.2f}</b>\n"
             msg += f"▫️ 프리장 시가(04:00): <b>${pre_open:.2f}</b>\n"
@@ -398,7 +380,6 @@ class AvwapConsolePlugin:
             msg += f"▫️ 현재가격: <b>${curr_p:.2f}</b>\n"
             msg += f"▫️ 본진평단: <b>${main_actual_avg:.2f}</b> ({actual_qty}주)\n"
 
-            # 🚨 NEW: [KIS ODNO 연동] 발급된 KIS 고유 주문번호(ODNO)를 UI 뷰포트에 직접 렌더링
             buy_odno_txt = str(tracking_cache.get(f"AVWAP_BUY_ODNO_{t}") or "")
             trap_odno_txt = str(tracking_cache.get(f"AVWAP_TRAP_ODNO_{t}") or "")
 
@@ -420,7 +401,6 @@ class AvwapConsolePlugin:
                 keyboard.append([InlineKeyboardButton(f"💤 [{ticker_clean}] 증시 휴장일", callback_data="AVWAP_SET:REFRESH:NONE")])
             elif status_code in ["PRE", "REG"]:
                 if avwap_qty > 0:
-                    # 🚨 MODIFIED: [V86.00 텍스트 롤오버] 스캘퍼 수동 청산 명칭 변경
                     keyboard.append([InlineKeyboardButton(f"🧯 {ticker_clean} 스캘퍼 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
             else:
                 keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감 (수동 제어 불가)", callback_data="AVWAP_SET:REFRESH:NONE")])

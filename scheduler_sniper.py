@@ -2,6 +2,8 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [Phantom Fill 맹독성 버그 수술] KIS 미체결 대기열 스캔 로직을 주입하여, YF 차트 관통 시 KIS 원장에 주문이 미체결로 살아있으면 가상 체결(Virtual Fill)을 보류하는 `is_buy_unfilled` 플래그 결속.
+# 🚨 MODIFIED: [API 통신 지연 Fail-Open 팩트 교정] KIS 원장 스캔 시 API가 `False`를 반환할 때 지수 백오프를 건너뛰는 논리적 허점을 소각하고, 정확히 3회 재시도 후 Fail-Open 되도록 락온.
 # 🚨 MODIFIED: [Case 34 망각 치료 및 메모리 덮어쓰기] KIS DB가 동기화되어 매도 덫 전송이 성공(Success) 시, 누락된 체결 팩트(qty, avg_price)를 state_data와 tracking_cache에 하드코딩 강제 주입하여 Virtual Fill 체결 인지망 영구 사수.
 # 🚨 MODIFIED: [Case 34 잔고 부족(DB Lag) 무한 멱등성 락온] PLACE_SELL_TRAP 거절(Reject) 시 limit_order_placed = True 상태를 보존하여 다음 1분 사이클에서 무한 재시도(Retry) 격발.
 # 🚨 MODIFIED: [Action Signal Mismatch 수술] 스케줄러 통신망 단절 방어를 위해 매도 격발 시그널을 'PLACE_SELL_TRAP'으로 정밀 교정 완료.
@@ -38,7 +40,6 @@ def _safe_float(val):
         return 0.0
 
 async def scheduled_sniper_monitor(context):
-    # 🚨 [Insight 27] context.job.data 리스트 오염 유입 시 AttributeError 즉사 방어막 락온
     raw_job_data = getattr(context.job, 'data', None)
     job_data = raw_job_data if isinstance(raw_job_data, dict) else {}
     tx_lock = job_data.get('tx_lock')
@@ -151,7 +152,6 @@ async def scheduled_sniper_monitor(context):
             safe_holdings = holdings if isinstance(holdings, dict) else {}
             avwap_free_cash = max(0.0, _safe_float(cash))
             
-            # 🚨 [제1헌법] config I/O 타임아웃 방어막 락온
             try:
                 active_tickers = await asyncio.wait_for(asyncio.to_thread(cfg.get_active_tickers), timeout=5.0) or []
             except Exception:
@@ -161,7 +161,6 @@ async def scheduled_sniper_monitor(context):
                 try:
                     await asyncio.sleep(0.06) 
                     
-                    # 🚨 [제1헌법] config I/O 타임아웃 방어막 락온
                     try:
                         version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                         is_avwap_hybrid = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
@@ -192,7 +191,6 @@ async def scheduled_sniper_monitor(context):
                                     tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = saved_state.get('placed_target_th', 0.0)
                                     tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = saved_state.get('buy_odno', "")
                                     tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{t}"] = saved_state.get('trap_placed_time', "")
-                                    # 트레일링 전용 변수
                                     tracking_cache[f"AVWAP_TRACKING_HIGH_{t}"] = saved_state.get('tracking_high', 0.0)
                             except Exception: pass
                             tracking_cache[f"AVWAP_INIT_{t}"] = True
@@ -232,18 +230,41 @@ async def scheduled_sniper_monitor(context):
                             except Exception: 
                                 if attempt == 2: pass
                                 else: await asyncio.sleep(1.0 * (2 ** attempt))
-         
+
+                        # 🚨 NEW: [Phantom Fill 맹독성 버그 수술] KIS 원장 미체결 교차 검증을 통해 `is_buy_unfilled` 플래그 주입
+                        buy_odno_cache = tracking_cache.get(f"AVWAP_BUY_ODNO_{t}", "")
+                        is_buy_unfilled = False
+                        
+                        if tracking_cache.get(f"AVWAP_LIMIT_ORDER_PLACED_{t}") and buy_odno_cache:
+                            for c_attempt in range(3):
+                                try:
+                                    await asyncio.sleep(0.06)
+                                    unf_res = await asyncio.wait_for(asyncio.to_thread(broker.get_unfilled_orders_detail, t), timeout=10.0)
+                                    # 🚨 MODIFIED: [API 통신 지연 Fail-Open 팩트 교정] API가 False를 반환 시 예외를 발생시켜 지수 백오프를 타도록 강제
+                                    if unf_res is False:
+                                        raise ValueError("API Returned False (Server Reject/Delay)")
+                                        
+                                    safe_unf = unf_res if isinstance(unf_res, list) else []
+                                    if any(isinstance(uo, dict) and str(uo.get('odno', '')) == buy_odno_cache for uo in safe_unf):
+                                        is_buy_unfilled = True
+                                    break
+                                except Exception:
+                                    # KIS 응답 딜레이 시 Fail-Open 기조로 Virtual Fill 허용 (False)
+                                    if c_attempt == 2: is_buy_unfilled = False 
+                                    else: await asyncio.sleep(1.0 * (2**c_attempt))
+
                         avwap_state_dict = {
                             "shutdown": tracking_cache.get(f"AVWAP_SHUTDOWN_{t}", False),
                             "qty": tracking_cache.get(f"AVWAP_QTY_{t}", 0),
                             "avg_price": tracking_cache.get(f"AVWAP_AVG_{t}", 0.0),
                             "trap_odno": tracking_cache.get(f"AVWAP_TRAP_ODNO_{t}", ""),
-                            "buy_odno": tracking_cache.get(f"AVWAP_BUY_ODNO_{t}", ""),
+                            "buy_odno": buy_odno_cache,
                             "T_H": tracking_cache.get(f"AVWAP_T_H_{t}", 0.0),
                             "limit_order_placed": tracking_cache.get(f"AVWAP_LIMIT_ORDER_PLACED_{t}", False),
                             "placed_target_th": tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}", 0.0),
                             "trap_placed_time": tracking_cache.get(f"AVWAP_TRAP_PLACED_TIME_{t}", ""),
-                            "tracking_high": tracking_cache.get(f"AVWAP_TRACKING_HIGH_{t}", 0.0)
+                            "tracking_high": tracking_cache.get(f"AVWAP_TRACKING_HIGH_{t}", 0.0),
+                            "is_buy_unfilled": is_buy_unfilled # 🚨 NEW: 검증된 팩트 전송
                         }
                  
                         h_t = safe_holdings.get(t) or {}
@@ -275,14 +296,13 @@ async def scheduled_sniper_monitor(context):
                         qty = int(_safe_float(decision.get("qty", 0)))
                         t_time = str(decision.get("trap_placed_time", ""))
                         
-                        # 🚨 MODIFIED: UI 렌더링 동기화를 위한 트레일링 캐시 락온
                         tracking_cache[f"AVWAP_T_H_{t}"] = _safe_float(decision.get("T_H", tracking_cache.get(f"AVWAP_T_H_{t}", 0.0)))
                         tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = _safe_float(decision.get("placed_target_th", tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}", 0.0)))
                         tracking_cache[f"AVWAP_TRACKING_HIGH_{t}"] = _safe_float(decision.get("tracking_high", tracking_cache.get(f"AVWAP_TRACKING_HIGH_{t}", 0.0)))
                  
                         state_data = avwap_state_dict.copy()
+                        state_data.pop("is_buy_unfilled", None) # 파일 저장 시에는 불필요
                         
-                        # 🚨 Cancel & Replace 라우팅: 기존 주문 취소 선행 (Atomic)
                         if action in ["UPDATE_BUY_TRAP", "CANCEL_BUY_AND_SHUTDOWN"]:
                             old_odno = decision.get("buy_odno")
                             if old_odno:
@@ -293,9 +313,8 @@ async def scheduled_sniper_monitor(context):
                                         break
                                     except Exception:
                                         await asyncio.sleep(1.0 * (2**c_attempt))
-                                await asyncio.sleep(1.0) # KIS 서버 취소 반영 딜레이 확보
+                                await asyncio.sleep(1.0)
                         
-                        # 🚨 1. 매수 덫 장전 및 갱신 (Cancel & Replace)
                         if action in ["PLACE_TRAP", "UPDATE_BUY_TRAP"]:
                             if qty > 0 and target_price > 0:
                                 res = None
@@ -341,8 +360,6 @@ async def scheduled_sniper_monitor(context):
                                     logging.warning(f"🚨 [{t}] 프리장 매수 덫 KIS 서버 거절: {err_msg}")
                                     tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = False
                         
-                        # 🚨 2. 매도 덫 장전 및 즉각 퇴근 (Fire & Forget)
-                        # 🚨 MODIFIED: Action Signal 교정 (PLACE_SELL_TRAP)
                         elif action == "PLACE_SELL_TRAP":
                             if qty > 0 and target_price > 0:
                                 res = None
@@ -358,9 +375,8 @@ async def scheduled_sniper_monitor(context):
                                 if isinstance(res, dict) and str(res.get('rt_cd', '')) == '0' and res.get('odno'):
                                     new_odno = res.get('odno')
                                     tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = new_odno
-                                    tracking_cache[f"AVWAP_SHUTDOWN_{t}"] = True  # 🚨 핵심: 즉각 퇴근 락온
+                                    tracking_cache[f"AVWAP_SHUTDOWN_{t}"] = True  
                                     
-                                    # 🚨 MODIFIED: [Case 34 망각 치료 및 메모리 덮어쓰기] KIS DB가 동기화되어 매도 전송 성공 시 누락된 체결 팩트를 강제 하드코딩
                                     tracking_cache[f"AVWAP_QTY_{t}"] = qty
                                     tracking_cache[f"AVWAP_AVG_{t}"] = _safe_float(decision.get("T_H", 0.0))
                                     tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = False
@@ -371,7 +387,6 @@ async def scheduled_sniper_monitor(context):
                                         'sell_target': decision.get("sell_target", target_price),
                                         'trap_placed_time': t_time,
                                         'shutdown': True,
-                                        # 🚨 MODIFIED: [Case 34] 메모리 동기화용 하드코딩 덮어쓰기
                                         'qty': qty,
                                         'avg_price': _safe_float(decision.get("T_H", 0.0)),
                                         'limit_order_placed': False
@@ -388,7 +403,6 @@ async def scheduled_sniper_monitor(context):
                                     try: await asyncio.wait_for(asyncio.to_thread(strategy.v_avwap_plugin.save_state, t, now_est, state_data), timeout=5.0)
                                     except Exception as e: logging.error(f"🚨 [{t}] 매도 상태 저장 에러: {e}")
                                 else:
-                                    # 🚨 [Case 34 잔고 부족(Lag) 무한 멱등성 락온] KIS 서버 지연 방어
                                     err_msg = html.escape(res.get('msg1', '응답 없음') if isinstance(res, dict) else '통신 장애')
                                     logging.warning(f"🚨 [{t}] 프리장 매도 덫 KIS 서버 거절 (KIS DB 딜레이 의심): {err_msg}")
                                     msg = f"⚠️ <b>[{html.escape(str(t))}] 프리장 스캘퍼 +2% 매도 거절 (KIS DB 딜레이 의심)</b>\n"
@@ -396,13 +410,11 @@ async def scheduled_sniper_monitor(context):
                                     msg += f"▫️ 조치: KIS 잔고가 갱신될 때까지 다음 1분 사이클마다 매도 덫 전송을 무한 재시도합니다."
                                     try: await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML')
                                     except: pass
-                                    # limit_order_placed = True 상태를 그대로 두어 다음 분에 다시 PLACE_SELL_TRAP을 호출하도록 멱등성 사수
 
-                        # 🚨 3. 09:30 EST 정규장 개장 매수 취소 및 영구 동결
                         elif action == "CANCEL_BUY_AND_SHUTDOWN":
                             tracking_cache[f"AVWAP_SHUTDOWN_{t}"] = True
                             tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = False
-                            tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = "" # 🚨 Zombie Order 메모리 소각
+                            tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = ""
                             
                             state_data.update({'shutdown': True, 'limit_order_placed': False, 'buy_odno': ""})
                             try: await asyncio.wait_for(asyncio.to_thread(strategy.v_avwap_plugin.save_state, t, now_est, state_data), timeout=5.0)
@@ -412,16 +424,12 @@ async def scheduled_sniper_monitor(context):
                             try: await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML')
                             except: pass
 
-                        # 🚨 4. SHUTDOWN (이미 퇴근 완료)
                         elif action == "SHUTDOWN":
                             tracking_cache[f"AVWAP_SHUTDOWN_{t}"] = True
                             state_data.update({'shutdown': True})
                             try: await asyncio.wait_for(asyncio.to_thread(strategy.v_avwap_plugin.save_state, t, now_est, state_data), timeout=5.0)
                             except: pass
 
-                    # ==============================================================
-                    # 2. V14 상방 감시 스나이퍼 & V-REV 역추세 모니터링 로직 시작
-                    # ==============================================================
                     try:
                         master_switch = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_master_switch', lambda x: "ALL"), t), timeout=5.0)
                         sniper_buy_locked = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_sniper_buy_locked', lambda x: False), t), timeout=5.0)
@@ -721,7 +729,6 @@ async def scheduled_sniper_monitor(context):
                     continue
 
     try:
-        # 🚨 [제1헌법] 극단적 API 지연 상황에서 전체 스나이퍼 루프가 강제 중단(Abort)되지 않도록 전역 타임아웃을 120초에서 240초로 확장 락온
         await asyncio.wait_for(_do_sniper(), timeout=240.0)
     except Exception as e:
         logging.error(f"🚨 스나이퍼 타임아웃 에러: {e}", exc_info=True)

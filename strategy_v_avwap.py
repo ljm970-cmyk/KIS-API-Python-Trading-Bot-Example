@@ -2,6 +2,8 @@
 # FILE: strategy_v_avwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [Time Paradox 원천 소각] YF API가 프리장 초반에 전일(Yesterday) 데이터를 섞어서 반환할 때 발생하는 '과거 저가에 의한 가상 체결 오발동' 버그를 막기 위해, DataFrame 슬라이싱 전 `df.index.date == today_est_date` 필터를 100% 강제 적용.
+# 🚨 MODIFIED: [Phantom Fill 명시적 바이패스 락온] KIS 원장에 매수 주문이 미체결 상태(is_buy_unfilled)로 살아있을 경우, YF 저가가 타점을 관통하더라도 가상 체결(Virtual Fill)을 보류할 뿐만 아니라 하위 트레일링 로직까지 100% 바이패스(TRAP_WAIT 반환)하도록 State Mismatch 방어막 진공 압축.
 # 🚨 MODIFIED: [액면분할(Stock Split) 스케일링 붕괴 완벽 차단] 액면분할 이벤트 발생 시 tracking_high(추적 고가)와 trap_qty(가상 덫 수량)의 보정이 누락되어 터무니없는 타점에 즉시 체결(False Fill)되는 치명적 맹점을 원천 차단하기 위한 전역 스케일링 롤오버 락온.
 # 🚨 MODIFIED: [Virtual Qty 가상 역산 아키텍처] 상태 파일 업데이트 중단으로 trap_qty가 0으로 오염되었을 경우, 예산 기반으로 체결 수량을 역산하여 Virtual Fill 롤오버 붕괴를 원천 차단.
 # 🚨 MODIFIED: [블랙아웃 관통 누락 완벽 방어] 네트워크 단절(Timeout)로 인해 스캔 사이클을 건너뛰었을 때 발생하는 'Bouncing Price Amnesia'를 막기 위해, 매수 덫 장전 시점(trap_placed_time) 이후의 전체 캔들 최저가(min)를 스캔하여 100% 팩트 관통을 검출하는 누적 저가 스캔 아키텍처 이식.
@@ -16,7 +18,6 @@
 # 🚨 MODIFIED: [매수 4% 동적 트레일링 락온] 프리장 고가를 추적하여 4% 하락가로 지속 갱신(Cancel & Replace)하는 타격망 이식
 # 🚨 MODIFIED: [매도 +2% 절대 앵커링 & 즉각 퇴근] 매수 체결 확인 즉시 매수가 기준 +2% 고정 덫을 장전하고 영구 동결(Fire & Forget)하는 단독 구출망 락온
 # 🚨 MODIFIED: [Action Signal Mismatch 수술] 스케줄러 통신망 단절 방어를 위해 매도 격발 시그널을 'PLACE_SELL_TRAP'으로 정밀 교정 완료.
-# 🚨 MODIFIED: [상태 다이어트] tracking_low, reset_done 등 불필요해진 레거시 추적 변수 100% 영구 소각
 # 🚨 MODIFIED: [정규장 매수 원천 차단] 09:30 EST 도달 시 미체결 매수 덫 강제 취소 및 SHUTDOWN 락온
 # 🚨 MODIFIED: [이월 영구 소각 팩트] 날짜 변경 시 전일 잔여 상태와 무관하게 100% 영구 포맷(No-Overnight) 락온
 # 🚨 MODIFIED: [YF 결측치 붕괴 방어] 1분봉 고가/저가(High/Low)가 0.0으로 유입 시 타점 붕괴를 막는 바이패스(WAIT) 락온
@@ -39,11 +40,9 @@ import html
 class VAvwapHybridPlugin:
     def __init__(self):
         self.plugin_name = "DEEP_RESCUE_V86.50_PREMARKET_SCALPER"
-        # 🚨 NEW: [4% 추적 매수 / 2% 고정 매도 락온]
         self.BUY_RATIO = 0.04
         self.SELL_RATIO = 0.02
 
-    # 🚨 [Case 05, Insight 14] NaN, Infinity 및 String-Comma 맹독성 데이터 정밀 필터링 락온
     def _safe_float(self, value):
         try:
             val = float(str(value or 0.0).replace(',', ''))
@@ -53,7 +52,6 @@ class VAvwapHybridPlugin:
         except Exception:
             return 0.0
 
-    # 🚨 [YF MultiIndex 붕괴 방어] DataFrame 멀티인덱스 동적 평탄화 (KeyError 원천 차단)
     def _flatten_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         if isinstance(df.columns, pd.MultiIndex):
             if 'Ticker' in df.columns.names:
@@ -80,7 +78,6 @@ class VAvwapHybridPlugin:
         today_str = self._get_logical_date_str(now_est)
         data = {}
 
-        # 🚨 [Case 08] os.path.exists 소각 및 EAFP 원자적 접근 강제
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -93,7 +90,6 @@ class VAvwapHybridPlugin:
             data = {}
 
         if data.get('date') != today_str:
-            # 🚨 MODIFIED: [이월 영구 소각] 오버나이트 불가 원칙에 따라, 날짜가 바뀌면 무조건 0주 강제 포맷 (기존 잔여물 100% 무시)
             data['qty'] = 0
             data['avg_price'] = 0.0
             data['shutdown'] = False
@@ -102,9 +98,8 @@ class VAvwapHybridPlugin:
             data['trap_placed_time'] = ""
             data['buy_odno'] = ""
             data['trap_odno'] = ""
-            data['trap_qty'] = 0 # 🚨 NEW: Virtual Fill 용 매수 시도 수량 트래킹 초기화
+            data['trap_qty'] = 0 
             
-            # 🚨 NEW: [트레일링 상태 변수 완전 초기화 및 다이어트]
             data['tracking_high'] = 0.0
             data['buy_target'] = 0.0
             data['sell_target'] = 0.0
@@ -112,17 +107,15 @@ class VAvwapHybridPlugin:
             data['date'] = today_str
             self.save_state(ticker, now_est, data)
         
-        # 🚨 [Insight 14] _safe_float 래핑 일괄 락온
         data['limit_order_placed'] = bool(data.get('limit_order_placed'))
         data['trap_placed_time'] = str(data.get('trap_placed_time') or "")
         data['buy_odno'] = str(data.get('buy_odno') or "")
         data['trap_odno'] = str(data.get('trap_odno') or "")
         data['strikes'] = int(self._safe_float(data.get('strikes', 0)))
         data['qty'] = int(self._safe_float(data.get('qty', 0)))
-        data['trap_qty'] = int(self._safe_float(data.get('trap_qty', 0))) # 🚨 NEW: Virtual Fill 용 트래킹 로드
+        data['trap_qty'] = int(self._safe_float(data.get('trap_qty', 0))) 
         data['avg_price'] = self._safe_float(data.get('avg_price', 0.0))
         
-        # 상태 변수 캐스팅
         data['tracking_high'] = self._safe_float(data.get('tracking_high', 0.0))
         data['buy_target'] = self._safe_float(data.get('buy_target', 0.0))
         data['sell_target'] = self._safe_float(data.get('sell_target', 0.0))
@@ -135,7 +128,6 @@ class VAvwapHybridPlugin:
         today_str = self._get_logical_date_str(now_est)
 
         merged_data = {}
-        # 🚨 [Case 08] os.path.exists 소각 및 EAFP 원자적 접근 강제
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 merged_data = json.load(f)
@@ -153,13 +145,11 @@ class VAvwapHybridPlugin:
         merged_data['date'] = today_str
 
         dir_name = os.path.dirname(file_path) or '.'
-        # 🚨 [디스크 I/O 샌드박싱] 무해한 폴더 생성 에러가 트랜잭션을 날리는 과잉 방어 차단
         try:
             os.makedirs(dir_name, exist_ok=True)
         except OSError:
             pass
 
-        # 🚨 [Case 16] 임시 파일 고아화 방어 스코프 전진 배치
         fd = None
         temp_path = None
         try:
@@ -184,7 +174,6 @@ class VAvwapHybridPlugin:
         if ratio <= 0: return
         state = self.load_state(ticker, now_est)
         
-        # 🚨 [Insight 14] _safe_float 래핑 결속
         qty = int(self._safe_float(state.get("qty", 0)))
         if qty > 0:
             new_qty = math.floor((qty * ratio) + 0.5)
@@ -192,8 +181,6 @@ class VAvwapHybridPlugin:
             state["qty"] = new_qty
             state["avg_price"] = round(old_avg / ratio, 4) if ratio > 0 else 0.0
             
-        # 🚨 [액면분할(Stock Split) 스케일링 붕괴 완벽 차단]
-        # 프리장 최고가(tracking_high)와 덫 수량(trap_qty)을 비율만큼 소급 적용하여 허공에 매수를 난사하는 맹점 100% 소각
         buy_target = self._safe_float(state.get("buy_target", 0.0))
         sell_target = self._safe_float(state.get("sell_target", 0.0))
         tracking_high = self._safe_float(state.get("tracking_high", 0.0))
@@ -256,7 +243,7 @@ class VAvwapHybridPlugin:
                 return {
                     "prev_close": prev_close,
                     "prev_vwap": prev_vwap,
-                    "avg_vol_20": 0.0 # 레거시 호환용 더미 유지
+                    "avg_vol_20": 0.0 
                 }
     
             except Exception as e:
@@ -264,18 +251,17 @@ class VAvwapHybridPlugin:
                 if attempt == 2: return None
                 time.sleep(1.0 * (2 ** attempt))
 
-    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, df_1min_base=None, df_1min_exec=None, avwap_qty=0, avwap_alloc_cash=0.0, now_est=None, avwap_state=None, context_data=None, is_simulation=False, amp5=0.0, prev_close=0.0, ma_5day=0.0, **kwargs):
+    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avg_price=0.0, qty=0, alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, regime_data=None, is_simulation=False, sortie_mode="SINGLE", **kwargs):
         is_holiday = kwargs.get('is_holiday', False)
         now_est = now_est or datetime.datetime.now(ZoneInfo('America/New_York'))
+        today_est_date = now_est.date()
         
         if now_est.weekday() >= 5:
             is_holiday = True
 
-        # 🚨 [Insight 11/17] 파일과 메모리(RAM) 간의 팩트 동기화를 위한 최상단 락온
         persistent_state = self.load_state(exec_ticker, now_est)
         
-        # 🚨 MODIFIED: [메모리-파일 팩트 절대 동기화] 스케줄러 캐시가 0주로 오염되었더라도 상태 파일에 체결 팩트가 있다면 무조건 상속
-        avwap_qty_param = int(self._safe_float(avwap_qty))
+        avwap_qty_param = int(self._safe_float(qty))
         if avwap_qty_param == 0:
             avwap_qty_param = int(self._safe_float(kwargs.get('current_qty', 0)))
         avwap_qty_file = int(self._safe_float(persistent_state.get('qty', 0)))
@@ -285,12 +271,11 @@ class VAvwapHybridPlugin:
         if exec_curr_p == 0.0:
             exec_curr_p = self._safe_float(kwargs.get('exec_curr_p', 0.0))
             
-        avwap_alloc_cash = self._safe_float(avwap_alloc_cash)
+        avwap_alloc_cash = self._safe_float(alloc_cash)
         if avwap_alloc_cash == 0.0:
             avwap_alloc_cash = self._safe_float(kwargs.get('alloc_cash', kwargs.get('avwap_alloc_cash', 0.0)))
         
         curr_time = now_est.time()
-        # 🚨 MODIFIED: [Bad Print 맹독성 방어] 04:01 EST 진입 게이트 락온 (04:00 잔여 노이즈 데이터 배제)
         time_0401 = datetime.time(4, 1)
         time_0930 = datetime.time(9, 30)
 
@@ -300,7 +285,6 @@ class VAvwapHybridPlugin:
         buy_odno = str(persistent_state.get('buy_odno') or "")
         trap_odno = str(persistent_state.get('trap_odno') or "")
         
-        # 🚨 [클로저 렌더링 붕괴 수술] 변수를 최상단으로 전진 배치하여 locals() 의존 렌더링을 원천 소각
         tracking_high = self._safe_float(persistent_state.get('tracking_high', 0.0))
         buy_target = self._safe_float(persistent_state.get('buy_target', 0.0))
         sell_target = self._safe_float(persistent_state.get('sell_target', 0.0))
@@ -319,12 +303,10 @@ class VAvwapHybridPlugin:
                 'base_curr_p': base_curr_p,
                 'prev_vwap': self._safe_float((context_data or {}).get('prev_vwap', 0.0)) if isinstance(context_data, dict) else 0.0,
                 
-                # 🚨 내부 트레일링 팩트 뷰포트용 반환 (오염 없는 클로저 변수 직접 참조)
                 'tracking_high': new_tracking_high,
                 'buy_target': new_buy_target,
                 'sell_target': new_sell_target,
                 
-                # 텔레그램 UI 호환성 파라미터 (T_H = buy_target, placed_target_th = sell_target)
                 'T_H': new_buy_target,
                 'placed_target_th': new_sell_target,
                 
@@ -343,32 +325,28 @@ class VAvwapHybridPlugin:
         if curr_time < time_0401:
             return _build_res('WAIT', '프리장 1분봉(04:00) 캔들 확정 및 YF 데이터 안정화 대기 중')
 
-        # 🚨 [데이터 추출] 오늘 하루치(04:01 ~ 현재) 시계열 필터링
-        # 🚨 MODIFIED: [04:00 캔들 원천 배제] 시간 게이트뿐만 아니라 DataFrame 추출 자체를 '040100'부터 수행하여 YF 오픈 직후의 맹독성 노이즈 캔들이 Tracking High를 오염시키는 패러독스를 원천 차단.
+        # 🚨 MODIFIED: [Time Paradox 붕괴 수술] YF 데이터에 어제(Yesterday) 데이터가 섞여 들어올 경우를 대비해 반드시 '오늘(Today)' 날짜만 정밀 슬라이싱
         if df_1min_exec is not None and not df_1min_exec.empty and 'time_est' in df_1min_exec.columns:
-            df_pre = df_1min_exec[(df_1min_exec['time_est'] >= '040100') & (df_1min_exec['time_est'] <= '195959')]
+            df_today = df_1min_exec[df_1min_exec.index.date == today_est_date]
+            df_pre = df_today[(df_today['time_est'] >= '040100') & (df_today['time_est'] <= '195959')]
         else:
             df_pre = pd.DataFrame()
 
         if df_pre.empty:
-            return _build_res('WAIT', '1분봉 데이터 부재 또는 04:01 캔들 수신 대기 (04:00 노이즈 배제)')
+            return _build_res('WAIT', '당일 1분봉 데이터 부재 또는 04:01 캔들 수신 대기 (04:00 노이즈 배제)')
 
-        # 백테스트 모순 방어: 가장 마지막 캔들(실시간)의 저가 및 시각 추출
         recent_l = self._safe_float(df_pre['low'].iloc[-1])
         curr_candle_time_str = str(df_pre['time_est'].iloc[-1])
         
-        # 🚨 MODIFIED: [시계열 모순 붕괴 차단] 04:00 잔여 노이즈 캔들로 인한 비정상 관통을 막기 위해 '040100' 이후 캔들 수신 대기
         if curr_candle_time_str < '040100':
             return _build_res('WAIT', 'YF 04:01 캔들 수신 대기 (04:00 노이즈 캔들 배제)')
         
-        # 🚨 MODIFIED: [정규장 스파이크 오염 차단] 09:30 이후의 비정상적 캔들 스파이크가 4% 추적 앵커를 왜곡하지 못하도록 '092959' 슬라이싱 절대 락온
         df_strict_pre = df_pre[df_pre['time_est'] <= '092959']
         if df_strict_pre.empty:
             session_high = 0.0
         else:
             session_high = self._safe_float(df_strict_pre['high'].max())
         
-        # 🚨 [YF 결측치 붕괴 방어] 1분봉 고가/저가가 0.0으로 유입 시 타점 붕괴(0.0 락온)를 막기 위한 바이패스 락온
         if session_high <= 0.0 or recent_l <= 0.0:
             return _build_res('WAIT', 'YF 실시간 캔들 결측치(0.0) 유입으로 인한 수학적 붕괴 방어 가동')
 
@@ -376,58 +354,51 @@ class VAvwapHybridPlugin:
         # 🟢 STATE 0: 매수 대기 (프리장 고가 4% 추적 매수 덫)
         # ==========================================================
         if avwap_qty == 0:
-            # 🚨 MODIFIED: [블랙아웃 관통 누락 완벽 방어] 네트워크 단절(Timeout)로 인한 Bouncing Price Amnesia를 막기 위해, 매수 덫 장전 시점 이후의 전체 누적 캔들 최저가 스캔 아키텍처 이식
             lowest_since_trap = recent_l
             if trap_placed_time:
                 df_since_trap = df_pre[df_pre['time_est'] >= trap_placed_time]
                 if not df_since_trap.empty:
                     lowest_since_trap = self._safe_float(df_since_trap['low'].min())
 
-            # 🚨 MODIFIED: [Virtual Fill (관통 즉시 체결 간주) 아키텍처 이식]
-            # 예산 고갈 검사 & 정규장 셧다운 검사 전에 가장 먼저 1분봉 관통(lowest_since_trap) 여부를 검사!
-            # 09:29 마지막 프리장 캔들에서 체결된 물량을 실수로 취소해버리는 시계열 경계(Boundary) 오류 원천 차단
             if limit_order_placed and buy_target > 0.0 and lowest_since_trap <= buy_target:
-                virtual_qty = int(self._safe_float(persistent_state.get('trap_qty', 0)))
+                is_buy_unfilled = bool((avwap_state or {}).get("is_buy_unfilled", False))
                 
-                # 🚨 MODIFIED: [Virtual Qty 가상 역산 팩트 주입] 파일 쓰기 중단으로 trap_qty가 0으로 유실되었을 경우 셧다운 붕괴를 막기 위한 수학적 역산 락온
-                if virtual_qty <= 0 and buy_target > 0:
-                    virtual_qty = int(math.floor(avwap_alloc_cash / buy_target))
+                if not is_buy_unfilled:
+                    virtual_qty = int(self._safe_float(persistent_state.get('trap_qty', 0)))
                     
-                if virtual_qty > 0:
-                    new_sell_target = round(buy_target * (1.0 + self.SELL_RATIO), 2)
-                    
-                    # 🚨 [기억상실 영구 치료] 관통 확인 즉시 상태를 STATE 1(매수 완료)로 원자적 덮어쓰기
-                    # 시장이 즉각 반등하거나 09:30이 넘어가더라도 봇은 체결 팩트를 잊지 않고 무한정 매도 덫(PLACE_SELL_TRAP) 장전을 멱등하게 시도함
-                    # 🚨 [JSON 직렬화 붕괴 예방] Numpy float 혼입을 막기 위해 순수 Python 타입 강제 변환 결속
-                    persistent_state['qty'] = int(self._safe_float(virtual_qty))
-                    persistent_state['avg_price'] = self._safe_float(buy_target)
-                    persistent_state['sell_target'] = self._safe_float(new_sell_target)
-                    persistent_state['limit_order_placed'] = False # 매수 덫 상태 해제
-                    
-                    if not is_simulation:
-                        self.save_state(exec_ticker, now_est, persistent_state)
-                    
-                    return _build_res('PLACE_SELL_TRAP', '1분봉 저가 관통 확정(Virtual Fill). 매수 체결 간주 및 +2% 매도 덫 즉각 장전', qty=virtual_qty, target_price=new_sell_target, t_time=curr_candle_time_str)
+                    if virtual_qty <= 0 and buy_target > 0:
+                        virtual_qty = int(math.floor(avwap_alloc_cash / buy_target))
+                        
+                    if virtual_qty > 0:
+                        new_sell_target = round(buy_target * (1.0 + self.SELL_RATIO), 2)
+                        
+                        persistent_state['qty'] = int(self._safe_float(virtual_qty))
+                        persistent_state['avg_price'] = self._safe_float(buy_target)
+                        persistent_state['sell_target'] = self._safe_float(new_sell_target)
+                        persistent_state['limit_order_placed'] = False 
+                        
+                        if not is_simulation:
+                            self.save_state(exec_ticker, now_est, persistent_state)
+                        
+                        return _build_res('PLACE_SELL_TRAP', '1분봉 저가 관통 및 KIS 체결 확정(Virtual Fill). 매도 덫 즉각 장전', qty=virtual_qty, target_price=new_sell_target, t_time=curr_candle_time_str)
+                else:
+                    # 🚨 MODIFIED: [Phantom Fill 명시적 바이패스 락온] KIS 원장 미체결 잔존 시 트레일링 로직을 완전 바이패스하고 명시적 대기(WAIT)
+                    return _build_res('TRAP_WAIT', f'YF 저가 관통 감지이나 KIS 미체결 잔존 확인 (가상 체결 보류 및 딜레이 방어 중)', target_price=buy_target)
 
-            # 🚨 [정규장 매수 원천 차단] 09:30 도달 시 영구 동결 (단, Virtual Fill이 발생하지 않았을 경우에만)
             if curr_time >= time_0930:
                 if limit_order_placed:
                     return _build_res('CANCEL_BUY_AND_SHUTDOWN', '정규장 개장(09:30 EST). 신규 매수 차단 및 미체결 매수 덫 강제 취소')
                 return _build_res('SHUTDOWN', '정규장 개장(09:30 EST). 신규 매수 원천 차단 (SHUTDOWN)')
 
-            # 🚨 [Tracking High 갱신] 절대 고가 추적 및 4% 딥매수 타점 산출
             new_tracking_high = max(tracking_high, session_high) if tracking_high > 0.0 else session_high
             new_buy_target = round(new_tracking_high * (1.0 - self.BUY_RATIO), 2)
             
-            # 수학적 붕괴 방어
             if new_buy_target <= 0.0:
                 return _build_res('WAIT', '비정상 매수타점(0.0 이하) 연산 차단')
             
-            # 예산 고갈 방어
             if avwap_alloc_cash / new_buy_target < 1.0:
                 return _build_res('WAIT', '예산 고갈 (1주 미만 산출 방어)')
 
-            # 🚨 [JSON 직렬화 붕괴 예방] Numpy float 혼입 방어
             persistent_state['tracking_high'] = self._safe_float(new_tracking_high)
             persistent_state['buy_target'] = self._safe_float(new_buy_target)
             if not is_simulation:
@@ -437,7 +408,6 @@ class VAvwapHybridPlugin:
                 buy_qty = int(math.floor(avwap_alloc_cash / new_buy_target))
                 return _build_res('PLACE_TRAP', '프리장 고가 4% 추적 매수 덫 최초 장전', qty=buy_qty, target_price=new_buy_target, t_time=curr_candle_time_str)
             else:
-                # 🚨 [Cancel & Replace] 최고가 갱신 시 매수 덫을 더 높은 곳으로 재장전
                 if new_buy_target > buy_target:
                     buy_qty = int(math.floor(avwap_alloc_cash / new_buy_target))
                     return _build_res('UPDATE_BUY_TRAP', '고가 갱신. 프리장 매수 타점 상향 트레일링 (Cancel & Replace)', qty=buy_qty, target_price=new_buy_target, t_time=curr_candle_time_str)
@@ -452,17 +422,13 @@ class VAvwapHybridPlugin:
             if avwap_avg <= 0.0:
                 avwap_avg = self._safe_float(persistent_state.get('avg_price', 0.0))
                 
-            # 🚨 [단독 구출가 고정 박제] 매수가 대비 +2% 지정가 산출
             new_sell_target = round(avwap_avg * (1.0 + self.SELL_RATIO), 2)
             
-            # 🚨 [JSON 직렬화 붕괴 예방] Numpy float 혼입 방어
             persistent_state['sell_target'] = self._safe_float(new_sell_target)
             if not is_simulation:
                 self.save_state(exec_ticker, now_est, persistent_state)
                 
-            # 🚨 [Action Signal 교정 완료] 스케줄러가 정확히 수신할 수 있도록 'PLACE_SELL_TRAP'으로 시그널 통일 락온
             if not trap_odno: 
                 return _build_res('PLACE_SELL_TRAP', '매수 체결 확인. +2% 매도 지정가 장전 (Fire & Forget 가동)', qty=avwap_qty, target_price=new_sell_target, t_time=curr_candle_time_str)
             else:
-                # 덫이 이미 깔려있다면 추가 개입 없이 관망 (추적/덤핑 영구 소각)
                 return _build_res('SHUTDOWN', f'+2% 단독 구출 덫(${new_sell_target:.2f}) 장전 및 퇴근 완료', target_price=new_sell_target)
