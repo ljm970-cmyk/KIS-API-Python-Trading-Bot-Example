@@ -3,6 +3,8 @@
 # ==========================================================
 # 🚨 MODIFIED: [스냅샷 절대 헌법 수복] 장중 매수로 인한 앵커 돌변을 막기 위해, 매수 앵커 산출 시 오직 스냅샷의 is_zero_start 팩트만을 '절대 상속(Inherit)' 받도록 원상 복구 및 락온.
 # 🚨 MODIFIED: [스냅샷 오염 전이 절대 방어 소각] 이전 수술에서 도입된 실잔고(actual_qty) 강제 평가 데드코드를 전면 소각하고 스냅샷 절대주의로 회귀.
+# 🚨 MODIFIED: [P-매매 오리지널 비율 롤백] 기보유 상태의 매수 타점을 P-매매 오리지널 비율(0.998, 0.993)로 팩트 교정 락온.
+# 🚨 MODIFIED: [제2헌법 준수] 사용되지 않는 유령 변수(residual) 데드코드 100% 영구 소각 및 파일 I/O 에러 로깅 강제 결속.
 import math
 import os
 import json
@@ -14,7 +16,6 @@ from zoneinfo import ZoneInfo
 class ReversionStrategy:
     def __init__(self, config):
         self.cfg = config
-        self.residual = {}
         self.executed = {"BUY_BUDGET": {}, "SELL_QTY": {}}
         self.state_loaded = {}
 
@@ -70,7 +71,6 @@ class ReversionStrategy:
         state_file = self._get_state_file(ticker)
         data = {
             "date": today_str,
-            "residual": {},
             "executed": {
                 "BUY_BUDGET": self._safe_float((self.executed.get("BUY_BUDGET") or {}).get(ticker, 0.0)),
                 "SELL_QTY": int(self._safe_float((self.executed.get("SELL_QTY") or {}).get(ticker, 0)))
@@ -92,13 +92,14 @@ class ReversionStrategy:
                 os.fsync(f.fileno())
             os.replace(temp_path, state_file)
             temp_path = None
-        except Exception:
+        except Exception as e:
             if fd is not None:
                 try: os.close(fd)
                 except OSError: pass
             if temp_path:
                 try: os.remove(temp_path)
                 except OSError: pass
+            logging.error(f"🚨 [{ticker}] V-REV 상태 파일 원자적 쓰기 실패: {e}")
 
     def save_daily_snapshot(self, ticker, plan_data):
         snap_file = self._get_snapshot_file(ticker)
@@ -123,13 +124,14 @@ class ReversionStrategy:
                 os.fsync(f.fileno())
             os.replace(temp_path, snap_file)
             temp_path = None
-        except Exception:
+        except Exception as e:
             if fd is not None:
                 try: os.close(fd)
                 except OSError: pass
             if temp_path:
                 try: os.remove(temp_path)
                 except OSError: pass
+            logging.error(f"🚨 [{ticker}] V-REV 스냅샷 파일 원자적 쓰기 실패: {e}")
 
     def load_daily_snapshot(self, ticker):
         snap_file = self._get_snapshot_file(ticker)
@@ -243,9 +245,10 @@ class ReversionStrategy:
             p2_trigger = round(prev_c * 0.999, 2)
         else:
             # 🚨 [Reset 직후 큐 장부가 비어있을 때의 Fallback 락온]
+            # 🚨 MODIFIED: [P-매매 오리지널 비율 롤백] 기보유 상태 타점을 0.998, 0.993으로 강제 락온
             safe_anchor = l1_price if l1_price > 0.0 else (actual_avg if actual_avg > 0.0 else prev_c)
-            p1_trigger = round(safe_anchor * 0.9976, 2)
-            p2_trigger = round(safe_anchor * 0.9887, 2)
+            p1_trigger = round(safe_anchor * 0.998, 2)
+            p2_trigger = round(safe_anchor * 0.993, 2)
 
         rem_qty_total = max(0, int(pure_l1_qty + pure_upper_qty) - int(self._safe_float((self.executed.get("SELL_QTY") or {}).get(ticker, 0))))
         available_l1 = min(pure_l1_qty, rem_qty_total) if rem_qty_total > 0 else 0

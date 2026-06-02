@@ -35,7 +35,7 @@
 🔹 1일 고정 예산 : Budget = Seed * 0.15
 🔹 매수 앵커 및 타점 :
 🔸 0주 새출발 : Buy_1 = PrevClose * 1.15, Buy_2 = PrevClose * 0.999
-🔸 기보유 상태 (L1_Price 앵커 락온) : Anchor = L1_Price, Buy_1 = Anchor * 0.9976, Buy_2 = Anchor * 0.9887
+🔸 기보유 상태 (L1_Price 앵커 락온) : Anchor = L1_Price, Buy_1 = Anchor * 0.998, Buy_2 = Anchor * 0.993
 🔹 매도 타점 (LIFO 단일/다중 지층 분기 탈출) :
 🔸 단일 지층 (1개 층 보유) : 상위층 덫 소각, 오직 1층 탈출망(Sell_L1 = L1_Price * 1.006) 단독 장전
 🔸 다중 지층 (2개 층 이상 보유) : 1층 탈출망(Sell_L1 = L1_Price * 1.006) 및 상위층 통합 탈출망(Sell_Upper = Upper_Price * 1.010) 동시 장전
@@ -72,7 +72,7 @@
 🚨 [Case 05] 외부 API 결측치(None) 방어를 위해 isinstance 검증 및 0.0 강제 형변환 적용.
 🚨 [Case 06] 비동기 루프 내 requests, yfinance 등 동기 I/O 함수 직접 호출 절대 금지.
 🚨 [Case 07] 스나이퍼 매매 시 8초 다중 교차 검증 엔진 통과 및 실체결량 듀얼 캐싱 유지.
-🚨 [Case 08] 스냅샷 멱등성 훼손 방어 : os.path.exists로 덮어쓰기를 차단하는 맹독성 데드코드를 영구 소각하고, 무조건 최신 팩트(수동 개입 후 상태 포함)로 원자적 오버라이드(Atomic Override) 하라.
+🚨 [Case 08] 스냅샷 멱등성 훼손 방어 : os.path.exists로 덮어쓰기를 차단하는 맹독성 데드코드를 영구 소각하고, EAFP 패턴을 적용하여 무조건 최신 팩트(수동 개입 후 상태 포함)로 원자적 오버라이드(Atomic Override) 하라.
 🚨 [Case 09] 장중 업데이트 레드존(15:12 ~ 15:31 EST) 재가동 원천 차단.
 🚨 [Case 10] pytz 라이브러리 사용 전면 금지 및 zoneinfo 모듈 100% 락온.
 🚨 [Case 11] 암살자(스캘퍼) 엣지 케이스 및 단일 출격 락온 :

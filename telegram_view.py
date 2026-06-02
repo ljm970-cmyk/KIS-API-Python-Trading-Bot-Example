@@ -5,7 +5,7 @@
 # 🚨 MODIFIED: [V86.00 텍스트 팩트 롤오버] '딥-레스큐' 및 '암살자' 레거시 명칭 영구 소각. '새벽 수금원' 및 '프리장 스캘퍼' 퀀트 네이밍으로 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [V85.00 딥-레스큐 UI 팩트 교정] 다중 출격(Sortie) 스위치 버튼 및 관련 텍스트 100% 영구 소각 (단일 구출 후 무조건 퇴근 락온)
 # 🚨 MODIFIED: [경고문 무제한 타격 롤오버] get_avwap_warning_menu 내의 '사후 하락장 확정 시' 문구를 '전일 종가 및 갭하락 조건 영구 소각, 매일 프리장 개장 시 무조건 100% 개방' 팩트로 전면 재작성
-# 🚨 MODIFIED: [UI 팩트 동기화 수술] 시스템이 로컬 자체 1분 슬라이싱 VWAP 엔진으로 이관됨에 따라, 통합지시서 및 환경설정 텍스트 팩트 일치화
+# 🚨 MODIFIED: [UI 팩트 동기화 궁극 수술] 뷰어에서 0.998, 0.993을 중복 계산하던 하드코딩 맹점을 소각하고, 코어 엔진(SSOT)에서 생성된 plan_dict의 팩트 타점을 다이렉트로 추출하여 UI에 완벽 렌더링 락온. (Walrus 연산자 붕괴 에러 동시 소각)
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단
 # 🚨 MODIFIED: [Python 딕셔너리 평가 맹독성 수술] dict.get(key, default)에서 값이 None일 때 default가 무시되고 None이 반환되어 _safe_float(None) -> 0.0 으로 오염되는 치명적 버그를 `or default` 단락 평가로 완벽 교정
 # 🚨 MODIFIED: [Insight 14, 18, 19, 20] String-Float 맹독성 방어 및 가상 매수 지시서 정밀도 교정 완벽 유지
@@ -150,7 +150,7 @@ class TelegramView:
         safe_t = html.escape(str(ticker))
         msg = f"🚨 <b>[{safe_t} 삼위일체 소각 최종 확인]</b>\n\n"
         msg += f"정말 <b>{safe_t}</b>의 모든 퀀트 장부 데이터를 영구 삭제하시겠습니까?\n"
-        msg += "이 작업은 되돌릴 수 옵니다!"
+        msg += "이 작업은 되돌릴 수 없습니다!"
         
         keyboard = [
             [InlineKeyboardButton("🔥 네, 즉시 영구 소각합니다", callback_data=f"RESET:CONFIRM:{ticker}")],
@@ -213,7 +213,7 @@ class TelegramView:
         safe_t = html.escape(str(ticker))
         short_date = html.escape(str(target_date)[:10]) if len(str(target_date)) >= 10 else html.escape(str(target_date))
         msg = f"🗑️ <b>[{safe_t} 지층 부분 삭제 확인]</b>\n\n"
-        msg += f"선택하신 <b>[{short_date}]</b> 지층 (<b>{qty}주 / ${price:.2f}</b>) 데이터를 장부에서 도려내하시겠습니까?\n"
+        msg += f"선택하신 <b>[{short_date}]</b> 지층 (<b>{qty}주 / ${price:.2f}</b>) 데이터를 장부에서 도려내시겠습니까?\n"
         msg += "▫️ 실제 KIS 계좌의 주식은 매도되지 않습니다.\n"
         msg += "▫️ 계좌 수량과 장부가 어긋날 경우 /sync 시 비파괴 보정(CALIB)이 발동됩니다."
         
@@ -257,7 +257,6 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 MODIFIED: [V86.00 텍스트 팩트 롤오버] 현재 시스템 버전 명칭 교체
     def get_version_message(self, history_data, page_index=None):
         history_data = history_data or []
         ITEMS_PER_PAGE = 5
@@ -464,6 +463,29 @@ class TelegramView:
                 raw_guidance = str(t_info.get('v_rev_guidance') or " (가이던스 대기 중)")
                 if is_zero_start:
                     raw_guidance = '\n'.join([line for line in raw_guidance.split('\n') if "잭팟" not in line and "상위층" not in line])
+                
+                # 🚨 MODIFIED: [UI 팩트 동기화 궁극 수술] 하드코딩 맹점을 소각하고, 코어 엔진(SSOT)에서 생성된 plan_dict의 팩트 타점을 다이렉트로 추출하여 UI에 완벽 렌더링 락온. (Walrus 연산자 붕괴 에러 동시 소각)
+                v_rev_q_lots_val = self._safe_float(t_info.get('v_rev_q_lots') or 0.0)
+                if not is_zero_start and fact_qty > 0 and v_rev_q_lots_val > 0:
+                    try:
+                        # 🚨 [SSOT 절대 상속] 코어 엔진(strategy_reversion.py)에서 100% 팩트로 계산된 타점을 다이렉트로 추출하여 렌더링
+                        b1_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy1' in str(o.get('desc', ''))), None)
+                        b2_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy2' in str(o.get('desc', ''))), None)
+                        
+                        if b1_order or b2_order:
+                            lines = raw_guidance.split('\n')
+                            for i, line in enumerate(lines):
+                                if "매수1(Buy1)" in line and b1_order:
+                                    b1_price = self._safe_float(b1_order.get('price'))
+                                    b1_qty = int(self._safe_float(b1_order.get('qty')))
+                                    lines[i] = f" 🔴 매수1(Buy1) ${b1_price:.2f} <b>{b1_qty}주</b>"
+                                elif "매수2(Buy2)" in line and b2_order:
+                                    b2_price = self._safe_float(b2_order.get('price'))
+                                    b2_qty = int(self._safe_float(b2_order.get('qty')))
+                                    lines[i] = f" 🔴 매수2(Buy2) ${b2_price:.2f} <b>{b2_qty}주</b>"
+                            raw_guidance = '\n'.join(lines)
+                    except Exception: pass
+
                 body_msg += raw_guidance.replace(" (LOC)", "").replace(" (VWAP)", "").replace("[가상격리] ", "").replace("[가상 ", "[").replace("가상 ", "") + "\n"
             else:
                 if is_manual_vwap and not is_rev_logic:
@@ -489,10 +511,10 @@ class TelegramView:
                                         price_str = f"${min_price:.2f}"
                                     else:
                                         price_str = f"(${min_price:.2f}~${max_price:.2f})"
-                                    
+                                     
                                     body_msg += f" 🔴 🧲줍줍: <b>{price_str} x {total_jub_shares}주</b> (LOC)\n"
                                 rendered_jubjub = True
-                            continue
+                        continue
                      
                         ico = "🔴" if str(o.get('side', '')) == 'BUY' else "🔵"
                         safe_desc = html.escape(str(o.get('desc', ''))).replace("🩸", "")
