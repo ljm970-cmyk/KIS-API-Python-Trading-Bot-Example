@@ -1,21 +1,17 @@
 # ==========================================================
 # FILE: telegram_avwap_console.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Async I/O 족쇄, State Mismatch 방어, Float 정밀도 사수) 통과 완료.
-# 🚨 MODIFIED: [수동 매수 제어망 UI 결속] manual_suspend 팩트를 스키마에서 추출하여, 매수 전(0주) 상태일 때 '주문하기 ↔ 취소하기' 토글 버튼을 조건부 렌더링하는 로직 100% 락온.
-# 🚨 MODIFIED: [Time Paradox UI 렌더링 붕괴 수술] 관제탑(UI)에서 야후 파이낸스 1분봉 관통 시간을 연산할 때, 전일(Yesterday) 데이터 혼입을 막기 위해 무조건 `now_est.date()` 로 슬라이싱하도록 100% 팩트 교정 완료.
-# 🚨 MODIFIED: [UI 관통 시점 추적 팩트 롤오버] 매수 덫 관통 시점을 스캔할 때 04:01부터 전부 스캔하던 오류를 고치고, '실제 매수 덫이 장전/갱신된 시점(trap_placed_time)' 이후부터 스캔하도록 논리 팩트 락온.
-# 🚨 MODIFIED: [고성능 클라우드 TPS 방어] asyncio.gather 로 인한 동시 격발 폭주(Rate Limit)를 막기 위해 순차적(Sequential) await 및 0.06초 샌드위치 지연 강제 락온.
-# 🚨 MODIFIED: [V86.50 텍스트 팩트 롤오버] '딥-레스큐', '암살자' 등 레거시 명칭을 영구 소각하고 '새벽 수금원', '프리장 스캘퍼' 퀀트 네이밍으로 100% 팩트 교정 완료.
-# 🚨 MODIFIED: [Fire & Forget 락온] 매수 완료 시 "🎯 +2% 단독 구출 덫 장전 완료 및 조기 퇴근 (Fire & Forget)" 상태 메시지 락온.
-# 🚨 MODIFIED: [매수 4% 고가 추적 렌더링] 갭 하락 및 오프셋 렌더링 데드코드를 전면 소각하고, 프리장 고가(`Tracking High`) 기반 -4% 매수 덫 타점을 직관적으로 렌더링.
-# 🚨 MODIFIED: [매도 +2% 절대 앵커링 렌더링] 저가 추적(Trailing Low) 렌더링 로직을 전면 진공 압축하고, 체결가 기준 +2% 단독 탈출망 팩트 렌더링.
-# 🚨 MODIFIED: [시계열 모순(Time Paradox) 완벽 수술] 04:00 캔들에서 시가 확정과 동시에 타점을 관통하는 논리적 오류를 소각. 매수는 04:01부터, 매도는 매수 이후 시점(>)부터 스캔.
-# 🚨 MODIFIED: [Bad Print 맹독성 방어] 04:00 YF 잔여 노이즈 데이터 차단을 위해 UI 관제탑 진입 게이트를 04:01 EST로 1분 지연 락온.
+# 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
+# 🚨 MODIFIED: [관측 전용 아키텍처 전환] 실전 매매 로직 소각에 따라 관제탑을 '초고도화 8대 퀀트 지표' 정보창으로 전면 리빌딩 (매매 현황 및 수동 개입 버튼 100% 영구 삭제).
+# 🚨 MODIFIED: [Quant Logic 교정] 기초지수 VWAP 연산 시 (Open+High+Low+Close)/4.0 의 노이즈를 배제하고 정통 퀀트 표준인 (High+Low+Close)/3.0 으로 팩트 교정 완료.
+# 🚨 MODIFIED: [Vectorization 연산 락온] 프리장(04:00~09:29) 및 정규장(09:30~)을 time_est 기반으로 정밀 슬라이싱하고 불리언 마스크 벡터 연산을 통해 고가/저가 및 진폭 팩트 100% 추출.
+# 🚨 MODIFIED: [ZeroDivision 및 결측치 붕괴 수술] 정규장 미개장(empty) 시 또는 거래량(Volume)/저가(Low)가 0일 때 발생하는 치명적 수학 연산 붕괴를 단락 평가(if > 0)로 완벽 차단.
+# 🚨 MODIFIED: [Time Paradox UI 렌더링 붕괴 수술] 야후 파이낸스 1분봉 관통 시간을 연산할 때, 전일(Yesterday) 데이터 혼입을 막기 위해 무조건 `now_est.date()` 로 슬라이싱하도록 100% 팩트 락온.
+# 🚨 MODIFIED: [Series Stringification 붕괴 방어] 1분봉 고점/저점 시간 추출 시 `idxmax()` 와 `.loc` 의 조합이 유발하는 중복 인덱스 런타임 붕괴(TypeError/String Slice Error)를 막기 위해 불리언 마스킹(`>= max_val`) 및 `.iloc[0]` 로 100% 원천 교정 완료.
+# 🚨 MODIFIED: [고성능 클라우드 TPS 방어] 데이터 추출 시 순차적(Sequential) await 및 0.06초 샌드위치 지연(TPS 캡핑), 3단 지수 백오프 강제 락온.
 # 🚨 MODIFIED: [Type-Safety 궁극 수술] 상위 모듈에서 `app_data`가 None 또는 List로 오염 유입 시 발생하는 `setdefault` 런타임 붕괴 방어막 주입.
 # 🚨 MODIFIED: [Insight 14, 25] API String-Float 및 NaN/Inf 맹독성 포맷팅 쉴드. `_safe_float` 코어 래핑 전면 결속 완료.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어를 위한 html.escape 쉴드 전역 강제 주입.
-# 🚨 MODIFIED: [Case 32 & 33 절대 규칙] TPS 캡핑(0.06s) 및 3단 지수 백오프, 타임아웃(10s) 샌드위치 락온.
 # ==========================================================
 import logging
 import datetime
@@ -54,10 +50,6 @@ class AvwapConsolePlugin:
         now_est = datetime.datetime.now(est)
         curr_time = now_est.time()
         today_est_date = now_est.date()
-        
-        time_0400 = datetime.time(4, 0)
-        time_0401 = datetime.time(4, 1)
-        time_0930 = datetime.time(9, 30)
         
         def _fetch_schedule():
             time.sleep(0.06) 
@@ -105,13 +97,13 @@ class AvwapConsolePlugin:
                 status_code = "CLOSE"
 
         if status_code == "HOLIDAY":
-            header_status = "💤 <b>[ 미국 증시 휴장일 / 관망 모드 ]</b>"
+            header_status = "💤 <b>[ 미국 증시 휴장일 (오프라인) ]</b>"
         elif status_code in ["AFTER", "CLOSE"]:
-            header_status = "🌙 <b>[ 애프터마켓 / 감시 종료 ]</b>"
+            header_status = "🌙 <b>[ 애프터마켓 / 데이터 집계 종료 ]</b>"
         elif status_code == "PRE":
-            header_status = "🌅 <b>[ 프리장 스캘핑 모드 (프리장 고가 4% 동적 추적 스캔 중) ]</b>"
+            header_status = "🌅 <b>[ 프리장 관측 중 (정규장 개장 대기) ]</b>"
         else:
-            header_status = "🔥 <b>[ 정규장 진입 (프리장 스캘퍼 퇴근 대기) ]</b>"
+            header_status = "🔥 <b>[ 정규장 실시간 스캔 중 ]</b>"
         
         try:
             active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
@@ -122,308 +114,174 @@ class AvwapConsolePlugin:
         avwap_tickers = [t for t in active_tickers if t == "SOXL"]
        
         if not avwap_tickers:
-            return "⚠️ <b>[프리장 스캘퍼 오프라인]</b>\n▫️ 스캘퍼 지원 종목이 없습니다.", None
+            return "⚠️ <b>[관측망 오프라인]</b>\n▫️ 감시 대상(SOXL) 종목이 없습니다.", None
            
         active_avwap = avwap_tickers
         
-        tracking_cache = app_data.setdefault('sniper_tracking', {})
-        if not isinstance(tracking_cache, dict):
-            tracking_cache = {}
-            app_data['sniper_tracking'] = tracking_cache
-        
-        cash_val = 0.0
-        holdings = {}
-        for attempt in range(3):
-            try:
-                await asyncio.sleep(0.06)
-                cash_val_tuple = await asyncio.wait_for(asyncio.to_thread(self.broker.get_account_balance), timeout=10.0)
-                cash_val = cash_val_tuple[0] if isinstance(cash_val_tuple, (list, tuple)) and len(cash_val_tuple) > 0 else 0.0
-                holdings = cash_val_tuple[1] if isinstance(cash_val_tuple, (list, tuple)) and len(cash_val_tuple) > 1 else {}
-                if not isinstance(holdings, dict): holdings = {}
-                break
-            except Exception:
-                if attempt == 2: 
-                    cash_val = 0.0
-                    holdings = {}
-                else: 
-                    await asyncio.sleep(1.0 * (2 ** attempt))
-        
-        available_cash = self._safe_float(cash_val)
-        
-        msg = f"🔫 <b>[ 새벽 수금원(스캘퍼) V86.50 관제탑 ]</b>\n{header_status}\n\n"
+        msg = f"📡 <b>[ 실시간 퀀트 인텔리전스 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
         async def _get_with_retry(func, *args):
             for attempt in range(3):
                 try:
                     await asyncio.sleep(0.06) 
-                    return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=10.0)
+                    return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=15.0)
                 except Exception:
                     if attempt == 2: return None
                     await asyncio.sleep(1.0 * (2 ** attempt))
 
         for t in active_avwap:
             await asyncio.sleep(0.06)
-            
             ticker_clean = html.escape(str(t)) 
-            
-            if not tracking_cache.get(f"AVWAP_INIT_{t}"):
-                try:
-                    saved_state = await asyncio.wait_for(asyncio.to_thread(self.strategy.v_avwap_plugin.load_state, t, now_est), timeout=10.0) or {}
-                    if saved_state:
-                        tracking_cache[f"AVWAP_SHUTDOWN_{t}"] = bool(saved_state.get('shutdown'))
-                        tracking_cache[f"AVWAP_QTY_{t}"] = int(self._safe_float(saved_state.get('qty')))
-                        tracking_cache[f"AVWAP_AVG_{t}"] = self._safe_float(saved_state.get('avg_price'))
-                        tracking_cache[f"AVWAP_TRAP_ODNO_{t}"] = str(saved_state.get('trap_odno') or "")
-                        tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = bool(saved_state.get('limit_order_placed'))
-                        tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = self._safe_float(saved_state.get('sell_target')) 
-                        tracking_cache[f"AVWAP_TRAP_PLACED_TIME_{t}"] = str(saved_state.get('trap_placed_time') or "")
-                        tracking_cache[f"AVWAP_BUY_ODNO_{t}"] = str(saved_state.get('buy_odno') or "")
-                        tracking_cache[f"AVWAP_T_H_{t}"] = self._safe_float(saved_state.get('buy_target')) 
-                        tracking_cache[f"AVWAP_TRACKING_HIGH_{t}"] = self._safe_float(saved_state.get('tracking_high'))
-                        # NEW: [수동 제어 플래그 추출] 저장된 상태에서 manual_suspend 팩트를 동기화하여 UI 상태 렌더링에 이식
-                        tracking_cache[f"AVWAP_MANUAL_SUSPEND_{t}"] = bool(saved_state.get('manual_suspend', False))
-                        
-                    tracking_cache[f"AVWAP_INIT_{t}"] = True
-                except Exception as e:
-                    logging.debug(f"🚨 상태 캐시 로드 중 타임아웃/에러: {e}")
-                    pass
-
-            try:
-                is_avwap_active = await asyncio.wait_for(asyncio.to_thread(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
-            except Exception:
-                is_avwap_active = False
-            
-            active_str = f"🟢 고가 추적 감시 중" if is_avwap_active else "⚪ 대기 (OFF)"
+            base_t = 'SOXX' if t == 'SOXL' else ('QQQ' if t == 'TQQQ' else t)
+            base_t_clean = html.escape(str(base_t))
             
             try:
+                # 🚨 데이터 추출 및 병목 방지
                 curr_p_val = await _get_with_retry(self.broker.get_current_price, t)
                 curr_p = self._safe_float(curr_p_val)
-                await asyncio.sleep(0.06)
                 
-                prev_c_val = await _get_with_retry(self.broker.get_previous_close, t)
-                prev_c = self._safe_float(prev_c_val)
-                await asyncio.sleep(0.06)
+                base_curr_p_val = await _get_with_retry(self.broker.get_current_price, base_t)
+                base_curr_p = self._safe_float(base_curr_p_val)
+                
+                base_amp5_val = await _get_with_retry(self.broker.get_amp_5d_data, base_t)
+                base_amp5 = self._safe_float(base_amp5_val)
                 
                 df_1m = await _get_with_retry(self.broker.get_1min_candles_df, t)
+                df_base = await _get_with_retry(self.broker.get_1min_candles_df, base_t)
+                
             except Exception as e:
-                curr_p, prev_c, df_1m = 0.0, 0.0, None
+                logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
+                curr_p, base_curr_p, base_amp5, df_1m, df_base = 0.0, 0.0, 0.0, None, None
 
-            pre_open = 0.0
-            pre_high = 0.0
-            pre_high_time = "미도달"
+            # ==============================================================
+            # 1️⃣ 지표 1: 기초지수 평균 진폭 레버리지(x3) 환산
+            # ==============================================================
+            lev_amp_pct = base_amp5 * 3 * 100.0
 
-            if curr_time >= time_0401:
-                # 🚨 MODIFIED: [Time Paradox 붕괴 수술] YF 데이터에 어제(Yesterday) 데이터가 혼입되지 않도록 `now_est.date()` 로 완벽 슬라이싱
-                if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
-                    df_today = df_1m[df_1m.index.date == today_est_date]
-                    df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '092959')]
-                    
-                    if not df_pre.empty:
-                        pre_open = self._safe_float(df_pre['open'].iloc[0])
-                        safe_high_series = pd.to_numeric(df_pre['high'], errors='coerce')
-                        pre_high = self._safe_float(safe_high_series.max())
+            # ==============================================================
+            # 2️⃣ 지표 2: 기초지수 실시간/누적 VWAP 이격도
+            # ==============================================================
+            base_vwap = 0.0
+            base_gap_pct = 0.0
+            if df_base is not None and not df_base.empty:
+                df_b_today = df_base[df_base.index.date == today_est_date].copy()
+                if 'time_est' in df_b_today.columns:
+                    # VWAP은 정규장(09:30~16:00) 기준 누적 연산이 표준
+                    df_b_reg = df_b_today[(df_b_today['time_est'] >= '093000') & (df_b_today['time_est'] <= '155959')].copy()
+                    if not df_b_reg.empty:
+                        # 🚨 NEW: [Quant Logic] 정통 퀀트 트레이딩 표준 연산으로 교정 (High+Low+Close)/3.0
+                        df_b_reg['tp'] = (df_b_reg['high'].astype(float) + df_b_reg['low'].astype(float) + df_b_reg['close'].astype(float)) / 3.0
+                        df_b_reg['vol'] = df_b_reg['volume'].astype(float)
+                        df_b_reg['vol_tp'] = df_b_reg['tp'] * df_b_reg['vol']
                         
-                        try:
-                            h_row = df_pre[safe_high_series >= pre_high]
-                            if not h_row.empty:
-                                raw_h_t = str(h_row['time_est'].iloc[0]).zfill(6)
-                                pre_high_time = f"{raw_h_t[:2]}:{raw_h_t[2:4]}"
-                        except Exception: pass
+                        c_vol = df_b_reg['vol'].sum()
+                        if c_vol > 0:
+                            base_vwap = df_b_reg['vol_tp'].sum() / c_vol
+                            if base_vwap > 0:
+                                base_gap_pct = (base_curr_p - base_vwap) / base_vwap * 100.0
 
-            avwap_qty = int(self._safe_float(tracking_cache.get(f"AVWAP_QTY_{t}")))
-            avwap_avg = self._safe_float(tracking_cache.get(f"AVWAP_AVG_{t}"))
-            is_shutdown = bool(tracking_cache.get(f"AVWAP_SHUTDOWN_{t}"))
-            trap_odno = str(tracking_cache.get(f"AVWAP_TRAP_ODNO_{t}") or "")
-            limit_order_placed = bool(tracking_cache.get(f"AVWAP_LIMIT_ORDER_PLACED_{t}"))
-            placed_target_th = self._safe_float(tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}"))
-            t_h = self._safe_float(tracking_cache.get(f"AVWAP_T_H_{t}"))
-            tracking_high_cache = self._safe_float(tracking_cache.get(f"AVWAP_TRACKING_HIGH_{t}"))
+            # ==============================================================
+            # 3️⃣~8️⃣ 지표 3-8: 프리장/정규장 H/L 슬라이싱 및 타점 연산
+            # ==============================================================
+            df_today = df_1m[df_1m.index.date == today_est_date].copy() if (df_1m is not None and not df_1m.empty) else pd.DataFrame()
             
-            # NEW: [상태 메시지 렌더링 락온] 수동 관망 중인지 판별 플래그 추출
-            is_manual_suspend = tracking_cache.get(f"AVWAP_MANUAL_SUSPEND_{t}", False)
+            df_pre = pd.DataFrame()
+            df_reg = pd.DataFrame()
             
-            h_t = holdings.get(t) or {}
-            main_actual_avg = self._safe_float(h_t.get('avg', 0.0))
-            actual_qty = int(self._safe_float(h_t.get('qty', 0)))
-            
-            if t_h == 0.0 and pre_high > 0.0:
-                effective_high = max(pre_high, tracking_high_cache)
-                t_h = round(effective_high * 0.960, 2)
-            if placed_target_th == 0.0 and pre_high > 0.0:
-                effective_high = max(pre_high, tracking_high_cache)
-                placed_target_th = round((effective_high * 0.960) * 1.020, 2) 
-
-            pierce_buy_time = "미도달"
-            pierce_sell_time = "미도달"
-
-            if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
-                df_today = df_1m[df_1m.index.date == today_est_date]
+            if not df_today.empty and 'time_est' in df_today.columns:
                 df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '092959')]
+                df_reg = df_today[(df_today['time_est'] >= '093000') & (df_today['time_est'] <= '160000')]
+
+            # 프리장 지표 연산
+            pre_h, pre_l, pre_amp = 0.0, 0.0, 0.0
+            pre_h_t, pre_l_t = "미달성", "미달성"
+            if not df_pre.empty:
+                safe_high_pre = pd.to_numeric(df_pre['high'], errors='coerce')
+                safe_low_pre = pd.to_numeric(df_pre['low'], errors='coerce')
                 
-                if not df_pre.empty and t_h > 0.0:
+                pre_h = self._safe_float(safe_high_pre.max())
+                pre_l = self._safe_float(safe_low_pre.min())
+                
+                if pre_h > 0 and pre_l > 0:
+                    pre_amp = (pre_h - pre_l) / pre_l * 100.0
+                    
                     try:
-                        # 🚨 MODIFIED: [UI 렌더링 관통 시점 교정] 04:01부터 무조건 스캔하던 오류를 고치고, 덫이 장전/갱신된 시점 이후부터만 스캔하도록 팩트 락온
-                        trap_time_str = str(tracking_cache.get(f"AVWAP_TRAP_PLACED_TIME_{t}") or '040100')
-                        if trap_time_str < '040100': trap_time_str = '040100'
-                        
-                        df_buy_scan = df_pre[df_pre['time_est'] >= trap_time_str]
-                        safe_low_series = pd.to_numeric(df_buy_scan['low'], errors='coerce')
-                        b_rows = df_buy_scan[safe_low_series <= t_h]
-                        if not b_rows.empty:
-                            raw_b_t = str(b_rows['time_est'].iloc[0]).zfill(6)
-                            pierce_buy_time = f"{raw_b_t[:2]}:{raw_b_t[2:4]}"
-
-                            if placed_target_th > 0.0:
-                                df_after = df_pre[df_pre['time_est'] > raw_b_t]
-                                safe_high_series_sell = pd.to_numeric(df_after['high'], errors='coerce')
-                                s_rows = df_after[safe_high_series_sell >= placed_target_th]
-                                if not s_rows.empty:
-                                    raw_s_t = str(s_rows['time_est'].iloc[0]).zfill(6)
-                                    pierce_sell_time = f"{raw_s_t[:2]}:{raw_s_t[2:4]}"
+                        h_row = df_pre[safe_high_pre >= pre_h]
+                        if not h_row.empty:
+                            raw_h_t = str(h_row['time_est'].iloc[0]).zfill(6)
+                            pre_h_t = f"{raw_h_t[:2]}:{raw_h_t[2:4]}"
+                            
+                        l_row = df_pre[safe_low_pre <= pre_l]
+                        if not l_row.empty:
+                            raw_l_t = str(l_row['time_est'].iloc[0]).zfill(6)
+                            pre_l_t = f"{raw_l_t[:2]}:{raw_l_t[2:4]}"
                     except Exception: pass
+
+            # 정규장 지표 연산
+            reg_h, reg_l, reg_amp = 0.0, 0.0, 0.0
+            reg_h_t, reg_l_t = "미달성", "미달성"
+            if not df_reg.empty:
+                safe_high_reg = pd.to_numeric(df_reg['high'], errors='coerce')
+                safe_low_reg = pd.to_numeric(df_reg['low'], errors='coerce')
+                
+                reg_h = self._safe_float(safe_high_reg.max())
+                reg_l = self._safe_float(safe_low_reg.min())
+                
+                if reg_h > 0 and reg_l > 0:
+                    reg_amp = (reg_h - reg_l) / reg_l * 100.0
+                    
+                    try:
+                        h_row_r = df_reg[safe_high_reg >= reg_h]
+                        if not h_row_r.empty:
+                            raw_h_t_r = str(h_row_r['time_est'].iloc[0]).zfill(6)
+                            reg_h_t = f"{raw_h_t_r[:2]}:{raw_h_t_r[2:4]}"
+                            
+                        l_row_r = df_reg[safe_low_reg <= reg_l]
+                        if not l_row_r.empty:
+                            raw_l_t_r = str(l_row_r['time_est'].iloc[0]).zfill(6)
+                            reg_l_t = f"{raw_l_t_r[:2]}:{raw_l_t_r[2:4]}"
+                    except Exception: pass
+
+            # ==============================================================
+            # 🖥️ 뷰포트 렌더링
+            # ==============================================================
+            msg += f"🎯 <b>[ {ticker_clean} 마스터 옵저버 ]</b>\n"
+            msg += f"▫️ 현재가: <b>${curr_p:.2f}</b>\n\n"
             
-            if is_holiday:
-                status_txt = f"💤 미국 증시 휴장일 (관측 오프라인)"
-            elif is_shutdown and avwap_qty == 0: 
-                status_txt = "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
-            elif avwap_qty > 0:
-                status_txt = "🎯 +2% 단독 구출 덫 장전 완료 및 봇 조기 퇴근 (Fire & Forget)"
-            # NEW: [수동 관망 모드 표출]
-            elif is_manual_suspend:
-                status_txt = "⏸️ 수동 관망 중 (매수 덫 일시 정지)"
-            elif limit_order_placed and t_h > 0:
-                status_txt = f"⚡ 동적 추적 ➡️ [지정가 매수 덫 갱신 중: ${t_h:.2f}]"
-            elif curr_time < time_0401:
-                status_txt = "⚡ 프리장 1분봉(04:00) 캔들 확정 및 YF 데이터 안정화 대기 중"
+            msg += f"1️⃣ <b>기초지수({base_t_clean}) 환산 진폭 (5MA)</b>\n"
+            msg += f"▫️ 레버리지(x3) 진폭: <b>{lev_amp_pct:.2f}%</b>\n\n"
+            
+            msg += f"2️⃣ <b>기초지수({base_t_clean}) VWAP 이격도</b>\n"
+            if base_vwap > 0:
+                sign = "+" if base_gap_pct >= 0 else ""
+                msg += f"▫️ 당일 누적 VWAP: <b>${base_vwap:.2f}</b>\n"
+                msg += f"▫️ 현재가 이격: <b>{sign}{base_gap_pct:.2f}%</b> (현재 ${base_curr_p:.2f})\n\n"
             else:
-                status_txt = "⚡ 프리장 최고가(Tracking High) 추적 대기 중"
-            
-            try:
-                avwap_state_dict = {
-                    "shutdown": is_shutdown,
-                    "qty": avwap_qty,
-                    "avg_price": avwap_avg,
-                    "trap_odno": trap_odno,
-                    "buy_odno": str(tracking_cache.get(f"AVWAP_BUY_ODNO_{t}") or ""),
-                    "T_H": tracking_cache.get(f"AVWAP_T_H_{t}", 0.0),
-                    "limit_order_placed": limit_order_placed,
-                    "placed_target_th": tracking_cache.get(f"AVWAP_PLACED_TARGET_TH_{t}", 0.0),
-                    "trap_placed_time": str(tracking_cache.get(f"AVWAP_TRAP_PLACED_TIME_{t}") or ""),
-                    "tracking_high": tracking_high_cache,
-                    # NEW: [수동 매수 제어 상태 인계] 퀀트 코어가 타점 장전을 바이패스할 수 있도록 상태 주입
-                    "manual_suspend": is_manual_suspend
-                }
-                
-                avwap_base_ticker = 'SOXX' if t == 'SOXL' else ('QQQ' if t == 'TQQQ' else t)
-                decision = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self.strategy.v_avwap_plugin.get_decision,
-                        base_ticker=avwap_base_ticker, exec_ticker=t,
-                        base_curr_p=curr_p, exec_curr_p=curr_p,
-                        df_1min_base=None, df_1min_exec=df_1m, avwap_qty=avwap_qty,
-                        avwap_alloc_cash=available_cash, 
-                        now_est=now_est, avwap_state=avwap_state_dict,
-                        context_data=None,
-                        is_simulation=True,
-                        prev_close=prev_c,
-                        main_actual_avg=main_actual_avg, 
-                        is_holiday=is_holiday 
-                    ),
-                    timeout=10.0
-                )
-                
-                if decision:
-                    action = decision.get('action')
-                    reason = html.escape(str(decision.get('reason', '')))
-                    
-                    v_t_h = decision.get('T_H') 
-                    if v_t_h and self._safe_float(v_t_h) > 0:
-                        t_h = self._safe_float(v_t_h)
-                    
-                    v_limit_order_placed = decision.get('limit_order_placed')
-                    limit_order_placed = bool(v_limit_order_placed) if v_limit_order_placed is not None else limit_order_placed
-                    
-                    v_placed_target_th = decision.get('placed_target_th') 
-                    if v_placed_target_th and self._safe_float(v_placed_target_th) > 0:
-                        placed_target_th = self._safe_float(v_placed_target_th)
-                    
-                    tracking_cache[f"AVWAP_T_H_{t}"] = t_h
-                    tracking_cache[f"AVWAP_LIMIT_ORDER_PLACED_{t}"] = limit_order_placed
-                    tracking_cache[f"AVWAP_PLACED_TARGET_TH_{t}"] = placed_target_th
-        
-                    if is_holiday:
-                        status_txt = f"💤 미국 증시 휴장일 (관측 오프라인)"
-                    elif is_shutdown and avwap_qty == 0: 
-                        status_txt = f"🛑 셧다운 격발 ({reason})" if reason and action == 'SHUTDOWN' else "🛑 당일 영구동결 (SHUTDOWN 퇴근)"
-                    elif avwap_qty > 0:
-                        status_txt = "🎯 +2% 단독 구출 덫 장전 완료 및 봇 조기 퇴근 (Fire & Forget)"
-                    # NEW: [수동 관망 모드 표출]
-                    elif is_manual_suspend:
-                        status_txt = "⏸️ 수동 관망 중 (매수 덫 일시 정지)"
-                    elif limit_order_placed and t_h > 0:
-                        status_txt = f"⚡ 동적 추적 ➡️ [지정가 매수 덫 갱신 중: ${t_h:.2f}]"
-                    elif curr_time < time_0401:
-                        status_txt = "⚡ 프리장 1분봉(04:00) 캔들 확정 및 YF 데이터 안정화 대기 중"
-                    else:
-                        if action == "PLACE_TRAP":
-                            status_txt = f"⚡ 고가 갱신 ➡️ [지정가 매수 덫 최초 장전]"
-                        elif action == "UPDATE_BUY_TRAP":
-                            status_txt = f"⚡ 고가 갱신 ➡️ [지정가 매수 덫 상향 트레일링]"
-                        elif action == "PLACE_SELL_TRAP":
-                            status_txt = f"🔥 덫 하향 관통 ➡️ [체결 단가 기준 +2% 고정 덫 즉각 장전]"
-                        elif action == "TRAP_WAIT":
-                            status_txt = f"⏳ 매수 덫(-4%) 장전 완료 ➡️ [체결 대기 중]"
-                        elif action == 'SHUTDOWN':
-                            status_txt = f"🛑 셧다운 격발 ({reason})"
-                        elif reason:
-                            status_txt = f"⏳ 대기 ({reason})"
-                        
-            except Exception as e:
-                pass
+                msg += f"▫️ 정규장 개장 대기 중 (VWAP 연산 불가)\n\n"
 
-            msg += f"🎯 <b>[ {ticker_clean} 프리장 스캘퍼 관제탑 - {active_str} ]</b>\n"
-            msg += f"▫️ 전일 종가(Prev): <b>${prev_c:.2f}</b>\n"
-            msg += f"▫️ 프리장 시가(04:00): <b>${pre_open:.2f}</b>\n"
-            if pre_high > 0:
-                msg += f"▫️ 당일 최고가(Tracking High): <b>${pre_high:.2f}</b>\n      (달성: {pre_high_time})\n"
-            msg += f"▫️ 동적 추적 매수(-4.0%): <b>${t_h:.2f}</b>\n      (관통: {pierce_buy_time})\n"
-            msg += f"▫️ 절대 앵커링 매도(+2.0%): <b>${placed_target_th:.2f}</b>\n      (관통: {pierce_sell_time})\n\n"
+            msg += f"🌅 <b>[ 프리장 스펙 (04:00~09:29) ]</b>\n"
+            if pre_h > 0 and pre_l > 0:
+                msg += f"▫️ 고가: <b>${pre_h:.2f}</b> ({pre_h_t}) | 저가: <b>${pre_l:.2f}</b> ({pre_l_t})\n"
+                msg += f"▫️ 세션 진폭: <b>{pre_amp:.2f}%</b>\n"
+                msg += f"🔻 고가 대비 3%(${(pre_h*0.97):.2f}) / 6%(${(pre_h*0.94):.2f}) / 9%(${(pre_h*0.91):.2f})\n"
+                msg += f"🔺 저가 대비 3%(${(pre_l*1.03):.2f}) / 6%(${(pre_l*1.06):.2f}) / 9%(${(pre_l*1.09):.2f})\n\n"
+            else:
+                msg += "▫️ 데이터 집계 대기 중...\n\n"
 
-            msg += f"📊 <b>[ 실 실시간 잔고 스프레드 ]</b>\n"
-            msg += f"▫️ 현재가격: <b>${curr_p:.2f}</b>\n"
-            msg += f"▫️ 본진평단: <b>${main_actual_avg:.2f}</b> ({actual_qty}주)\n"
-
-            buy_odno_txt = str(tracking_cache.get(f"AVWAP_BUY_ODNO_{t}") or "")
-            trap_odno_txt = str(tracking_cache.get(f"AVWAP_TRAP_ODNO_{t}") or "")
-
-            if avwap_qty > 0:
-                trap_price = placed_target_th if placed_target_th > 0 else round(avwap_avg * 1.02, 2)
-                msg += f"\n🛡️ <b>[ 프리장 스캘퍼 매수 현황 ]</b>\n"
-                msg += f"▫️ 매수주문(ODNO): <b>{buy_odno_txt if buy_odno_txt else '기록없음'}</b>\n"
-                msg += f"▫️ 매수평단: <b>${avwap_avg:.2f}</b> ({avwap_qty}주)\n"
-                msg += f"▫️ 단독탈출(+2.0%): <b>${trap_price:.2f}</b>\n"
-                msg += f"▫️ 매도주문(ODNO): <b>{trap_odno_txt if trap_odno_txt else '발급대기'}</b>\n"
-            elif limit_order_placed:
-                msg += f"\n🛡️ <b>[ 프리장 스캘퍼 매수 대기 ]</b>\n"
-                msg += f"▫️ 매수주문(ODNO): <b>{buy_odno_txt if buy_odno_txt else '발급대기'}</b>\n"
-
-            msg += f"\n🚨 <b>[ 작전 수행 현황 ]</b>\n"
-            msg += f"▫️ 현재상태: <b>{status_txt}</b>\n"
+            msg += f"🔥 <b>[ 정규장 스펙 (09:30~16:00) ]</b>\n"
+            if reg_h > 0 and reg_l > 0:
+                msg += f"▫️ 고가: <b>${reg_h:.2f}</b> ({reg_h_t}) | 저가: <b>${reg_l:.2f}</b> ({reg_l_t})\n"
+                msg += f"▫️ 세션 진폭: <b>{reg_amp:.2f}%</b>\n"
+                msg += f"🔻 고가 대비 3%(${(reg_h*0.97):.2f}) / 6%(${(reg_h*0.94):.2f}) / 9%(${(reg_h*0.91):.2f})\n"
+                msg += f"🔺 저가 대비 3%(${(reg_l*1.03):.2f}) / 6%(${(reg_l*1.06):.2f}) / 9%(${(reg_l*1.09):.2f})\n"
+            else:
+                msg += "▫️ 정규장 개장 대기 중...\n"
 
             if is_holiday:
                 keyboard.append([InlineKeyboardButton(f"💤 [{ticker_clean}] 증시 휴장일", callback_data="AVWAP_SET:REFRESH:NONE")])
-            elif status_code in ["PRE", "REG"]:
-                # NEW: [수동 매수 제어망 토글 렌더링] 0주 대기 상태일 때만 수동 주문/취소 버튼 표출
-                if avwap_qty == 0 and not is_shutdown:
-                    if is_manual_suspend:
-                        keyboard.append([InlineKeyboardButton(f"▶️ {ticker_clean} 수동으로 주문하기", callback_data=f"AVWAP_SET:RESUME_BUY:{t}")])
-                    else:
-                        keyboard.append([InlineKeyboardButton(f"⏸️ {ticker_clean} 주문 취소하기", callback_data=f"AVWAP_SET:PAUSE_BUY:{t}")])
-                elif avwap_qty > 0:
-                    keyboard.append([InlineKeyboardButton(f"🧯 {ticker_clean} 스캘퍼 수동 청산 (0주 락온)", callback_data=f"AVWAP_SET:SYNC_ZERO:{t}")])
-            else:
-                keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감 (수동 제어 불가)", callback_data="AVWAP_SET:REFRESH:NONE")])
+            elif status_code in ["CLOSE"]:
+                keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감", callback_data="AVWAP_SET:REFRESH:NONE")])
 
         keyboard.append([
             InlineKeyboardButton("🔄 관제탑 새로고침", callback_data="AVWAP_SET:REFRESH:NONE"),
