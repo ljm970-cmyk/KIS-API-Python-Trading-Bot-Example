@@ -4,7 +4,7 @@
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 NEW: [수동 매수 제어망 팩트 이식] `manual_suspend` 플래그를 스키마에 이식하고, 수동 관망 중일 때는 고가 추적(Tracking High)만 수행하고 매수 덫 장전은 100% 바이패스(TRAP_WAIT)하도록 코어 라우팅 락온.
 # 🚨 NEW: [Amnesia 방어] 자정 이월 시 `manual_suspend = False`로 자동 포맷하여 전날의 수동 관망 상태가 다음 날로 전이되는 패러독스 영구 소각.
-# 🚨 MODIFIED: [Time Paradox 원천 소각] YF API가 프리장 초반에 전일(Yesterday) 데이터를 섞어서 반환할 때 발생하는 '과거 저가에 의한 가상 체결 오발동' 버그를 막기 위해, DataFrame 슬라이싱 전 `df.index.date == today_est_date` 필터를 100% 강제 적용.
+# 🚨 MODIFIED: [Time Paradox 붕괴 수술] 04:00~04:03 구간에서 전일(Yesterday)의 셧다운 상태를 불러와 RAM을 영구 오염시키는 '기억상실 패러독스' 원천 차단. 4분 지연 데드코드를 소각하고 04:00 정각에 100% 당일(Today)로 롤오버되도록 팩트 락온.
 # 🚨 MODIFIED: [Phantom Fill 명시적 바이패스 락온] KIS 원장에 매수 주문이 미체결 상태(is_buy_unfilled)로 살아있을 경우, YF 저가가 타점을 관통하더라도 가상 체결(Virtual Fill)을 보류할 뿐만 아니라 하위 트레일링 로직까지 100% 바이패스(TRAP_WAIT 반환)하도록 State Mismatch 방어막 진공 압축.
 # 🚨 MODIFIED: [액면분할(Stock Split) 스케일링 붕괴 완벽 차단] 액면분할 이벤트 발생 시 tracking_high(추적 고가)와 trap_qty(가상 덫 수량)의 보정이 누락되어 터무니없는 타점에 즉시 체결(False Fill)되는 치명적 맹점을 원천 차단하기 위한 전역 스케일링 롤오버 락온.
 # 🚨 MODIFIED: [Virtual Qty 가상 역산 아키텍처] 상태 파일 업데이트 중단으로 trap_qty가 0으로 오염되었을 경우, 예산 기반으로 체결 수량을 역산하여 Virtual Fill 롤오버 붕괴를 원천 차단.
@@ -57,8 +57,9 @@ class VAvwapHybridPlugin:
                 df.columns = df.columns.droplevel(drop_level)
         return df
 
+    # 🚨 MODIFIED: [Time Paradox 붕괴 수술] 4분 지연 데드코드를 영구 소각하고 04:00 정각에 100% 롤오버되도록 팩트 락온
     def _get_logical_date_str(self, now_est):
-        if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
+        if now_est.hour < 4:
             target_date = now_est - datetime.timedelta(days=1)
         else:
             target_date = now_est
@@ -129,7 +130,7 @@ class VAvwapHybridPlugin:
         merged_data = {}
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                merged_data = json.load(f)
+                 merged_data = json.load(f)
             if not isinstance(merged_data, dict):
                 merged_data = {}
         except OSError:
