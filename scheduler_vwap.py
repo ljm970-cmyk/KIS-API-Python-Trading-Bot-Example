@@ -2,6 +2,7 @@
 # FILE: scheduler_vwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [SyntaxError 붕괴 수술] KIS 실원장 덫 스캔 파이프라인의 logging.info 들여쓰기 오류(Indentation)를 정밀 교정하여 컴파일 즉사 및 좀비 셧다운 완벽 차단
 # 🚨 MODIFIED: [NameError 붕괴 방어] vwap_cache 딕셔너리 할당 시 존재하던 치명적 오타(vvwap_cache)를 즉각 교정하여 런타임 즉사 원천 차단
 # 🚨 MODIFIED: [제1헌법 절대 준수] 로컬 슬라이싱 상태 파일(vrev_slice_state_*.json)을 읽고 쓰는 로직에 잔존하던 동기 I/O(json.load/dump)를 _read_json_sync, _atomic_write_json_sync 헬퍼로 분리하고 asyncio.to_thread 래핑을 강제하여 이벤트 루프 교착(Deadlock) 원천 차단
 # 🚨 MODIFIED: [최후의 통신 맹점 팩트 수술] 잔고 조회(get_account_balance) 루프 내부에도 누락되어 있던 TPS 캡핑(0.06s)을 주입하여 동시 스케줄 격발 시 발생 가능한 서버 Rate Limit 밴 원천 차단
@@ -424,8 +425,9 @@ async def scheduled_vwap_trade(context):
                                                                     except Exception as e:
                                                                         if c_attempt == 2: logging.error(f"🚨 [{t}] 일반 덫(VWAP/LOC) 취소 실패: {e}")
                                                                         else: await asyncio.sleep(1.0 * (2 ** c_attempt))
-                                                                        
-                                                logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 덫 {nuked_count}건 팩트 파기 완료.")
+                                                    
+                                                    # 🚨 MODIFIED: [SyntaxError 붕괴 수술] 들여쓰기 48칸 -> 52칸 교정 완료
+                                                    logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 덫 {nuked_count}건 팩트 파기 완료.")
                                                 except Exception as e:
                                                     logging.error(f"🚨 [{t}] KIS 실원장 덫 스캔 에러: {e}")
 
