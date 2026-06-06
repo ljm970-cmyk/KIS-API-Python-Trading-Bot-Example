@@ -2,17 +2,20 @@
 # FILE: telegram_avwap_console.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
-# 🚨 MODIFIED: [관측 전용 아키텍처 전환] 실전 매매 로직 소각에 따라 관제탑을 '초고도화 8대 퀀트 지표' 정보창으로 전면 리빌딩 (매매 현황 및 수동 개입 버튼 100% 영구 삭제).
+# 🚨 MODIFIED: [제2헌법 절대 준수] 실매매 락온 소각으로 더 이상 파일 입출력이 발생하지 않으므로, 사용되지 않는 `os`, `json` 모듈 임포트를 영구 소각하여 시스템 오버헤드 진공 압축.
+# 🚨 MODIFIED: [9대 퀀트 관측 지표 확장] 직전 5거래일 정규장 종가 평균(SMA 5) 데이터 추출 및 UI 렌더링 팩트 주입 완료.
+# 🚨 MODIFIED: [관측 전용 아키텍처 전환] 실전 매매 로직 소각에 따라 관제탑을 '초고도화 9대 퀀트 지표' 정보창으로 전면 리빌딩 (매매 현황 및 수동 개입 버튼 100% 영구 삭제).
 # 🚨 MODIFIED: [Quant Logic 교정] 기초지수 VWAP 연산 시 (Open+High+Low+Close)/4.0 의 노이즈를 배제하고 정통 퀀트 표준인 (High+Low+Close)/3.0 으로 팩트 교정 완료.
 # 🚨 MODIFIED: [Vectorization 연산 락온] 프리장(04:00~09:29) 및 정규장(09:30~16:00)에 이어 애프터장(16:01~20:00)까지 time_est 기반으로 정밀 슬라이싱 락온.
 # 🚨 MODIFIED: [ZeroDivision 및 결측치 붕괴 수술] 정규장/애프터장 미개장(empty) 시 또는 거래량(Volume)/저가(Low)가 0일 때 발생하는 치명적 수학 연산 붕괴를 단락 평가(if > 0)로 완벽 차단.
 # 🚨 MODIFIED: [UI 가독성 팩트 교정] 고가/저가 및 3/6/9% 타점 출력 문자열에 개행(\n) 및 7칸 공백 들여쓰기를 하드코딩하여 뷰포트 레이아웃 전면 리빌딩.
 # 🚨 MODIFIED: [Time Paradox UI 렌더링 붕괴 수술] 야후 파이낸스 1분봉 관통 시간을 연산할 때, 전일(Yesterday) 데이터 혼입을 막기 위해 무조건 `now_est.date()` 로 슬라이싱하도록 100% 팩트 락온.
-# 🚨 MODIFIED: [Series Stringification 붕괴 방어] 1분봉 고점/저점 시간 추출 시 `idxmax()` 와 `.loc` 의 조합이 유발하는 중복 인덱스 런타임 붕괴를 막기 위해 불리언 마스킹 및 `.iloc[0]` 로 100% 원천 교정.
+# 🚨 MODIFIED: [Series Stringification 붕괴 방어] 1분봉 고점/저점 시간 추출 시 `idxmax()` 와 `.loc` 의 조합이 유발하는 중복 인덱스 런타임 붕괴를 막기 위해 불리언 마스킹 및 `.iloc[0].split('.')[0]` 로 100% 원천 교정.
 # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] 데이터 추출 시 순차적(Sequential) await 및 0.06초 샌드위치 지연(TPS 캡핑), 3단 지수 백오프 강제 락온.
 # 🚨 MODIFIED: [Insight 14, 25] API String-Float 및 NaN/Inf 맹독성 포맷팅 쉴드. `_safe_float` 코어 래핑 전면 결속 완료.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어를 위한 html.escape 쉴드 전역 강제 주입.
 # 🚨 MODIFIED: [String Lexical Comparison 보완] '160001' 대신 '160100'으로 교정하여 1분봉 time_est('%H%M00') 포맷과 시맨틱 일치화 완료.
+# 🚨 MODIFIED: [JSON Iterable 붕괴 방어] active_tickers 문자열 오염 시 봇이 오프라인되는 현상(Silent Death)을 막기 위한 isinstance 리스트 강제 캐스팅 락온.
 # ==========================================================
 import logging
 import datetime
@@ -22,8 +25,6 @@ import asyncio
 import time
 import pandas as pd
 import pandas_market_calendars as mcal  
-import json
-import os
 import html  
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -75,6 +76,7 @@ class AvwapConsolePlugin:
         market_open = None
         market_close = None
         
+        # 🚨 [State Mismatch 방어] None(통신 실패)과 empty(휴장일 팩트)를 분기하여 멱등성 보장
         if schedule is None or schedule.empty:
             if schedule is None and now_est.weekday() < 5: 
                 market_open = now_est.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -111,6 +113,11 @@ class AvwapConsolePlugin:
         
         try:
             active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
+            # 🚨 MODIFIED: [JSON Iterable 붕괴 방어] 문자열 오염 시 봇 오프라인 현상(Silent Death) 원천 차단
+            if isinstance(active_tickers, str):
+                active_tickers = [active_tickers]
+            elif not isinstance(active_tickers, list):
+                active_tickers = []
         except Exception as e:
             logging.error(f"🚨 Config I/O 타임아웃 (active_tickers): {e}")
             active_tickers = []
@@ -156,9 +163,14 @@ class AvwapConsolePlugin:
                 df_1m = await _get_with_retry(self.broker.get_1min_candles_df, t)
                 df_base = await _get_with_retry(self.broker.get_1min_candles_df, base_t)
                 
+                # 🚨 [9대 관측 지표] SMA 5 데이터 추출 파이프라인 결속
+                ma_5day_val = await _get_with_retry(self.broker.get_5day_ma, t)
+                ma_5day = self._safe_float(ma_5day_val)
+                
             except Exception as e:
                 logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
-                curr_p, base_curr_p, base_amp5, df_1m, df_base = 0.0, 0.0, 0.0, None, None
+                # 🚨 [9대 관측 지표] 결측치 폴백 항목에 ma_5day 추가
+                curr_p, base_curr_p, base_amp5, df_1m, df_base, ma_5day = 0.0, 0.0, 0.0, None, None, 0.0
 
             # ==============================================================
             # 1️⃣ 지표 1: 기초지수 평균 진폭 레버리지(x3) 환산
@@ -170,7 +182,7 @@ class AvwapConsolePlugin:
             # ==============================================================
             base_vwap = 0.0
             base_gap_pct = 0.0
-            lev_gap_pct = 0.0  # NEW: 레버리지 이격도 변수 선언
+            lev_gap_pct = 0.0
 
             if df_base is not None and not df_base.empty:
                 # 🚨 [Time Paradox UI 렌더링 붕괴 수술] 당일 데이터만 강제 슬라이싱
@@ -201,7 +213,7 @@ class AvwapConsolePlugin:
             
             df_pre = pd.DataFrame()
             df_reg = pd.DataFrame()
-            df_aft = pd.DataFrame() # NEW: 애프터장 데이터프레임 선언
+            df_aft = pd.DataFrame()
             
             if not df_today.empty and 'time_est' in df_today.columns:
                 df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '092959')]
@@ -223,15 +235,15 @@ class AvwapConsolePlugin:
                     pre_amp = (pre_h - pre_l) / pre_l * 100.0
                     
                     try:
-                        # 🚨 [Series Stringification 붕괴 방어] idxmax() 대신 불리언 마스킹 강제
+                        # 🚨 [Series Stringification 붕괴 방어] idxmax() 대신 불리언 마스킹 강제 및 float 문자 파쇄
                         h_row = df_pre[safe_high_pre >= pre_h]
                         if not h_row.empty:
-                            raw_h_t = str(h_row['time_est'].iloc[0]).zfill(6)
+                            raw_h_t = str(h_row['time_est'].iloc[0]).split('.')[0].zfill(6)
                             pre_h_t = f"{raw_h_t[:2]}:{raw_h_t[2:4]}"
                             
                         l_row = df_pre[safe_low_pre <= pre_l]
                         if not l_row.empty:
-                            raw_l_t = str(l_row['time_est'].iloc[0]).zfill(6)
+                            raw_l_t = str(l_row['time_est'].iloc[0]).split('.')[0].zfill(6)
                             pre_l_t = f"{raw_l_t[:2]}:{raw_l_t[2:4]}"
                     except Exception: pass
 
@@ -244,24 +256,24 @@ class AvwapConsolePlugin:
                 
                 reg_h = self._safe_float(safe_high_reg.max())
                 reg_l = self._safe_float(safe_low_reg.min())
-                
+
                 if reg_h > 0 and reg_l > 0:
                     reg_amp = (reg_h - reg_l) / reg_l * 100.0
                     
                     try:
-                        # 🚨 [Series Stringification 붕괴 방어] 불리언 마스킹 락온
+                        # 🚨 [Series Stringification 붕괴 방어] 불리언 마스킹 락온 및 float 문자 파쇄
                         h_row_r = df_reg[safe_high_reg >= reg_h]
                         if not h_row_r.empty:
-                            raw_h_t_r = str(h_row_r['time_est'].iloc[0]).zfill(6)
+                            raw_h_t_r = str(h_row_r['time_est'].iloc[0]).split('.')[0].zfill(6)
                             reg_h_t = f"{raw_h_t_r[:2]}:{raw_h_t_r[2:4]}"
                             
                         l_row_r = df_reg[safe_low_reg <= reg_l]
                         if not l_row_r.empty:
-                            raw_l_t_r = str(l_row_r['time_est'].iloc[0]).zfill(6)
+                            raw_l_t_r = str(l_row_r['time_est'].iloc[0]).split('.')[0].zfill(6)
                             reg_l_t = f"{raw_l_t_r[:2]}:{raw_l_t_r[2:4]}"
                     except Exception: pass
 
-            # NEW: 애프터장 지표 연산 및 ValueError 방어막(Case 24) 락온
+            # 애프터장 지표 연산 및 ValueError 방어막(Case 24) 락온
             aft_h, aft_l, aft_amp = 0.0, 0.0, 0.0
             aft_h_t, aft_l_t = "미달성", "미달성"
             if not df_aft.empty:
@@ -275,15 +287,15 @@ class AvwapConsolePlugin:
                     aft_amp = (aft_h - aft_l) / aft_l * 100.0
                     
                     try:
-                        # 🚨 [Series Stringification 붕괴 방어] 불리언 마스킹 락온
+                        # 🚨 [Series Stringification 붕괴 방어] 불리언 마스킹 락온 및 float 문자 파쇄
                         h_row_a = df_aft[safe_high_aft >= aft_h]
                         if not h_row_a.empty:
-                            raw_h_t_a = str(h_row_a['time_est'].iloc[0]).zfill(6)
+                            raw_h_t_a = str(h_row_a['time_est'].iloc[0]).split('.')[0].zfill(6)
                             aft_h_t = f"{raw_h_t_a[:2]}:{raw_h_t_a[2:4]}"
                             
                         l_row_a = df_aft[safe_low_aft <= aft_l]
                         if not l_row_a.empty:
-                            raw_l_t_a = str(l_row_a['time_est'].iloc[0]).zfill(6)
+                            raw_l_t_a = str(l_row_a['time_est'].iloc[0]).split('.')[0].zfill(6)
                             aft_l_t = f"{raw_l_t_a[:2]}:{raw_l_t_a[2:4]}"
                     except Exception: pass
 
@@ -302,12 +314,11 @@ class AvwapConsolePlugin:
                 lev_sign = "+" if lev_gap_pct > 0 else ""
                 msg += f"▫️ 당일 누적 VWAP: <b>${base_vwap:.2f}</b>\n"
                 msg += f"▫️ 현재가 이격: <b>{sign}{base_gap_pct:.2f}%</b> (현재 ${base_curr_p:.2f})\n"
-                # MODIFIED: 2번 지표 내 레버리지(x3) 진폭 렌더링 추가
                 msg += f"▫️ 레버리지(x3) 진폭: <b>{lev_sign}{lev_gap_pct:.2f}%</b>\n\n"
             else:
                 msg += f"▫️ 정규장 개장 대기 중 (VWAP 연산 불가)\n\n"
 
-            # MODIFIED: [UI 가독성 팩트 교정] 개행(\n) 및 7칸 공백 들여쓰기 락온
+            # 🚨 [UI 가독성 팩트 교정] 개행(\n) 및 7칸 공백 들여쓰기 락온
             msg += f"🌅 <b>[ 프리장 스펙 (04:00~09:29) ]</b>\n"
             if pre_h > 0 and pre_l > 0:
                 msg += f"▫️ 고가: <b>${pre_h:.2f}</b> ({pre_h_t})\n       저가: <b>${pre_l:.2f}</b> ({pre_l_t})\n"
@@ -317,7 +328,6 @@ class AvwapConsolePlugin:
             else:
                 msg += "▫️ 데이터 집계 대기 중...\n\n"
 
-            # MODIFIED: [UI 가독성 팩트 교정] 개행(\n) 및 7칸 공백 들여쓰기 락온
             msg += f"🔥 <b>[ 정규장 스펙 (09:30~16:00) ]</b>\n"
             if reg_h > 0 and reg_l > 0:
                 msg += f"▫️ 고가: <b>${reg_h:.2f}</b> ({reg_h_t})\n       저가: <b>${reg_l:.2f}</b> ({reg_l_t})\n"
@@ -327,15 +337,21 @@ class AvwapConsolePlugin:
             else:
                 msg += "▫️ 정규장 개장 대기 중...\n\n"
 
-            # NEW: [애프터장 스펙] 시계열 슬라이싱 연산 및 렌더링 뷰포트 추가
             msg += f"🌙 <b>[ 애프터장 스펙 (16:00~20:00) ]</b>\n"
             if aft_h > 0 and aft_l > 0:
                 msg += f"▫️ 고가: <b>${aft_h:.2f}</b> ({aft_h_t})\n       저가: <b>${aft_l:.2f}</b> ({aft_l_t})\n"
                 msg += f"▫️ 세션 진폭: <b>{aft_amp:.2f}%</b>\n"
                 msg += f"🔻 고가 대비 3%(${(aft_h*0.97):.2f})\n       / 6%(${(aft_h*0.94):.2f}) / 9%(${(aft_h*0.91):.2f})\n"
-                msg += f"🔺 저가 대비 3%(${(aft_l*1.03):.2f})\n       / 6%(${(aft_l*1.06):.2f}) / 9%(${(aft_l*1.09):.2f})\n"
+                msg += f"🔺 저가 대비 3%(${(aft_l*1.03):.2f})\n       / 6%(${(aft_l*1.06):.2f}) / 9%(${(aft_l*1.09):.2f})\n\n"
             else:
-                msg += "▫️ 애프터장 개장 대기 중...\n"
+                msg += "▫️ 애프터장 개장 대기 중...\n\n"
+
+            # 🚨 [9대 관측 지표] 직전 5거래일 정규장 종가의 산술 평균 가격 (SMA 5) UI 렌더링 주입
+            msg += f"📊 <b>[ 직전 5거래일 정규장 종가 평균 (SMA 5) ]</b>\n"
+            if ma_5day > 0:
+                msg += f"▫️ 5일 평균가: <b>${ma_5day:.2f}</b>\n"
+            else:
+                msg += "▫️ 5일 평균가: 대기 중...\n"
 
             # 🚨 [관측 전용 아키텍처 전환] 수동 매수/매도 제어 버튼 영구 삭제 유지
             if is_holiday:
