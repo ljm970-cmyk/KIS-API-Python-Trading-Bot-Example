@@ -2,6 +2,7 @@
 # FILE: scheduler_core.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 36대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [SyntaxError 붕괴 수술] process_realtime_graduation 내부에 잔존하던 try-except 들여쓰기 엇갈림(Indentation)을 정밀 교정하여 파이썬 컴파일러 즉사 버그 완벽 차단.
 # 🚨 MODIFIED: [ImportError 치명적 버그 수술] 직전 업데이트에서 누락되었던 scheduled_token_check, scheduled_force_reset, perform_self_cleaning, scheduled_auto_sync 등 필수 백그라운드 코루틴을 100% 전면 복구 및 통합 완료.
 # 🚨 MODIFIED: [Phase 4 3대 정산 파이프라인 동기화] 시나리오 1~5를 분기 처리하는 실시간/16:05/20:05 정산 팩트 라우팅망 이식 완료.
 # 🚨 NEW: [Scenario 2] 15:15 EST 이전 전량 익절 발생 시 즉각 명예의 전당 저장 및 큐 장부 소각을 집행하고, 새 사이클 덫을 강제 장전하는 실시간 조기 졸업망 구축 완료.
@@ -11,7 +12,6 @@
 # 🚨 MODIFIED: [제1헌법 완벽 준수] 파일 I/O(JSON), 장부 연산, Config 조회를 담당하는 모든 asyncio.to_thread 호출부를 asyncio.wait_for 샌드박스로 100% 래핑.
 # 🚨 MODIFIED: [Safe Unpacking] get_account_balance 튜플 언패킹 시 ValueError 붕괴를 막기 위한 isinstance 및 len 쉴드 100% 락온.
 # 🚨 MODIFIED: [이벤트 루프 교착 완벽 차단] 텔레그램 send_message 및 edit_text 통신 전역에 asyncio.wait_for(timeout=15.0) 족쇄 래핑 유지.
-# 🚨 MODIFIED: [UnboundLocalError 원천 봉쇄] 재시도 루프 내 튜플 언패킹 변수(res)를 루프 진입 전 명시적 초기화(Hoisting) 락온.
 # 🚨 MODIFIED: [Double-Spending 붕괴 방어] get_budget_allocation 연산 시 V14 다중 종목 잉여금 중복 할당 차단.
 # 🚨 MODIFIED: [AttributeError 궁극 수술] context.job 객체 파손/결측 시 발생하는 연쇄 속성 접근(get/data/chat_id) 즉사 버그를 스케줄러 전역(force_reset, auto_sync 등)에서 getattr 단락 평가로 완벽 교정 완료.
 # ==========================================================
@@ -288,7 +288,7 @@ async def scheduled_force_reset(context):
                         exit_target = _safe_float(rev_state.get("exit_target", 0.0))
                         
                         if curr_ret >= exit_target:
-                            await asyncio.wait_for(asyncio.to_thread(cfg.set_reverse_state, t, True, 0, 0.0), timeout=5.0)
+                            await asyncio.wait_for(asyncio.to_thread(cfg.set_reverse_state, t, False, 0, 0.0), timeout=5.0)
                             
                             ledger_data = []
                             try: ledger_data = await asyncio.wait_for(asyncio.to_thread(cfg.get_ledger), timeout=10.0)
@@ -303,7 +303,7 @@ async def scheduled_force_reset(context):
                                 if changed:
                                     await asyncio.wait_for(asyncio.to_thread(cfg._save_json, cfg.FILES["LEDGER"], ledger_data), timeout=10.0)
                             safe_t = html.escape(str(t))
-                            msg_addons += f"\n🌤️ <b>[{safe_t}] 리버스 목표 달성({curr_ret:.2f}%)!</b> 격리 병동 졸업 완료!"
+                            msg_addons += f"\n🌤️ <b>[{safe_t}] 리버스 목표 달성({curr_ret:.2f}%)!</b> 격리 병동 졸업 및 일반 모드 복귀 완료!"
                         else:
                             await asyncio.wait_for(asyncio.to_thread(cfg.increment_reverse_day, t), timeout=5.0)
                 else:
@@ -478,8 +478,8 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
                                                 timeout=15.0
                                             )
                                         except Exception: pass
-                            except Exception as re_e:
-                                logging.error(f"🚨 [{ticker}] 조기 졸업 후 강제 재진입 파이프라인 에러: {re_e}")
+                        except Exception as re_e:
+                            logging.error(f"🚨 [{ticker}] 조기 졸업 후 강제 재진입 파이프라인 에러: {re_e}")
 
             except Exception as e:
                 logging.error(f"🚨 [{ticker}] 실시간 조기 졸업 처리 에러: {e}")
