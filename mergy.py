@@ -31,6 +31,7 @@ TARGET_FILES = [
     "telegram_states.py",
     "telegram_sync_engine.py",
     "telegram_view.py",
+    "telegram_commands.py",
     # "version_history.py",
     "volatility_engine.py",
     "callback_queue_handler.py",
