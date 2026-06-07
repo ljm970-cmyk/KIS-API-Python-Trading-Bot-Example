@@ -10,6 +10,9 @@
 # 🚨 MODIFIED: [Insight 14] EDIT_Q 수동 입력 시 콤마(,) 유입으로 인한 ValueError 런타임 붕괴 원천 차단
 # 🚨 MODIFIED: [Indentation 붕괴 수술] EDIT_Q 팻핑거 방어 로직 하위의 비표준 들여쓰기(25칸)를 24칸으로 정밀 교정하여 컴파일 즉사 오류 소각
 # 🚨 NEW: [Phase 1 암살자 설정 UI 결속] CONF_AVWAP_KRW 라우팅 분기 신설 및 콤마 맹독성 방어 후 원자적 I/O 기록 팩트 이식 완료
+# 🚨 MODIFIED: [Case 37 UX 무결성 사수] 모든 설정(시드, 분할, 수수료, 암살자 목표액 등) 입력 완료 시, 즉각 cmd_settlement를 호출하여 최신 관제탑 화면으로 복귀하도록 팩트 락온.
+# 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] 제자리 렌더링 호출(cmd_settlement) 시 발생하는 텔레그램 BadRequest(Message is not modified) 에러를 흡수하는 샌드박스 정밀 래핑.
+# 🚨 MODIFIED: [NameError 즉사 방어] PTB 최신 규격에 맞춰 from telegram.error import BadRequest 명시적 임포트 및 샌드박스 문법 100% 교정 완료.
 # ==========================================================
 
 import logging
@@ -22,6 +25,7 @@ import tempfile
 import html
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 class TelegramStates:
     def __init__(self, config, broker, queue_ledger, sync_engine):
@@ -36,9 +40,11 @@ class TelegramStates:
             return
             
         chat_id = update.effective_chat.id
+        
         # 🚨 MODIFIED: 미디어(사진 등) 수신 시 text 속성이 None이 되어 발생하는 TypeError 단락 평가 방어
         text = update.effective_message.text.strip() if update.effective_message and update.effective_message.text else ""
         
+        # 일반 명령어 라우팅 우회
         if "통합 지시서" in text or "지시서 조회" in text:
             return await controller.cmd_sync(update, context)
         elif "장부 동기화" in text or "장부 조회" in text:
@@ -66,6 +72,9 @@ class TelegramStates:
             return
 
         try:
+            # ==========================================================
+            # 🛠️ 지층(Queue) 수동 편집 모드 팻핑거 쉴드
+            # ==========================================================
             if state.startswith("EDITQ_"):
                 parts = state.split("_", 2)
                 ticker = parts[1]
@@ -123,6 +132,9 @@ class TelegramStates:
                 
                 return
 
+            # ==========================================================
+            # ⚙️ 관제탑 일반 설정 모드 (콤마 맹독성 방어 공통 적용)
+            # ==========================================================
             # 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 쉴드 래핑
             val = float(str(text).replace(',', ''))
             parts = state.split("_")
@@ -141,6 +153,13 @@ class TelegramStates:
                 await asyncio.to_thread(self.cfg.set_seed, ticker, new_v)
                 await update.effective_message.reply_text(f"✅ [{safe_ticker}] 시드 변경: ${new_v:,.0f}")
                 
+                if hasattr(controller, 'cmd_seed'):
+                    try:
+                        await controller.cmd_seed(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
+                
             elif state.startswith("CONF_SPLIT"):
                 if val < 1:
                     return await update.effective_message.reply_text("❌ 오류: 분할 횟수는 1 이상이어야 합니다.")
@@ -156,6 +175,13 @@ class TelegramStates:
                 await asyncio.to_thread(_set_split)
                 await update.effective_message.reply_text(f"✅ [{safe_ticker}] 분할: {int(val)}회")
                 
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
+                
             elif state.startswith("CONF_TARGET"):
                 ticker = parts[2]
                 safe_ticker = html.escape(str(ticker))
@@ -167,6 +193,13 @@ class TelegramStates:
                 
                 await asyncio.to_thread(_set_target)
                 await update.effective_message.reply_text(f"✅ [{safe_ticker}] 목표 수익률: {val}%")
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
 
             elif state.startswith("CONF_COMPOUND"):
                 if val < 0:
@@ -176,6 +209,13 @@ class TelegramStates:
                 safe_ticker = html.escape(str(ticker))
                 await asyncio.to_thread(self.cfg.set_compound_rate, ticker, val)
                 await update.effective_message.reply_text(f"✅ [{safe_ticker}] 졸업 시 자동 복리율: {val}%")
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
 
             elif state.startswith("CONF_FEE"):
                 if val < 0.0 or val > 10.0:
@@ -185,6 +225,13 @@ class TelegramStates:
                 safe_ticker = html.escape(str(ticker))
                 await asyncio.to_thread(self.cfg.set_fee, ticker, val)
                 await update.effective_message.reply_text(f"💳 <b>[{safe_ticker}] 증권사 거래 수수료: {val}% 적용 완료!</b>\n▫️ 다음 명예의 전당 정산부터 수익 연산 시 해당 수수료가 적용됩니다.", parse_mode='HTML')
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
                 
             elif state.startswith("CONF_STOCK_SPLIT"):
                 if val <= 0:
@@ -200,6 +247,13 @@ class TelegramStates:
                 await asyncio.to_thread(self.cfg.set_last_split_date, ticker, today_str)
                 
                 await update.effective_message.reply_text(f"✅ [{safe_ticker}] 수동 액면 보정 완료\n▫️ 모든 장부 기록이 {val}배 비율로 정밀하게 소급 조정되었습니다.")
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
 
             elif state.startswith("VREV_GAP"):
                 ticker = parts[2]
@@ -211,14 +265,32 @@ class TelegramStates:
                     
                 await update.effective_message.reply_text(f"📉 <b>[{safe_ticker}] V-REV 장막판 갭 스위칭 임계치 설정 완료!</b>\n▫️ 팩트 타격선: 기초자산 VWAP 대비 <b>{val}%</b>\n▫️ 다음 타임 슬라이싱 스케줄부터 즉시 적용됩니다.", parse_mode='HTML')
                 
-            # 🚨 NEW: Phase 1 암살자 원화 목표 수익금 파싱 및 장부 기록
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
+                
+            # ==========================================================
+            # 🎯 [Phase 1 NEW] 암살자 원화 목표 수익금 파싱 및 장부 기록
+            # ==========================================================
             elif state.startswith("CONF_AVWAP_KRW"):
                 if val <= 0:
                     return await update.effective_message.reply_text("❌ 오류: 암살자 목표 수익금은 0보다 커야 합니다.")
+                    
+                # State 형식: CONF_AVWAP_KRW_SOXL -> parts: ["CONF", "AVWAP", "KRW", "SOXL"]
                 ticker = parts[3]
                 safe_ticker = html.escape(str(ticker))
                 await asyncio.to_thread(self.cfg.set_avwap_target_krw, ticker, val)
                 await update.effective_message.reply_text(f"🎯 <b>[{safe_ticker}] 암살자 목표 수익금 ₩{int(val):,} 적용 완료!</b>\n▫️ 다음 섀도우 연산부터 KIS 원화 환산 팩트가 적용됩니다.", parse_mode='HTML')
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
 
         except ValueError:
             await update.effective_message.reply_text("❌ 오류: 유효한 숫자를 입력하세요. (입력 대기 상태가 강제 해제되었습니다.)")
