@@ -14,7 +14,14 @@
 # 🚨 MODIFIED: [Boolean 패러독스 차단] is_zero_start 팩트 오염으로 인한 강제 0주 장전 버그를 bool() 명시적 캐스팅으로 영구 소각.
 # 🚨 MODIFIED: [Cascading Failure 방어] cmd_sync 다중 종목 스캔 중 단일 종목 연산 에러 시 전체 지시서가 셧다운되는 연쇄 붕괴를 막기 위한 개별 종목 try-except 샌드박스 주입.
 # 🚨 MODIFIED: [TPS Rate Limit 방어] cmd_record 순회 루프 내에 await asyncio.sleep(0.06) 강제 지연을 이식하여 KIS 서버 밴 원천 차단.
+# 🚨 MODIFIED: [Fat-Finger 쉴드 재조정] cmd_add_q 의 수동 입력 오타 검증망을 3배수 레버리지의 갭(Gap) 변동성을 수용할 수 있도록 ±30%에서 ±60% 로 대폭 확장.
+# 🚨 MODIFIED: [제1헌법 철저 준수] 파일 내 모든 텔레그램 메세지 발송(reply_text, edit_text, send_message) 구문에 asyncio.wait_for(timeout=15.0) 족쇄를 100% 강제 래핑하여 텔레그램 서버 지연 시 메인 이벤트 루프 교착(Deadlock) 원천 봉쇄.
+# 🚨 MODIFIED: [제2헌법 절대 준수] _safe_float 래퍼 도입으로 인해 영원히 도달 불가능해진 cmd_add_q 내부의 `try... except ValueError:` 데드코드 블록 100% 영구 소각 완료.
+# 🚨 MODIFIED: [제1헌법 붕괴 수술] cmd_settlement 내 뷰어 렌더링 호출(get_settlement_message) 시 내재된 동기 파일 I/O를 asyncio.to_thread 로 격리 락온.
+# 🚨 NEW: [런타임 호환성 확보] asyncio.to_thread 로 코루틴을 넘길 때 kwargs 처리에서 발생할 수 있는 엣지 케이스를 막기 위해 위치 인자(Positional Argument)로 강제 캐스팅 락온.
+# 🚨 NEW: [Fact Override 렌더링 락온] UI(cmd_sync)에서도 KIS 실잔고(actual_qty > 0)가 존재하면, 오염된 스냅샷의 0주 팩트(is_zero_start=True)를 강제로 무효화하여 Phantom Rendering 원천 봉쇄.
 # ==========================================================
+
 import logging
 import datetime
 from zoneinfo import ZoneInfo
@@ -70,11 +77,11 @@ class TelegramController:
             return False
             
         if self.admin_id is None:
-            raw_id = await asyncio.to_thread(self.cfg.get_chat_id)
+            raw_id = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_chat_id), timeout=10.0)
             self.admin_id = int(self._safe_float(raw_id)) if raw_id else None
              
         if self.admin_id is None or self.admin_id <= 0:
-            print("⚠️ 보안 경고: ADMIN_CHAT_ID가 설정되지 않아 알 수 없는 사용자의 접근을 차단했습니다.")
+            logging.warning("⚠️ [보안 경고] ADMIN_CHAT_ID가 설정되지 않아 알 수 없는 사용자의 접근을 차단했습니다.")
             return False
             
         return update.effective_chat.id == self.admin_id
@@ -171,7 +178,6 @@ class TelegramController:
                 text = msg_obj.caption.strip()
                 
         chat_id = update.effective_chat.id
-        
         state = self.user_states.get(chat_id)
       
         if "통합 지시서" in text or "지시서 조회" in text:
@@ -181,7 +187,7 @@ class TelegramController:
         elif "시드 변경" in text:
             return await self.cmd_seed(update, context)
         elif "모드 전환" in text:
-            return await self.cmd_ticker(update, context)
+             return await self.cmd_ticker(update, context)
         elif "분할 변경" in text or "환경 설정" in text or "세팅" in text:
             return await self.cmd_settlement(update, context)
         elif "스나이퍼" in text:
@@ -189,7 +195,7 @@ class TelegramController:
         elif "명예의 전당" in text or "졸업" in text:
              return await self.cmd_history(update, context)
         elif "암살자" in text or "조기" in text or "avwap" in text.lower():
-            return await self.cmd_avwap(update, context)
+             return await self.cmd_avwap(update, context)
         elif "로그" in text or "에러" in text:
             return await self.cmd_log(update, context)
             
@@ -204,7 +210,7 @@ class TelegramController:
         if update.callback_query:
             status_msg = update.callback_query.message
         else:
-            try: status_msg = await update.effective_message.reply_text(loading_text, parse_mode='HTML')
+            try: status_msg = await asyncio.wait_for(update.effective_message.reply_text(loading_text, parse_mode='HTML'), timeout=15.0)
             except Exception: pass
             
         try:
@@ -221,7 +227,7 @@ class TelegramController:
             msg, markup = await asyncio.wait_for(plugin.get_console_message(app_data), timeout=15.0)
             
             try:
-                if status_msg: await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
             except Exception as edit_e:
                 if "Message is not modified" not in str(edit_e):
                     raise edit_e
@@ -229,20 +235,20 @@ class TelegramController:
         except asyncio.TimeoutError:
             logging.error("🚨 AVWAP 관제탑 호출 타임아웃 (네트워크 지연)")
             try: 
-                if status_msg: await status_msg.edit_text("❌ <b>[네트워크 지연 발생]</b>\n야후 파이낸스 또는 증권사 서버 응답이 지연되어 스캔을 강제 종료했습니다. 잠시 후 다시 시도해 주세요.", parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text("❌ <b>[네트워크 지연 발생]</b>\n야후 파이낸스 또는 증권사 서버 응답이 지연되어 스캔을 강제 종료했습니다. 잠시 후 다시 시도해 주세요.", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
         except Exception as e:
             logging.error(f"🚨 AVWAP 관제탑 호출 내부 에러: {e}")
             safe_err = html.escape(str(e))
             try: 
-                if status_msg: await status_msg.edit_text(f"❌ <b>[시스템 에러]</b>\n독립 관제탑 호출 중 내부 오류가 발생했습니다:\n<code>{safe_err}</code>", parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text(f"❌ <b>[시스템 에러]</b>\n독립 관제탑 호출 중 내부 오류가 발생했습니다:\n<code>{safe_err}</code>", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
 
     async def cmd_log(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
         
         status_msg = None
-        try: status_msg = await update.effective_message.reply_text("🔍 <b>[원격 진단]</b> 최근 시스템 에러 로그를 핀셋 추출 중...", parse_mode='HTML')
+        try: status_msg = await asyncio.wait_for(update.effective_message.reply_text("🔍 <b>[원격 진단]</b> 최근 시스템 에러 로그를 핀셋 추출 중...", parse_mode='HTML'), timeout=15.0)
         except Exception: pass
         
         try:
@@ -257,43 +263,42 @@ class TelegramController:
                 except FileNotFoundError:
                     return None
                 
-            error_logs = await asyncio.to_thread(_grep_tail_logs, log_path)
+            error_logs = await asyncio.wait_for(asyncio.to_thread(_grep_tail_logs, log_path), timeout=10.0)
             
             if error_logs is None:
                 try: 
-                    if status_msg: await status_msg.edit_text("📭 <b>[진단 결과]</b> 오늘자 로그 파일이 생성되지 않았습니다.", parse_mode='HTML')
+                    if status_msg: await asyncio.wait_for(status_msg.edit_text("📭 <b>[진단 결과]</b> 오늘자 로그 파일이 생성되지 않았습니다.", parse_mode='HTML'), timeout=15.0)
                 except Exception: pass
                 return
             
             if not error_logs:
                 try: 
-                    if status_msg: await status_msg.edit_text("✅ <b>[진단 결과]</b> 최근 감지된 시스템 결함이 없습니다. 무결점 순항 중!", parse_mode='HTML')
+                    if status_msg: await asyncio.wait_for(status_msg.edit_text("✅ <b>[진단 결과]</b> 최근 감지된 시스템 결함이 없습니다. 무결점 순항 중!", parse_mode='HTML'), timeout=15.0)
                 except Exception: pass
                 return
                 
             report = self.view.format_log_report(error_logs)
             try: 
-                if status_msg: await status_msg.edit_text(report, parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text(report, parse_mode='HTML'), timeout=15.0)
             except Exception: pass
         except Exception as e:
             logging.error(f"🚨 원격 로그 추출 실패: {e}")
             safe_err = html.escape(str(e))
             try: 
-                if status_msg: await status_msg.edit_text(f"🚨 <b>[진단 실패]</b> 로그 추출 중 오류 발생:\n<code>{safe_err}</code>", parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text(f"🚨 <b>[진단 실패]</b> 로그 추출 중 오류 발생:\n<code>{safe_err}</code>", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
-
     async def cmd_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
         from plugin_updater import SystemUpdater
         updater = SystemUpdater()
         allowed, fail_msg = await updater.is_update_allowed()
         if not allowed:
-            try: await update.effective_message.reply_text(f"🛑 <b>[작전 중 업데이트 거부]</b>\n\n{fail_msg}", parse_mode='HTML')
+            try: await asyncio.wait_for(update.effective_message.reply_text(f"🛑 <b>[작전 중 업데이트 거부]</b>\n\n{fail_msg}", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
             return
             
         status_msg = None
-        try: status_msg = await update.effective_message.reply_text("⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
+        try: status_msg = await asyncio.wait_for(update.effective_message.reply_text("⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML'), timeout=15.0)
         except Exception: pass
         
         try:
@@ -301,24 +306,24 @@ class TelegramController:
             safe_msg = html.escape(msg) 
             if success:
                 try: 
-                    if status_msg: await status_msg.edit_text(f"✅ <b>[동기화 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML')
+                    if status_msg: await asyncio.wait_for(status_msg.edit_text(f"✅ <b>[동기화 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML'), timeout=15.0)
                 except Exception: pass
                 await updater.restart_daemon()
             else:
                 try: 
-                    if status_msg: await status_msg.edit_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML')
+                    if status_msg: await asyncio.wait_for(status_msg.edit_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML'), timeout=15.0)
                 except Exception: pass
         except Exception as e:
             safe_err = html.escape(str(e)) 
             try: 
-                if status_msg: await status_msg.edit_text(f"🚨 <b>[치명적 오류]</b> 플러그인 호출 및 프로세스 예외 발생: {safe_err}", parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text(f"🚨 <b>[치명적 오류]</b> 프로세스 예외 발생: {safe_err}", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
 
     async def cmd_queue(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
         args = context.args
         if not args: 
-            try: await update.effective_message.reply_text("❌ 종목명을 입력하세요. 예: /queue SOXL")
+            try: await asyncio.wait_for(update.effective_message.reply_text("❌ 종목명을 입력하세요. 예: /queue SOXL"), timeout=15.0)
             except Exception: pass
             return
             
@@ -326,12 +331,12 @@ class TelegramController:
         
         if not getattr(self, 'queue_ledger', None):
             from queue_ledger import QueueLedger
-            self.queue_ledger = await asyncio.to_thread(QueueLedger)
+            self.queue_ledger = await asyncio.wait_for(asyncio.to_thread(QueueLedger), timeout=10.0)
             
-        q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
+        q_data = await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.get_queue, ticker), timeout=10.0)
         if not isinstance(q_data, list): q_data = []
         msg, reply_markup = self.view.get_queue_management_menu(ticker, q_data)
-        try: await update.effective_message.reply_text(text=msg, reply_markup=reply_markup, parse_mode='HTML')
+        try: await asyncio.wait_for(update.effective_message.reply_text(text=msg, reply_markup=reply_markup, parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_add_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -339,22 +344,19 @@ class TelegramController:
         try:
             args = context.args
             if not args or len(args) < 4:
-                try: await update.effective_message.reply_text("❌ 정확한 양식: <code>/add_q SOXL 2026-04-06 20 52.16</code>", parse_mode='HTML')
+                try: await asyncio.wait_for(update.effective_message.reply_text("❌ 정확한 양식: <code>/add_q SOXL 2026-04-06 20 52.16</code>", parse_mode='HTML'), timeout=15.0)
                 except Exception: pass
                 return
                 
             ticker = args[0].upper()
             date_str = args[1]
-            try:
-                qty = int(self._safe_float(args[2]))
-                price = self._safe_float(args[3])
-            except ValueError: 
-                try: await update.effective_message.reply_text("❌ 수량은 정수, 평단가는 숫자로 입력하세요.")
-                except Exception: pass
-                return
+            
+            # 🚨 MODIFIED: [Insight 14 & 25] ValueError 데드코드 소각 및 _safe_float를 통한 완벽한 필터링 락온
+            qty = int(self._safe_float(args[2]))
+            price = self._safe_float(args[3])
             
             if qty <= 0 or price <= 0.0:
-                try: await update.effective_message.reply_text("❌ 수량과 평단가는 0보다 큰 숫자여야 합니다.", parse_mode='HTML')
+                try: await asyncio.wait_for(update.effective_message.reply_text("❌ 수량과 평단가는 0보다 큰 숫자여야 합니다. (혹은 형식 오류)", parse_mode='HTML'), timeout=15.0)
                 except Exception: pass
                 return
                 
@@ -371,41 +373,42 @@ class TelegramController:
                         else: await asyncio.sleep(1.0 * (2 ** attempt))
                         
                 if curr_p and curr_p > 0:
-                    if price < curr_p * 0.7 or price > curr_p * 1.3:
-                        try: await update.effective_message.reply_text(f"🚨 <b>오입력 차단:</b> 입력하신 평단가(<b>${price:.2f}</b>)가 현재가 대비 ±30%를 벗어납니다. 오타를 확인하세요!", parse_mode='HTML')
+                    # 🚨 MODIFIED: [Fat-Finger 쉴드 재조정] ±30% -> ±60% 대폭 확장 (0.4 ~ 1.6)
+                    if price < curr_p * 0.4 or price > curr_p * 1.6:
+                        try: await asyncio.wait_for(update.effective_message.reply_text(f"🚨 <b>오입력 차단:</b> 입력하신 평단가(<b>${price:.2f}</b>)가 현재가 대비 ±60%를 벗어납니다. 오타를 확인하세요!", parse_mode='HTML'), timeout=15.0)
                         except Exception: pass
                         return
             except Exception: pass
             
             if not getattr(self, 'queue_ledger', None):
                 from queue_ledger import QueueLedger
-                self.queue_ledger = await asyncio.to_thread(QueueLedger)
+                self.queue_ledger = await asyncio.wait_for(asyncio.to_thread(QueueLedger), timeout=10.0)
                 
-            q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker)
+            q_data = await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.get_queue, ticker), timeout=10.0)
             if not isinstance(q_data, list): q_data = [] 
             
             q_data.append({"qty": qty, "price": price, "date": f"{date_str} 23:59:59", "type": "MANUAL_OVERRIDE"})
             q_data.sort(key=lambda x: str(x.get('date', '')) if isinstance(x, dict) else '', reverse=True)
             
-            await asyncio.to_thread(self.queue_ledger.overwrite_queue, ticker, q_data)
+            await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.overwrite_queue, ticker, q_data), timeout=10.0)
             chat_id = update.effective_chat.id
             if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
             if not self.sync_engine.sync_locks[ticker].locked(): await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=False)
             
             date_str_safe = html.escape(str(date_str))
             ticker_safe = html.escape(str(ticker))
-            try: await update.effective_message.reply_text(f"✅ <b>[{ticker_safe}] 수동 지층 삽입 완료!</b>\n▫️ {date_str_safe} | {qty}주 | ${price:.2f}", parse_mode='HTML')
+            try: await asyncio.wait_for(update.effective_message.reply_text(f"✅ <b>[{ticker_safe}] 수동 지층 삽입 완료!</b>\n▫️ {date_str_safe} | {qty}주 | ${price:.2f}", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
         except Exception as e:
             safe_err = html.escape(str(e))
-            try: await update.effective_message.reply_text(f"❌ 알 수 없는 에러 발생: {safe_err}")
+            try: await asyncio.wait_for(update.effective_message.reply_text(f"❌ 알 수 없는 에러 발생: {safe_err}"), timeout=15.0)
             except Exception: pass
 
     async def cmd_clear_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
         args = context.args
         if not args: 
-            try: await update.effective_message.reply_text("❌ 종목명을 입력하세요. 예: /clear_q SOXL")
+            try: await asyncio.wait_for(update.effective_message.reply_text("❌ 종목명을 입력하세요. 예: /clear_q SOXL"), timeout=15.0)
             except Exception: pass
             return
             
@@ -414,33 +417,33 @@ class TelegramController:
         try:
             if not getattr(self, 'queue_ledger', None):
                 from queue_ledger import QueueLedger
-                self.queue_ledger = await asyncio.to_thread(QueueLedger)
+                self.queue_ledger = await asyncio.wait_for(asyncio.to_thread(QueueLedger), timeout=10.0)
                 
-            await asyncio.to_thread(self.queue_ledger.clear_queue, ticker)
+            await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.clear_queue, ticker), timeout=10.0)
             chat_id = update.effective_chat.id
             if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
             if not self.sync_engine.sync_locks[ticker].locked(): await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=True)
-            try: await update.effective_message.reply_text(f"🗑️ <b>[{ticker_safe}] 장부가 완전히 소각되었습니다.</b>\n새로운 지층을 구축할 준비가 완료되었습니다.", parse_mode='HTML')
+            try: await asyncio.wait_for(update.effective_message.reply_text(f"🗑️ <b>[{ticker_safe}] 장부가 완전히 소각되었습니다.</b>\n새로운 지층을 구축할 준비가 완료되었습니다.", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
         except Exception as e:
             safe_err = html.escape(str(e))
-            try: await update.effective_message.reply_text(f"❌ 소각 중 에러 발생: {safe_err}")
+            try: await asyncio.wait_for(update.effective_message.reply_text(f"❌ 소각 중 에러 발생: {safe_err}"), timeout=15.0)
             except Exception: pass
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
         try:
             target_hour, season_icon = self._get_dst_info()
-            latest_version = await asyncio.to_thread(self.cfg.get_latest_version) 
+            latest_version = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_latest_version), timeout=10.0) 
             msg = self.view.get_start_message(target_hour, season_icon, latest_version) 
-            await update.effective_message.reply_text(msg, parse_mode='HTML')
+            await asyncio.wait_for(update.effective_message.reply_text(msg, parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_sync(self, update, context):
         if not await self._is_admin(update):
             return
         
-        try: await update.effective_message.reply_text("🔄 시장 분석 및 지시서 작성 중...")
+        try: await asyncio.wait_for(update.effective_message.reply_text("🔄 시장 분석 및 지시서 작성 중..."), timeout=15.0)
         except Exception: pass
         
         async with self.tx_lock:
@@ -460,7 +463,7 @@ class TelegramController:
                     else: await asyncio.sleep(1.0 * (2 ** attempt))
             
         if holdings is None:
-            try: await update.effective_message.reply_text("❌ KIS API 통신 오류로 계좌 정보를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.")
+            try: await asyncio.wait_for(update.effective_message.reply_text("❌ KIS API 통신 오류로 계좌 정보를 불러올 수 없습니다. 잠시 후 다시 시도해주세요."), timeout=15.0)
             except Exception: pass
             return
 
@@ -468,7 +471,7 @@ class TelegramController:
         dst_txt = "🌞 서머타임 (17:30)" if target_hour == 17 else "❄️ 겨울 (18:30)"
         status_code, status_text = await self._get_market_status()
         
-        tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(tickers, list): tickers = []
         render_tickers = list(tickers)
         
@@ -599,7 +602,8 @@ class TelegramController:
                     curr = safe_prev_close
 
                 idx_ticker = "SOXX" if t == "SOXL" else "QQQ"
-                dynamic_pct_obj = await _retry_call(self.broker.get_dynamic_sniper_target, index_ticker=idx_ticker)
+                # 🚨 MODIFIED: [런타임 호환성 팩트 교정] kwargs 대신 위치 인자로 다이렉트 패싱하여 TypeError 원천 봉쇄
+                dynamic_pct_obj = await _retry_call(self.broker.get_dynamic_sniper_target, idx_ticker)
                 
                 dynamic_pct = self._safe_float(getattr(dynamic_pct_obj, 'base_amp', 0.0)) if hasattr(dynamic_pct_obj, 'base_amp') else (8.79 if t == "SOXL" else 4.95)
                 if dynamic_pct == 0.0: dynamic_pct = (8.79 if t == "SOXL" else 4.95)
@@ -610,14 +614,14 @@ class TelegramController:
                 hybrid_target_price = current_day_high * (1 - (abs(dynamic_pct) / 100.0))
                 trigger_reason = f"-{abs(dynamic_pct)}%"
                 
-                is_locked_reg = await asyncio.to_thread(self.cfg.check_lock, t, "REG")
-                is_locked_sniper = await asyncio.to_thread(self.cfg.check_lock, t, "SNIPER")
+                is_locked_reg = await asyncio.wait_for(asyncio.to_thread(self.cfg.check_lock, t, "REG"), timeout=10.0)
+                is_locked_sniper = await asyncio.wait_for(asyncio.to_thread(self.cfg.check_lock, t, "SNIPER"), timeout=10.0)
                 is_already_ordered = is_locked_reg or is_locked_sniper
                  
-                ver = await asyncio.to_thread(self.cfg.get_version, t)
+                ver = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_version, t), timeout=10.0)
                 
                 try:
-                    is_manual_vwap = await asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t)
+                    is_manual_vwap = await asyncio.wait_for(asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t), timeout=10.0)
                 except Exception:
                     is_manual_vwap = False
                 
@@ -626,13 +630,13 @@ class TelegramController:
                 cached_snap = None
                 if not force_realtime:
                     if ver == "V_REV":
-                        cached_snap = await asyncio.to_thread(self.strategy.v_rev_plugin.load_daily_snapshot, t)
+                        cached_snap = await asyncio.wait_for(asyncio.to_thread(self.strategy.v_rev_plugin.load_daily_snapshot, t), timeout=10.0)
                     elif ver == "V14":
                          if is_manual_vwap:
-                            cached_snap = await asyncio.to_thread(self.strategy.v14_vwap_plugin.load_daily_snapshot, t)
+                            cached_snap = await asyncio.wait_for(asyncio.to_thread(self.strategy.v14_vwap_plugin.load_daily_snapshot, t), timeout=10.0)
                          else:
                             if hasattr(self.strategy, 'v14_plugin') and hasattr(self.strategy.v14_plugin, 'load_daily_snapshot'):
-                                cached_snap = await asyncio.to_thread(self.strategy.v14_plugin.load_daily_snapshot, t)
+                                cached_snap = await asyncio.wait_for(asyncio.to_thread(self.strategy.v14_plugin.load_daily_snapshot, t), timeout=10.0)
                 
                 if not isinstance(cached_snap, dict): cached_snap = None
                 
@@ -654,6 +658,10 @@ class TelegramController:
                         elif "initial_qty" in cached_snap:
                             logic_qty = int(self._safe_float(cached_snap.get("initial_qty", 0)))
                         is_zero_start_fact = bool(cached_snap.get("is_zero_start", logic_qty == 0))
+                        
+                # 🚨 NEW: [Fact Override 렌더링 락온] KIS 실잔고가 있으면 스냅샷의 0주 상태를 강제 폐기하여 Phantom Rendering 방어
+                if actual_qty > 0 and is_zero_start_fact:
+                    is_zero_start_fact = False
 
                 try:
                      jobs = context.job_queue.jobs() if context.job_queue else []
@@ -662,17 +670,17 @@ class TelegramController:
                 except Exception:
                     regime_data = None
 
-                plan = await asyncio.to_thread(
+                plan = await asyncio.wait_for(asyncio.to_thread(
                     self.strategy.get_plan,
                     t, curr, actual_avg, logic_qty, safe_prev_close, ma_5day=ma_5day,
                     market_type="REG", available_cash=allocated_cash.get(t, 0.0),
                     is_simulation=True, regime_data=regime_data,
                     is_snapshot_mode=force_realtime
-                )
+                ), timeout=15.0)
                 if not isinstance(plan, dict): plan = {}
                  
-                split = await asyncio.to_thread(self.cfg.get_split_count, t)
-                safe_seed = await asyncio.to_thread(self.cfg.get_seed, t)
+                split = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_split_count, t), timeout=10.0)
+                safe_seed = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_seed, t), timeout=10.0)
                 
                 t_val = self._safe_float(plan.get('t_val', 0.0))
                 is_rev = plan.get('is_reverse', False)
@@ -687,9 +695,9 @@ class TelegramController:
                 if ver == "V_REV":
                     if not getattr(self, 'queue_ledger', None):
                         from queue_ledger import QueueLedger
-                        self.queue_ledger = await asyncio.to_thread(QueueLedger)
+                        self.queue_ledger = await asyncio.wait_for(asyncio.to_thread(QueueLedger), timeout=10.0)
                    
-                    q_list = await asyncio.to_thread(self.queue_ledger.get_queue, t)
+                    q_list = await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.get_queue, t), timeout=10.0)
                     if not isinstance(q_list, list): q_list = []
                     
                     v_rev_q_lots = len(q_list)
@@ -721,7 +729,7 @@ class TelegramController:
                         total_q = sum(int(self._safe_float(item.get("qty"))) for item in valid_q_data)
                         total_inv = sum(self._safe_float(item.get('qty')) * self._safe_float(item.get('price')) for item in valid_q_data)
                         q_avg_price = (total_inv / total_q) if total_q > 0 else 0.0
-                     
+                        
                         upper_qty = total_q - l1_qty
                         trigger_upper = round(q_avg_price * 1.010, 2) if upper_qty > 0 else 0.0
                         
@@ -748,7 +756,7 @@ class TelegramController:
                             v_rev_guidance += f" 🔵 {desc_str} ${price:.2f} <b>{s_qty}주</b> ({tag})\n"
                     else:
                         v_rev_guidance += " 🔵 매도: 대기 물량 없음 (관망)\n"
-                   
+                    
                     safe_anchor = l1_price if l1_price > 0.0 else safe_prev_close
                     if safe_anchor > 0:
                         b1_price = round(safe_prev_close * 1.15 if is_zero_start_fact else safe_anchor * 0.9976, 2)
@@ -766,7 +774,7 @@ class TelegramController:
 
                 is_avwap_hybrid_on = False
                 if hasattr(self.cfg, 'get_avwap_hybrid_mode'):
-                    is_avwap_hybrid_on = await asyncio.to_thread(self.cfg.get_avwap_hybrid_mode, t)
+                    is_avwap_hybrid_on = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_avwap_hybrid_mode, t), timeout=10.0)
 
                 if is_avwap_hybrid_on:
                     is_avwap_active = True
@@ -815,7 +823,7 @@ class TelegramController:
                                     timeout=10.0
                                  )
                                 if not isinstance(decision, dict): decision = {}
-                                 
+                                
                                 avwap_base_price = decision.get('base_curr_p', base_curr_p)
                                 avwap_base_vwap = decision.get('vwap', 0.0)
                                 avwap_prev_vwap = decision.get('prev_vwap', 0.0)
@@ -845,11 +853,11 @@ class TelegramController:
                         elif curr_time >= time_dynamic_dump:
                             avwap_status_txt = "⛔ 금일 감시 종료"
 
-                upward_sniper_mode_on = await asyncio.to_thread(self.cfg.get_upward_sniper_mode, t)
-                target_val = await asyncio.to_thread(self.cfg.get_target_profit, t)
-                avwap_gap_thresh_val = await asyncio.to_thread(getattr(self.cfg, 'get_avwap_gap_threshold', lambda x: -0.67), t) if is_avwap_active else -0.67
-                vrev_gap_switch_val = await asyncio.to_thread(getattr(self.cfg, 'get_vrev_gap_switching_mode', lambda x: False), t)
-                vrev_gap_thresh_val = await asyncio.to_thread(getattr(self.cfg, 'get_vrev_gap_threshold', lambda x: -0.67), t)
+                upward_sniper_mode_on = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_upward_sniper_mode, t), timeout=10.0)
+                target_val = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_target_profit, t), timeout=10.0)
+                avwap_gap_thresh_val = await asyncio.wait_for(asyncio.to_thread(getattr(self.cfg, 'get_avwap_gap_threshold', lambda x: -0.67), t), timeout=10.0) if is_avwap_active else -0.67
+                vrev_gap_switch_val = await asyncio.wait_for(asyncio.to_thread(getattr(self.cfg, 'get_vrev_gap_switching_mode', lambda x: False), t), timeout=10.0)
+                vrev_gap_thresh_val = await asyncio.wait_for(asyncio.to_thread(getattr(self.cfg, 'get_vrev_gap_threshold', lambda x: -0.67), t), timeout=10.0)
 
                 ticker_data_list.append({
                     'ticker': t, 'version': ver, 't_val': t_val, 'split': split, 'curr': curr, 'avg': actual_avg, 'qty': actual_qty,
@@ -872,7 +880,7 @@ class TelegramController:
                     'vol_weight': round(real_val, 2), 
                     'vol_status': vol_status,
                     'v_rev_q_lots': v_rev_q_lots,
-                    'v_rev_q_qty': v_rev_q_lots,
+                    'v_rev_q_qty': v_rev_q_qty,
                     'v_rev_guidance': v_rev_guidance,
                     'avwap_active': is_avwap_active,
                     'avwap_budget': avwap_budget,
@@ -893,7 +901,7 @@ class TelegramController:
                     'is_zero_start': is_zero_start_fact,
                     'has_snapshot': bool(cached_snap)
                 })
-                
+               
                 plan_orders_raw = plan.get('orders', [])
                 if not isinstance(plan_orders_raw, list): plan_orders_raw = []
                 
@@ -928,10 +936,10 @@ class TelegramController:
         )
 
         try:
-            await update.effective_message.reply_text(final_msg, reply_markup=markup, parse_mode='HTML')
+            await asyncio.wait_for(update.effective_message.reply_text(final_msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
         except Exception as e:
             logging.error(f"🚨 통합 지시서 텔레그램 전송 실패: {e}")
-            try: await update.effective_message.reply_text("❌ <b>메시지 전송 실패</b>\n내용이 텔레그램 제한(4096자)을 초과했거나 네트워크 오류가 발생했습니다.", parse_mode='HTML')
+            try: await asyncio.wait_for(update.effective_message.reply_text("❌ <b>메시지 전송 실패</b>\n내용이 텔레그램 제한(4096자)을 초과했거나 네트워크 오류가 발생했습니다.", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
 
     async def cmd_record(self, update, context):
@@ -939,11 +947,11 @@ class TelegramController:
         
         chat_id = update.effective_chat.id
         status_msg = None
-        try: status_msg = await context.bot.send_message(chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML')
+        try: status_msg = await asyncio.wait_for(context.bot.send_message(chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML'), timeout=15.0)
         except Exception: pass
         
         success_tickers = []
-        active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(active_tickers, list): active_tickers = []
         
         for t in active_tickers:
@@ -971,17 +979,17 @@ class TelegramController:
             await self.sync_engine._display_ledger(success_tickers[0], chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
         else:
             try: 
-                if status_msg: await status_msg.edit_text("✅ <b>동기화 완료</b> (표시할 진행 중인 장부가 없거나 에러 대기 중입니다)", parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text("✅ <b>동기화 완료</b> (표시할 진행 중인 장부가 없거나 에러 대기 중입니다)", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
 
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
         target_msg = update.effective_message
-        try: history_data = await asyncio.to_thread(self.cfg.get_history)
+        try: history_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_history), timeout=10.0)
         except Exception: history_data = []
         if not isinstance(history_data, list): history_data = []
         if not history_data:
-            try: await target_msg.reply_text("📭 <b>명예의 전당 (졸업 기록)이 비어있습니다.</b>", parse_mode='HTML')
+            try: await asyncio.wait_for(target_msg.reply_text("📭 <b>명예의 전당 (졸업 기록)이 비어있습니다.</b>", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
             return
             
@@ -998,12 +1006,12 @@ class TelegramController:
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"HIST:VIEW:{h.get('id', 0)}")])
             
         keyboard.append([InlineKeyboardButton("❌ 닫기", callback_data="RESET:CANCEL")])
-        try: await target_msg.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        try: await asyncio.wait_for(target_msg.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_mode(self, update, context):
         if not await self._is_admin(update): return
-        active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(active_tickers, list): active_tickers = []
         
         report = "📊 <b>[ 자율주행 변동성 마스터 지표 상세 분석 ]</b>\n\n"
@@ -1019,12 +1027,13 @@ class TelegramController:
                 for attempt in range(3):
                     try:
                         await asyncio.sleep(0.06)
-                        dynamic_pct_obj = await asyncio.wait_for(asyncio.to_thread(self.broker.get_dynamic_sniper_target, index_ticker=idx_ticker), timeout=10.0)
+                        # 🚨 MODIFIED: [런타임 호환성 확보] kwarg 대신 위치 인자 팩트 캐스팅
+                        dynamic_pct_obj = await asyncio.wait_for(asyncio.to_thread(self.broker.get_dynamic_sniper_target, idx_ticker), timeout=10.0)
                         break
                     except Exception:
                         if attempt == 2: pass
                         else: await asyncio.sleep(1.0 * (2**attempt))
-                        
+                
                 if dynamic_pct_obj and hasattr(dynamic_pct_obj, 'metric_val'):
                     real_val = self._safe_float(dynamic_pct_obj.metric_val)
                     real_name = getattr(dynamic_pct_obj, 'metric_name', '지표')
@@ -1043,59 +1052,59 @@ class TelegramController:
         report += "🎯 <b>[ 수동 상방 스나이퍼 독립 제어 ]</b>\n"
         keyboard = []
         for t in active_tickers:
-            is_sniper = await asyncio.to_thread(self.cfg.get_upward_sniper_mode, t)
+            is_sniper = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_upward_sniper_mode, t), timeout=10.0)
             status_txt = 'ON (가동중)' if is_sniper else 'OFF (대기중)'
             report += f"▫️ {html.escape(str(t))} 현재 상태 : {status_txt}\n"
             keyboard.append([InlineKeyboardButton(f"{html.escape(str(t))} ⚪ OFF", callback_data=f"MODE:OFF:{html.escape(str(t))}"), InlineKeyboardButton(f"{html.escape(str(t))} 🎯 ON", callback_data=f"MODE:ON:{html.escape(str(t))}")])
-        try: await update.effective_message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        try: await asyncio.wait_for(update.effective_message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_reset(self, update, context):
         if not await self._is_admin(update): return
-        active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(active_tickers, list): active_tickers = []
         msg, markup = self.view.get_reset_menu(active_tickers)
-        try: await update.effective_message.reply_text(msg, reply_markup=markup, parse_mode='HTML')
+        try: await asyncio.wait_for(update.effective_message.reply_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_seed(self, update, context):
         if not await self._is_admin(update): return
         msg = "💵 <b>[ 종목별 시드머니 관리 ]</b>\n\n"
         keyboard = []
-        active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(active_tickers, list): active_tickers = []
         for t in active_tickers:
-            current_seed = self._safe_float(await asyncio.to_thread(self.cfg.get_seed, t))
+            current_seed = self._safe_float(await asyncio.wait_for(asyncio.to_thread(self.cfg.get_seed, t), timeout=10.0))
             msg += f"💎 <b>{html.escape(str(t))}</b>: ${current_seed:,.0f}\n"
             keyboard.append([
                 InlineKeyboardButton(f"➕ {html.escape(str(t))} 추가", callback_data=f"SEED:ADD:{html.escape(str(t))}"), 
                 InlineKeyboardButton(f"➖ {html.escape(str(t))} 감소", callback_data=f"SEED:SUB:{html.escape(str(t))}"),
                 InlineKeyboardButton(f"🔢 {html.escape(str(t))} 고정", callback_data=f"SEED:SET:{html.escape(str(t))}")
             ])
-        try: await update.effective_message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        try: await asyncio.wait_for(update.effective_message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_ticker(self, update, context):
         if not await self._is_admin(update): return
-        active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(active_tickers, list): active_tickers = []
         msg, markup = self.view.get_ticker_menu(active_tickers)
-        try: await update.effective_message.reply_text(msg, reply_markup=markup, parse_mode='HTML')
+        try: await asyncio.wait_for(update.effective_message.reply_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
         except Exception: pass
 
     async def cmd_settlement(self, update, context):
         if not await self._is_admin(update): return
-        active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers)
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0)
         if not isinstance(active_tickers, list): active_tickers = []
         
         atr_data = {}
         dynamic_target_data = {} 
         status_msg = None
         if update.callback_query: 
-            try: status_msg = await update.callback_query.message.reply_text("⏳ <b>실시간 시장 지표 연산 중...</b>", parse_mode='HTML')
+            try: status_msg = await asyncio.wait_for(update.callback_query.message.reply_text("⏳ <b>실시간 시장 지표 연산 중...</b>", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
         else: 
-            try: status_msg = await update.effective_message.reply_text("⏳ <b>실시간 시장 지표 연산 중...</b>", parse_mode='HTML')
+            try: status_msg = await asyncio.wait_for(update.effective_message.reply_text("⏳ <b>실시간 시장 지표 연산 중...</b>", parse_mode='HTML'), timeout=15.0)
             except Exception: pass
             
         try:
@@ -1108,24 +1117,32 @@ class TelegramController:
         if not isinstance(tracking_cache, dict): tracking_cache = {}
         
         for t in active_tickers: atr_data[t] = (0.0, 0.0); dynamic_target_data[t] = None
-        msg, markup = self.view.get_settlement_message(active_tickers, self.cfg, atr_data, tracking_cache)
+        
+        # 🚨 MODIFIED: [제1헌법] 파일 I/O 스레드 분리 시 wait_for 샌드박스 래핑
+        try:
+            msg, markup = await asyncio.wait_for(asyncio.to_thread(self.view.get_settlement_message, active_tickers, self.cfg, atr_data, tracking_cache), timeout=15.0)
+        except Exception as e:
+            logging.error(f"🚨 관제탑 렌더링(get_settlement_message) 연산 에러: {e}")
+            msg = "❌ 설정 화면을 불러오는 도중 에러가 발생했습니다."
+            markup = None
+            
         if update.callback_query:
             try:
-                await update.callback_query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
-                if status_msg: await status_msg.delete()
+                await asyncio.wait_for(update.callback_query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
+                if status_msg: await asyncio.wait_for(status_msg.delete(), timeout=15.0)
             except Exception as e:
                 if "Message is not modified" not in str(e): 
                     try: 
-                        if status_msg: await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
+                        if status_msg: await asyncio.wait_for(status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
                     except Exception: pass
         else: 
             try: 
-                if status_msg: await status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML')
+                if status_msg: await asyncio.wait_for(status_msg.edit_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=15.0)
             except Exception: pass
 
     async def cmd_version(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self._is_admin(update): return
-        history_data = await asyncio.to_thread(self.cfg.get_full_version_history)
+        history_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_full_version_history), timeout=10.0)
         msg, markup = self.view.get_version_message(history_data, page_index=None)
-        try: await update.effective_message.reply_text(msg, parse_mode='HTML', reply_markup=markup)
+        try: await asyncio.wait_for(update.effective_message.reply_text(msg, parse_mode='HTML', reply_markup=markup), timeout=15.0)
         except Exception: pass
