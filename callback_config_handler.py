@@ -2,6 +2,9 @@
 # FILE: callback_config_handler.py
 # ==========================================================
 # 🚨 MODIFIED: [Reset 0주 오인 패러독스 소각] 리셋(장부 소각) 후 새로운 스냅샷을 박제할 때, qty=0 을 강제 주입하던 치명적 하드코딩 버그를 소각하고 KIS 실잔고(kis_qty)와 평단가(kis_avg)를 정밀 추출하여 팩트 주입 락온 완료.
+# 🚨 NEW: [Phase 1 암살자 설정 UI 결속] CONFIG_AVWAP 토글 라우팅 및 INPUT -> AVWAP_KRW 목표 수익금 팻핑거 입력 대기 상태 락온
+# 🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 내부의 os.path.exists 소각 및 원자적 쓰기(Atomic Write) 강제 주입 완료
+# ==========================================================
 import logging
 import datetime
 import math
@@ -86,22 +89,42 @@ class CallbackConfigHandler:
                 if ticker:
                     def _hijack_vwap_lock():
                         slice_file = f"data/vrev_slice_state_{ticker}.json"
+                        # 🚨 MODIFIED: [Case 08, 16, 4] os.path.exists 소각 및 EAFP 원자적 쓰기 강제
                         try:
-                            if os.path.exists(slice_file):
-                                with open(slice_file, 'r', encoding='utf-8') as f:
-                                    s_state = json.load(f)
-                                s_state['hijacked'] = True
-                                s_state['orders'] = []
-                                with open(slice_file, 'w', encoding='utf-8') as f:
-                                    json.dump(s_state, f, ensure_ascii=False, indent=4)
-                        except Exception: pass
+                            with open(slice_file, 'r', encoding='utf-8') as f:
+                                s_state = json.load(f)
+                            s_state['hijacked'] = True
+                            s_state['orders'] = []
+                            
+                            dir_name = os.path.dirname(slice_file) or '.'
+                            fd = None
+                            tmp_path = None
+                            try:
+                                fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
+                                with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
+                                    fd = None
+                                    json.dump(s_state, f_out, ensure_ascii=False, indent=4)
+                                    f_out.flush()
+                                    os.fsync(f_out.fileno())
+                                os.replace(tmp_path, slice_file)
+                                tmp_path = None
+                            except Exception:
+                                if fd is not None:
+                                    try: os.close(fd)
+                                    except OSError: pass
+                                if tmp_path:
+                                    try: os.remove(tmp_path)
+                                    except OSError: pass
+                        except (OSError, json.JSONDecodeError): 
+                            pass
+                            
                         try:
                             est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
                             today_str = est_now.strftime("%Y-%m-%d")
                             snap_file = f"data/daily_snapshot_REV_{today_str}_{ticker}.json"
-                            if os.path.exists(snap_file):
-                                os.remove(snap_file)
-                        except Exception: pass
+                            os.remove(snap_file)
+                        except OSError: 
+                            pass
                         
                     await asyncio.to_thread(_hijack_vwap_lock)
                     await asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker)
@@ -132,16 +155,24 @@ class CallbackConfigHandler:
                         b_data = [r for r in b_data if isinstance(r, dict) and str(r.get('ticker')) != str(ticker)]
                     
                         dir_name = os.path.dirname(backup_file) or '.'
-                        fd, tmp_path = tempfile.mkstemp(dir=dir_name)
+                        fd = None
+                        tmp_path = None
                         try:
+                            fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
                             with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
+                                fd = None
                                 json.dump(b_data, f_out, ensure_ascii=False, indent=4)
                                 f_out.flush()
                                 os.fsync(f_out.fileno())
                             os.replace(tmp_path, backup_file)
+                            tmp_path = None
                         except Exception:
-                            try: os.remove(tmp_path)
-                            except OSError: pass
+                            if fd is not None:
+                                try: os.close(fd)
+                                except OSError: pass
+                            if tmp_path:
+                                try: os.remove(tmp_path)
+                                except OSError: pass
                     except OSError: pass
                     except Exception: pass
                      
@@ -248,7 +279,7 @@ class CallbackConfigHandler:
                                 except Exception:
                                     if attempt == 2: holdings = {}
                                     else: await asyncio.sleep(1.0 * (2 ** attempt))
-                                    
+                            
                         await self.sync_engine._display_ledger(ticker, chat_id, context, message_obj=query.message, pre_fetched_holdings=holdings)
 
         elif action == "HIST":
@@ -266,7 +297,7 @@ class CallbackConfigHandler:
                                 t_rec['ticker'] = target.get('ticker')
                             if 'side' not in t_rec:
                                 t_rec['side'] = 'BUY'
-                       
+            
                     try:
                         qty, avg, invested, sold = await asyncio.to_thread(self.cfg.calculate_holdings, target.get('ticker'), safe_trades)
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True, history_id=hid)
@@ -285,7 +316,7 @@ class CallbackConfigHandler:
                 if not ticker: return
                 hist_data = await asyncio.to_thread(self.cfg.get_history) or []
                 hist_list = [h for h in hist_data if isinstance(h, dict) and str(h.get('ticker')) == str(ticker)]
-                  
+                
                 if not hist_list:
                     await context.bot.send_message(chat_id, f"📭 <b>[{html.escape(str(ticker))}]</b> 발급 가능한 졸업 기록이 존재하지 않습니다.", parse_mode='HTML')
                     return
@@ -447,6 +478,23 @@ class CallbackConfigHandler:
             if not ticker: return
             controller.user_states[chat_id] = f"SEED_{sub}_{ticker}"
             await context.bot.send_message(chat_id, f"💵 [{html.escape(str(ticker))}] 시드머니 금액 입력:", parse_mode='HTML')
+
+        # 🚨 NEW: [Phase 1 암살자 설정 UI 결속] CONFIG_AVWAP 토글 로직 신설
+        elif action == "CONFIG_AVWAP":
+            try: await query.answer()
+            except Exception: pass
+            if not ticker: return
+            
+            if sub == "TOGGLE":
+                try:
+                    current_state = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_avwap_hybrid_mode, ticker), timeout=5.0)
+                    new_state = not current_state
+                    await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_hybrid_mode, ticker, new_state), timeout=5.0)
+                    
+                    if hasattr(controller, 'cmd_settlement'):
+                        await controller.cmd_settlement(update, context)
+                except Exception as e:
+                    logging.error(f"🚨 [{ticker}] 암살자 모드 토글 실패: {e}")
             
         elif action == "INPUT":
             try: await query.answer()
@@ -459,6 +507,8 @@ class CallbackConfigHandler:
             elif sub == "COMPOUND": ko_name = "자동 복리율(%)"
             elif sub == "STOCK_SPLIT": ko_name = "액면 분할/병합 비율 (예: 10분할은 10, 10병합은 0.1)"
             elif sub == "FEE": ko_name = "증권사 수수료율(%)"
+            # 🚨 NEW: 암살자 딥-레스큐 원화 목표금 팻핑거 입력 대기 스키마 결속
+            elif sub == "AVWAP_KRW": ko_name = "암살자 목표수익(₩)"
             else: ko_name = "값"
             
             desc = "숫자만 입력하세요.\n(예: 액면분할 시 1주가 10주가 되었다면 10 입력, 10주가 1주로 병합되었다면 0.1 입력)" if sub == "STOCK_SPLIT" else "숫자만 입력하세요."

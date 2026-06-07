@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [NoneType 붕괴 원천 봉쇄] update.message 다이렉트 참조 소각 및 update.effective_message 단락 평가 락온
 # 🚨 MODIFIED: [Insight 14] EDIT_Q 수동 입력 시 콤마(,) 유입으로 인한 ValueError 런타임 붕괴 원천 차단
 # 🚨 MODIFIED: [Indentation 붕괴 수술] EDIT_Q 팻핑거 방어 로직 하위의 비표준 들여쓰기(25칸)를 24칸으로 정밀 교정하여 컴파일 즉사 오류 소각
+# 🚨 NEW: [Phase 1 암살자 설정 UI 결속] CONF_AVWAP_KRW 라우팅 분기 신설 및 콤마 맹독성 방어 후 원자적 I/O 기록 팩트 이식 완료
 # ==========================================================
 
 import logging
@@ -32,7 +33,7 @@ class TelegramStates:
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE, controller):
         # 🚨 MODIFIED: [보안 팩트 교정] await 키워드 강제 락온으로 코루틴 경고 소각 및 관리자 인증망 수복
         if not await controller._is_admin(update):
-             return
+            return
             
         chat_id = update.effective_chat.id
         # 🚨 MODIFIED: 미디어(사진 등) 수신 시 text 속성이 None이 되어 발생하는 TypeError 단락 평가 방어
@@ -142,7 +143,7 @@ class TelegramStates:
                 
             elif state.startswith("CONF_SPLIT"):
                 if val < 1:
-                     return await update.effective_message.reply_text("❌ 오류: 분할 횟수는 1 이상이어야 합니다.")
+                    return await update.effective_message.reply_text("❌ 오류: 분할 횟수는 1 이상이어야 합니다.")
                     
                 ticker = parts[2]
                 safe_ticker = html.escape(str(ticker))
@@ -210,6 +211,15 @@ class TelegramStates:
                     
                 await update.effective_message.reply_text(f"📉 <b>[{safe_ticker}] V-REV 장막판 갭 스위칭 임계치 설정 완료!</b>\n▫️ 팩트 타격선: 기초자산 VWAP 대비 <b>{val}%</b>\n▫️ 다음 타임 슬라이싱 스케줄부터 즉시 적용됩니다.", parse_mode='HTML')
                 
+            # 🚨 NEW: Phase 1 암살자 원화 목표 수익금 파싱 및 장부 기록
+            elif state.startswith("CONF_AVWAP_KRW"):
+                if val <= 0:
+                    return await update.effective_message.reply_text("❌ 오류: 암살자 목표 수익금은 0보다 커야 합니다.")
+                ticker = parts[3]
+                safe_ticker = html.escape(str(ticker))
+                await asyncio.to_thread(self.cfg.set_avwap_target_krw, ticker, val)
+                await update.effective_message.reply_text(f"🎯 <b>[{safe_ticker}] 암살자 목표 수익금 ₩{int(val):,} 적용 완료!</b>\n▫️ 다음 섀도우 연산부터 KIS 원화 환산 팩트가 적용됩니다.", parse_mode='HTML')
+
         except ValueError:
             await update.effective_message.reply_text("❌ 오류: 유효한 숫자를 입력하세요. (입력 대기 상태가 강제 해제되었습니다.)")
         except Exception as e:

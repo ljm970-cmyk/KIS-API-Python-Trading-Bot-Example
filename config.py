@@ -16,6 +16,7 @@
 # 🚨 NEW: [리버스 스키마 확장] V14 리버스 모드 전용 파라미터 (dynamic_t, rem_cash, is_day_one) 스키마 확장 및 원자적 I/O 락온
 # 🚨 NEW: [동적 T값 스케일링] scale_dynamic_t 헬퍼 결속 (20/40분할 매수/매도 팩트 연산 보장)
 # 🚨 NEW: [Zero-Injection 차단] get_absolute_t_val 및 calculate_v14_state 내부 리버스 분기망 구축 (추가 시드 유입 원천 봉쇄 및 쿼터 예산 팩트 교정)
+# 🚨 NEW: [Phase 1 암살자 목표수익 스키마 구축] AVWAP_TARGET_KRW_CFG 파일 연동 및 안전 접근 래퍼(Getter/Setter) 신설 팩트 주입
 # ==========================================================
 
 import json
@@ -86,7 +87,8 @@ class ConfigManager:
             "SNIPER_SELL_LOCKED": "data/sniper_sell_locked.json",
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",       
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
-            "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json"
+            "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
+            "AVWAP_TARGET_KRW_CFG": "data/avwap_target_krw.json"
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -96,6 +98,7 @@ class ConfigManager:
         self.DEFAULT_COMPOUND = {"SOXL": 70.0, "TQQQ": 70.0}
         self.DEFAULT_SNIPER_MULTIPLIER = {"SOXL": 1.0, "TQQQ": 0.9}
         self.DEFAULT_FEE = {"SOXL": 0.07, "TQQQ": 0.07} 
+        self.DEFAULT_AVWAP_KRW = 1000000.0
         
         self._locks_mutex = threading.Lock()
         self._io_lock = threading.RLock()
@@ -119,7 +122,10 @@ class ConfigManager:
         with self._locks_mutex:
             lock_file_path = self.FILES["LOCKS"]
             dir_name = os.path.dirname(lock_file_path) or '.'
-            os.makedirs(dir_name, exist_ok=True)
+            try:
+                os.makedirs(dir_name, exist_ok=True)
+            except OSError:
+                pass
         
             sentinel = lock_file_path + ".lock"
             with open(sentinel, 'w') as lf:
@@ -160,7 +166,10 @@ class ConfigManager:
         temp_path = None
         try:
             dir_name = os.path.dirname(filename) or '.'
-            os.makedirs(dir_name, exist_ok=True)
+            try:
+                os.makedirs(dir_name, exist_ok=True)
+            except OSError:
+                pass
                  
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -195,7 +204,10 @@ class ConfigManager:
         temp_path = None
         try:
             dir_name = os.path.dirname(filename) or '.'
-            os.makedirs(dir_name, exist_ok=True)
+            try:
+                os.makedirs(dir_name, exist_ok=True)
+            except OSError:
+                pass
                 
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -241,6 +253,16 @@ class ConfigManager:
             d = self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {})
             d[ticker] = self._safe_float(v)
             self._save_json(self.FILES["AVWAP_GAP_THRESH_CFG"], d)
+
+    def get_avwap_target_krw(self, ticker):
+        val = self._load_json(self.FILES["AVWAP_TARGET_KRW_CFG"], {}).get(ticker, self.DEFAULT_AVWAP_KRW)
+        return self._safe_float(val)
+
+    def set_avwap_target_krw(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_TARGET_KRW_CFG"], {})
+            d[ticker] = self._safe_float(v)
+            self._save_json(self.FILES["AVWAP_TARGET_KRW_CFG"], d)
 
     def get_last_split_date(self, ticker):
         return str(self._load_json(self.FILES["SPLIT_HISTORY"], {}).get(ticker, ""))
@@ -299,14 +321,12 @@ class ConfigManager:
         return bool(locks.get(f"{today}_{ticker}_{market_type}", False))
 
     def get_absolute_t_val(self, ticker, actual_qty, actual_avg_price):
-        # 🚨 MODIFIED: [Zero-Injection 차단] 리버스 모드일 경우 원금 추가 배제 및 동적 T값 락온
         rev_state = self.get_reverse_state(ticker)
         split = self.get_split_count(ticker)
         
         if rev_state.get("is_active", False):
             dynamic_t = self._safe_float(rev_state.get("dynamic_t", 0.0))
             rem_cash = self._safe_float(rev_state.get("rem_cash", 0.0))
-            # 🚨 MODIFIED: 리버스 모드 활성화 시 1회 매수 예산은 무조건 '잔금 / 4'로 강제 (쿼터 매수 팩트 교정)
             one_portion = rem_cash / 4.0 if rem_cash > 0 else 0.0
             return round(dynamic_t, 4), round(one_portion, 2)
             
@@ -481,7 +501,6 @@ class ConfigManager:
             ledger = self.get_ledger()
             remaining = [r for r in ledger if r.get('ticker') != ticker]
             self._save_json(self.FILES["LEDGER"], remaining)
-            # 🚨 MODIFIED: [리셋 무결성 보존] 리셋 시에도 확장된 리버스 스키마 호환성 보장
             self.set_reverse_state(ticker, False, 0, 0.0, dynamic_t=0.0, rem_cash=0.0, is_day_one=True)
 
     def calculate_holdings(self, ticker, records=None):
@@ -531,13 +550,11 @@ class ConfigManager:
                 "is_active": False, "day_count": 0, "exit_target": 0.0, 
                 "last_update_date": "", "dynamic_t": 0.0, "rem_cash": 0.0, "is_day_one": True
             }
-        # 🚨 MODIFIED: [리버스 스키마 확장] V14 동적 T 및 잔여 예산 팩트 연동
         val.setdefault("dynamic_t", 0.0)
         val.setdefault("rem_cash", 0.0)
         val.setdefault("is_day_one", val.get("day_count", 0) == 0)
         return val
 
-    # 🚨 MODIFIED: [리버스 스키마 확장] V14 동적 T 및 잔여 예산 파라미터 추가
     def set_reverse_state(self, ticker, is_active, day_count, exit_target=0.0, last_update_date=None, dynamic_t=0.0, rem_cash=0.0, is_day_one=None):
         with self._io_lock:
             if last_update_date is None:
@@ -556,7 +573,6 @@ class ConfigManager:
             }
             self._save_json(self.FILES["REVERSE_CFG"], d)
             
-    # 🚨 NEW: [동적 T값 스케일링] 리버스 모드 체결 시 분할 팩트에 따른 T값 재연산
     def scale_dynamic_t(self, ticker, action):
         with self._io_lock:
             d = self._load_json(self.FILES["REVERSE_CFG"], {})
@@ -566,13 +582,13 @@ class ConfigManager:
                 
             split = self.get_split_count(ticker)
             dynamic_t = self._safe_float(state.get("dynamic_t", 0.0))
-            
+             
             if action == "SELL":
                 if split <= 20: dynamic_t *= 0.9
                 else: dynamic_t *= 0.95
             elif action == "BUY":
                 dynamic_t += (split - dynamic_t) * 0.25
-                
+                 
             state["dynamic_t"] = round(dynamic_t, 4)
             d[ticker] = state
             self._save_json(self.FILES["REVERSE_CFG"], d)
@@ -587,7 +603,6 @@ class ConfigManager:
                 
                 if state.get("last_update_date") != today_est_str:
                     new_day = state.get("day_count", 0) + 1
-                    # 🚨 MODIFIED: [상태 유지] 동적 T값 및 잔여 예산 롤오버 보존
                     self.set_reverse_state(
                         ticker, True, new_day, state.get("exit_target", 0.0), today_est_str,
                         dynamic_t=state.get("dynamic_t", 0.0),
@@ -598,14 +613,12 @@ class ConfigManager:
         return False
 
     def calculate_v14_state(self, ticker):
-        # 🚨 MODIFIED: [Zero-Injection 차단] 리버스 모드일 경우 원금 추가 배제 및 동적 T값 락온
         rev_state = self.get_reverse_state(ticker)
         split = self.get_split_count(ticker)
         
         if rev_state.get("is_active", False):
             dynamic_t = self._safe_float(rev_state.get("dynamic_t", 0.0))
             rem_cash = self._safe_float(rev_state.get("rem_cash", 0.0))
-            # 🚨 MODIFIED: 리버스 모드 활성화 시 1회 매수 예산은 무조건 '잔금 / 4'로 강제 (쿼터 매수 팩트 교정)
             current_budget = rem_cash / 4.0 if rem_cash > 0 else 0.0
             return max(0.0, round(dynamic_t, 4)), max(0.0, current_budget), max(0.0, rem_cash)
             
@@ -618,7 +631,7 @@ class ConfigManager:
         holdings = 0
         rem_cash = seed
         total_invested = 0.0
-        
+         
         for r in target_recs:
             if holdings == 0:
                 rem_cash = seed
@@ -785,7 +798,7 @@ class ConfigManager:
         
     def get_fee(self, t): 
         return self._safe_float(self._load_json(self.FILES["FEE_CFG"], self.DEFAULT_FEE).get(t, 0.07))
-      
+       
     def set_fee(self, t, v):
         with self._io_lock:
             d = self._load_json(self.FILES["FEE_CFG"], self.DEFAULT_FEE)
