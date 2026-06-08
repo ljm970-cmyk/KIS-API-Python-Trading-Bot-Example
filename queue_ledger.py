@@ -11,6 +11,7 @@
 # 🚨 MODIFIED: [Case 08] 백업 파일 복원 및 디렉토리 검증 시 레이스 컨디션을 유발하는 os.path.exists를 100% 소각하고 EAFP 패턴 락온
 # 🚨 VERIFIED: [Case 16] 원자적 쓰기(Atomic Write) 실패 시 임시 파일 스코프 고아화 방어 100% 사수 완료
 # 🚨 VERIFIED: [제4헌법 절대 사수] 메인 장부뿐만 아니라 백업 파일(.bak) 생성 시에도 임시 파일(.bak.tmp)을 거치는 원자적 복사(Atomic Copy)를 강제하여 OS 커널 패닉 시 백업본 오염 원천 차단
+# 🚨 NEW: [액면병합 0주 증발 붕괴 방어] apply_stock_split 실행 중 역분할(병합)로 인해 보유 수량이 1주 미만(0주)으로 절사되어 지층이 증발하는 현상을 1주 강제 보존으로 완벽 차단.
 # ==========================================================
 import os
 import json
@@ -148,13 +149,16 @@ class QueueLedger:
             q = data.get(ticker, [])
             changed = False
             for lot in q:
-                raw_new_qty = self._safe_float(lot.get("qty", 0)) * ratio
+                old_qty = int(self._safe_float(lot.get("qty", 0)))
+                raw_new_qty = old_qty * ratio
                 new_qty = math.floor(raw_new_qty + 0.5)
-                if new_qty > 0:
-                    lot["qty"] = new_qty
-                    old_price = self._safe_float(lot.get("price", 0.0))
-                    lot["price"] = round(old_price / ratio, 4)
-                    changed = True
+                
+                # 🚨 NEW: [액면병합 0주 증발 방어막] 소수점 절사 시에도 기존 물량이 0주로 소멸하는 것을 원천 차단
+                lot["qty"] = new_qty if new_qty > 0 else (1 if old_qty > 0 else 0)
+                
+                old_price = self._safe_float(lot.get("price", 0.0))
+                lot["price"] = round(old_price / ratio, 4)
+                changed = True
             if changed:
                 data[ticker] = q
                 self._save_unsafe(data)
@@ -343,7 +347,7 @@ class QueueLedger:
                     if lot_qty == 0:
                         q.pop()
                         continue
-                        
+                 
                     if lot_qty <= diff:
                         q.pop()
                         diff -= lot_qty 
@@ -363,7 +367,7 @@ class QueueLedger:
                         remaining_invested = vrev_total_invested - net_realized_cash
                         new_pure_price = round(max(0.01, remaining_invested / remaining_qty), 4)
                         q[0]["price"] = new_pure_price
-                        
+                         
             if diff > 0:
                 logging.warning(f"⚠️ [QueueLedger] sync_with_broker CALIB_SUB 미달: {ticker} 큐 물량이 브로커보다 {diff}주 부족합니다. 큐가 초기화되었습니다.")
 

@@ -3,7 +3,7 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 36대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 MODIFIED: [Phase 3 암살자 실전 매매망 복구] 딥-매수, -1% 덫 장전, 섀도 스위칭(OCO 듀얼 엑시트) 100% 팩트 부활.
-# 🚨 MODIFIED: [14:00 EST 컷오프 디커플링] 14:00 도달 시 물량 검증 후 본진 셧다운(AVWAP_OVERNIGHT) 또는 암살자 퇴근 결정 팩트 락온.
+# 🚨 MODIFIED: [14:00 EST 컷오프 디커플링] 14:00 도달 시 물량 검증 후 본진 셧다운(AVWAP_OVERNIGHT) 또는 암살자 퇴근(시나리오 1) 결정 팩트 락온.
 # 🚨 MODIFIED: [익일 04:00 L1 대통합] 오버나이트 물량 보유 시 기상 직후 장부 단일 지층 병합 및 -1% 덫 재장전 (시나리오 5) 팩트 결속.
 # 🚨 MODIFIED: [V14 스나이퍼 생태계 보존] 암살자 로직과 100% 물리적 격리되어 기존 상방 스나이퍼 로직은 무결점 사수.
 # 🚨 MODIFIED: [HTML Parser 붕괴 방어] Telegram 타전을 위한 텍스트 html.escape 100% 강제 래핑 유지.
@@ -13,14 +13,16 @@
 # 🚨 MODIFIED: [Target 3 & Edge Case 2] 익일(Day 2) 대통합 시, 통신 지연으로 인한 손절망 파괴 방어(멱등성) 락온 및 04:05 시간제한 개방 완료.
 # 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 통신 및 파일 I/O 구문 전역에 asyncio.wait_for 샌드박스를 결속하여 Deadlock 100% 원천 차단.
 # 🚨 MODIFIED: [AttributeError 궁극 수술] context.job 객체 파손/결측 시 발생하는 연쇄 붕괴를 getattr 단락 평가로 완벽 교정.
-# 🚨 NEW: [Time Paradox 팩트 교정] KIS 당일 체결 내역 조회(get_execution_history) 시 EST 날짜를 사용하여 조회가 누락되던 맹점을 KST 100% 동기화로 영구 소각.
-# 🚨 NEW: [방어막 누수 방어] 암살자 딥매수 체결 후 서버 오류로 -1% 덫이 누락될 경우 즉각 복구하는 자가 치유(Self-Healing) 로직 100% 이식.
+# 🚨 NEW: [Time Paradox 팩트 교정] KIS 당일 체결 내역 조회(get_execution_history) 시 EST 날짜를 사용하여 조회가 누락되던 맹점을 KST 실시간 동기화로 영구 소각.
 # 🚨 NEW: [시나리오 2 디커플링 수복] OCO 듀얼 엑시트 전량 익절 직후, 당일 조기 졸업 및 새출발(Re-entry) 팩트 파이프라인 직결 완료.
 # 🚨 MODIFIED: [SOXL 절대 락온] 암살자 하이브리드 로직에 타 종목이 진입하지 못하도록 (t == "SOXL") 차단막 100% 결속.
 # 🚨 MODIFIED: [Case 30 팩트 동기화] 암살자 Hit & Cut 타격 직후, KIS 실잔고를 재스캔하여 로컬 큐 장부를 100% 오버라이드하도록 유령 차단(Ghost-Sync) 결속.
 # 🚨 MODIFIED: [잔고 동기화 팩트 수술] SHAD0W_EXIT 및 스나이퍼 매도 타격 시 실시간 잔고(rt_qty)를 추출하여 매도 수량을 100% 정밀 캡핑 (주문가능수량 초과 Reject 원천 봉쇄).
-# 🚨 NEW: [Ghost-Trap 붕괴 수술] 스윕 실패 등의 사유로 덫이 미체결 상태로 증발(Cancel)했을 경우, 즉각 자가 치유 파이프라인으로 상태를 롤백하여 무방비 노출 원천 차단.
-# 🚨 NEW: [자가 치유 오발 방어] 실잔고가 0주인 상태에서는 억지로 손절 덫을 복구하려다 KIS Reject를 유발하지 않도록, 실잔고 1주 이상일 때만 방어막을 팩트 전개.
+# 🚨 NEW: [Phase 1, 2, 3 정밀 타격망 결속] 50/50 분할 매수 및 무한 재진입에 대응하는 Phase Tracking 스키마 및 Action 라우팅 신설.
+# 🚨 NEW: [조건부 휩소 방어막] Phase 1 격발 시에는 -1% 손절 덫을 전면 소각하고 홀딩을 유지하며, Phase 2 이상(100% 물량 확보)에서만 손절 덫을 강제 장전하도록 자가 치유(Self-Healing) 및 대통합 로직 정밀 통제.
+# 🚨 NEW: [AttributeError 연쇄 붕괴 방어] 이중 .get() 체이닝 시 NoneType 유입으로 인한 즉사 버그를 막기 위해 Type-Safety(isinstance) 추출 로직 전면 결속.
+# 🚨 NEW: [IndexError 붕괴 방어] rt_bal[0] 현금 추출 시 튜플 객체 유효성 검증을 강제하여 무한 재진입(Phase 3) 구간의 Zero-Defect 사수.
+# 🚨 NEW: [NameError 궁극 소각] 기초지수 맵핑 변수(target_base) 누락으로 인한 런타임 즉사 버그를 식별하고 루프 최상단에 팩트 결속 완료.
 # ==========================================================
 import logging
 import datetime
@@ -38,7 +40,6 @@ import pandas_market_calendars as mcal
 import time 
 import yfinance as yf
 
-# 🚨 MODIFIED: 당일 15% 새출발 연산을 위한 process_realtime_graduation 임포트 락온
 from scheduler_core import is_market_open, process_realtime_graduation
 
 def _safe_float(val):
@@ -63,6 +64,10 @@ def _load_avwap_trade_state(ticker, now_est):
         
     if not isinstance(data, dict): data = {}
     
+    # 🚨 MODIFIED: [Phase Tracking 스키마 주입]
+    data.setdefault('phase', 0)
+    data.setdefault('last_entry_price', 0.0)
+
     # Rollover logic
     if data.get('date') != date_str:
         if data.get('overnight') and data.get('qty', 0) > 0:
@@ -81,7 +86,9 @@ def _load_avwap_trade_state(ticker, now_est):
                 'overnight': False,
                 'trap_odno': "",
                 'cutoff_processed': False,
-                'unification_processed': False
+                'unification_processed': False,
+                'phase': 0,
+                'last_entry_price': 0.0
             }
         _save_avwap_trade_state(ticker, data)
     return data
@@ -246,8 +253,8 @@ async def scheduled_sniper_monitor(context):
             cash, holdings = 0.0, None
             cash_tuple = await _retry_api(broker.get_account_balance)
             if cash_tuple:
-                cash = _safe_float(cash_tuple[0]) if len(cash_tuple) > 0 else 0.0
-                holdings = cash_tuple[1] if len(cash_tuple) > 1 else {}
+                cash = _safe_float(cash_tuple[0]) if isinstance(cash_tuple, (list, tuple)) and len(cash_tuple) > 0 else 0.0
+                holdings = cash_tuple[1] if isinstance(cash_tuple, (list, tuple)) and len(cash_tuple) > 1 else {}
             
             if holdings is None: return
             safe_holdings = holdings if isinstance(holdings, dict) else {}
@@ -260,14 +267,19 @@ async def scheduled_sniper_monitor(context):
             for t in active_tickers:
                 try:
                     await asyncio.sleep(0.06) 
+                    
+                    # 🚨 NEW: [NameError 궁극 소각] 기초지수 맵핑 변수(target_base) 루프 최상단 선언 락온
+                    target_base = base_map.get(t, 'SOXX')
+
                     try:
                         version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                         is_avwap_hybrid = await asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
                     except Exception:
                         version = "V14"
                         is_avwap_hybrid = False
+                        
                     # ==============================================================
-                    # 1. ⚔️ 암살자 aVWAP 딥-레스큐 교전망 (Phase 3)
+                    # 1. ⚔️ 암살자 aVWAP 딥-레스큐 교전망 (Phase 3 분할 및 휩소 방어 결속)
                     # ==============================================================
                     # 🚨 MODIFIED: [SOXL 절대 락온] 타 종목 오염 원천 차단
                     if version == "V_REV" and is_avwap_hybrid and t == "SOXL":
@@ -280,22 +292,22 @@ async def scheduled_sniper_monitor(context):
 
                         curr_t_obj = now_est.time()
                         
-                        # 🔹 [14:00 EST 컷오프 디커플링]
+                        # 🔹 [14:00 EST 컷오프 디커플링 (시나리오 1 & 3 확정 분기)]
                         if curr_t_obj >= datetime.time(14, 0) and not t_state.get('cutoff_processed'):
                             if t_state.get('qty', 0) == 0:
                                 t_state['shutdown'] = True
-                                logging.info(f"🛑 [{t}] 14:00 EST 컷오프: 암살자 물량 0주 ➔ 당일 조기 퇴근 확정")
+                                logging.info(f"🛑 [{t}] 14:00 EST 컷오프: 미격발 또는 전량 손절 완료 ➔ 시나리오 1 암살자 퇴근 및 본진 가동 확정")
                             else:
                                 t_state['overnight'] = True
                                 tracking_cache[f"AVWAP_OVERNIGHT_{t}"] = True
-                                logging.info(f"🛑 [{t}] 14:00 EST 컷오프: 암살자 물량 보유 ➔ 본진 영구 셧다운 및 애프터 연장 돌입")
+                                logging.info(f"🛑 [{t}] 14:00 EST 컷오프: 암살자 물량 보유 ➔ 시나리오 3 본진 셧다운 및 애프터 연장 돌입")
                             
                             t_state['cutoff_processed'] = True
                             try:
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                             except Exception: pass
 
-                        # 🔹 [익일 04:00 L1 대통합 및 OCO 재장전]
+                        # 🔹 [익일 04:00 L1 대통합 및 조건부 덫 재장전]
                         # 🚨 MODIFIED: Edge Case 2 (Time Paradox 방어) - 04:05 제한 개방 및 멱등성 락온
                         if curr_t_obj >= datetime.time(4, 0) and t_state.get('overnight') and t_state.get('qty', 0) > 0 and not t_state.get('unification_processed'):
                             if queue_ledger:
@@ -304,39 +316,49 @@ async def scheduled_sniper_monitor(context):
                                 except Exception as e:
                                     logging.error(f"🚨 [{t}] 익일 대통합 장부 병합 에러: {e}")
                             
-                            # 🚨 NEW: [주문 거절 전역 방어막 결속] KIS 잔고 교차 검증으로 수량 캡핑
+                            # 🚨 NEW: [주문 거절 전역 방어막 결속] KIS 잔고 교차 검증으로 수량 캡핑 (안전 캐스팅 쉴드 주입)
                             rt_bal_unif = await _retry_api(broker.get_account_balance)
-                            if rt_bal_unif and len(rt_bal_unif) > 1:
-                                actual_qty_unif = int(_safe_float(rt_bal_unif[1].get(t, {}).get('qty', 0)))
+                            if rt_bal_unif and isinstance(rt_bal_unif, (list, tuple)) and len(rt_bal_unif) > 1:
+                                safe_rt_unif_dict = rt_bal_unif[1] if isinstance(rt_bal_unif[1], dict) else {}
+                                _t_data_unif = safe_rt_unif_dict.get(t)
+                                actual_qty_unif = int(_safe_float(_t_data_unif.get('qty', 0) if isinstance(_t_data_unif, dict) else 0))
                             else:
-                                actual_qty_unif = int(_safe_float(safe_holdings.get(t, {}).get('qty', 0)))
+                                _t_hold_unif = safe_holdings.get(t)
+                                actual_qty_unif = int(_safe_float(_t_hold_unif.get('qty', 0) if isinstance(_t_hold_unif, dict) else 0))
 
                             t_state['qty'] = min(t_state['qty'], actual_qty_unif)
 
                             if t_state['qty'] > 0:
-                                # -1% 손절 덫 재장전 (3단 지수 백오프 및 TPS 캡핑 내장)
-                                trap_p = round(t_state['avg_price'] * 0.99, 2)
-                                t_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], trap_p, "LIMIT")
+                                # 🚨 MODIFIED: [조건부 휩소 방어막] Phase 2 이상에서만 -1% 손절 덫 복구 (Phase 1은 휩소를 버티기 위해 홀딩 유지)
+                                if t_state.get('phase', 0) >= 2:
+                                    trap_p = round(t_state.get('last_entry_price', t_state['avg_price']) * 0.99, 2)
+                                    t_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], trap_p, "LIMIT")
 
-                                # 🚨 MODIFIED: Target 3 (생존망 멱등성 파괴 방어) - KIS 서버 정상 응답 시에만 True 마킹
-                                if isinstance(t_res, dict) and t_res.get('rt_cd') == '0':
-                                    t_state['trap_odno'] = str(t_res.get('odno') or '')
-                                    t_state['unification_processed'] = True # 🚨 성공 시에만 True 락온
-                                    
-                                    try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
-                                    except Exception: pass
-                                    
-                                    if chat_id:
-                                        try: 
-                                            await asyncio.wait_for(context.bot.send_message(chat_id, f"🌅 <b>[{html.escape(str(t))}] 익일 대통합 및 손절 덫 장전 완료</b>\n▫️ 큐(Queue) L1 단일 지층 병합 완료.\n▫️ -1% 하드 손절 덫(${trap_p:.2f}) 재장전 팩트 가동.", parse_mode='HTML'), timeout=15.0)
+                                    # 🚨 MODIFIED: Target 3 (생존망 멱등성 파괴 방어) - KIS 서버 정상 응답 시에만 True 마킹
+                                    if isinstance(t_res, dict) and t_res.get('rt_cd') == '0':
+                                        t_state['trap_odno'] = str(t_res.get('odno') or '')
+                                        t_state['unification_processed'] = True # 🚨 성공 시에만 True 락온
+                                        
+                                        try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                         except Exception: pass
+                                        
+                                        if chat_id:
+                                            try: 
+                                                await asyncio.wait_for(context.bot.send_message(chat_id, f"🌅 <b>[{html.escape(str(t))}] 익일 대통합 및 손절 덫 장전 완료</b>\n▫️ 큐(Queue) L1 단일 지층 병합 완료.\n▫️ -1% 하드 손절 덫(${trap_p:.2f}) 재장전 팩트 가동.", parse_mode='HTML'), timeout=15.0)
+                                            except Exception: pass
+                                    else:
+                                        t_state['unification_processed'] = False # 🚨 실패 시 False 유지하여 다음 1분 스캔 때 무조건 재장전 시도
+                                        try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                        except Exception: pass
+                                        
+                                        err_msg = html.escape(str(t_res.get('msg1') if isinstance(t_res, dict) else '응답 없음/통신 지연'))
+                                        logging.warning(f"🚨 [{t}] 익일 대통합 손절 덫 장전 실패 (멱등성 사수. 다음 사이클 재시도): {err_msg}")
                                 else:
-                                    t_state['unification_processed'] = False # 🚨 실패 시 False 유지하여 다음 1분 스캔 때 무조건 재장전 시도
+                                    # Phase 1 물량인 경우 덫 없이 관망세 유지 확정
+                                    t_state['unification_processed'] = True
                                     try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                     except Exception: pass
-                                    
-                                    err_msg = html.escape(str(t_res.get('msg1') if isinstance(t_res, dict) else '응답 없음/통신 지연'))
-                                    logging.warning(f"🚨 [{t}] 익일 대통합 손절 덫 장전 실패 (멱등성 사수. 다음 사이클 재시도): {err_msg}")
+                                    logging.info(f"🌅 [{t}] 익일 대통합 완료: Phase 1 물량 확인. 휩소 방어를 위해 손절 덫을 소각하고 홀딩을 이어갑니다.")
                             else:
                                 logging.warning(f"🚨 [{t}] 익일 대통합 보류: KIS 실잔고 0주. 수동 청산 감지로 방어막 생략.")
                                 t_state['unification_processed'] = True # 무한 루프 방지
@@ -354,7 +376,8 @@ async def scheduled_sniper_monitor(context):
                         df_1min_t = await _retry_api(broker.get_1min_candles_df, t)
                         df_1min_base = await _retry_api(broker.get_1min_candles_df, target_base)
                     
-                        main_actual_avg = _safe_float(safe_holdings.get(t, {}).get('avg', 0.0))
+                        _t_hold_avg = safe_holdings.get(t)
+                        main_actual_avg = _safe_float(_t_hold_avg.get('avg', 0.0) if isinstance(_t_hold_avg, dict) else 0.0)
                         
                         target_krw = 1000000.0
                         fee_rate = 0.07
@@ -372,7 +395,7 @@ async def scheduled_sniper_monitor(context):
                                     exec_curr_p=exec_curr_p, avg_price=t_state.get('avg_price', 0.0),
                                     qty=t_state.get('qty', 0), alloc_cash=0.0,
                                     df_1min_base=df_1min_base, df_1min_exec=df_1min_t, now_est=now_est,
-                                    avwap_state={"strikes": t_state.get('strikes', 0)},
+                                    avwap_state={"strikes": t_state.get('strikes', 0), "phase": t_state.get('phase', 0), "last_entry_price": t_state.get('last_entry_price', 0.0)},
                                     prev_close=prev_c, main_actual_avg=main_actual_avg,
                                     target_krw=target_krw, exchange_rate=exchange_rate, fee_rate=fee_rate,
                                     is_simulation=False, avwap_qty=t_state.get('qty', 0), avwap_avg_price=t_state.get('avg_price', 0.0)
@@ -382,28 +405,34 @@ async def scheduled_sniper_monitor(context):
                         except Exception as e:
                             logging.error(f"🚨 [{t}] 암살자 의사결정 브레인 에러: {e}")
                             decision = {}
-
                         # 🔹 [실전 타격 및 엑시트 교전망]
                         if not t_state.get('shutdown'):
                             action = decision.get('raw_action', 'OBSERVING')
                             
+                            # 🚨 NEW: Time Paradox 팩트 교정 - 스케줄러 실행 시점에 상관없이 가장 최신 KST 기반 날짜 주입
+                            now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
+                            today_kst_str_fresh = now_kst_fresh.strftime('%Y%m%d')
+
                             if t_state.get('qty', 0) > 0:
-                                # 🚨 NEW: [자가 치유(Self-Healing) 방어막] 손절 덫 누락 감지 및 재장전
+                                # 🚨 NEW: [자가 치유(Self-Healing) 방어막] 조건부 손절 덫 누락 감지 및 재장전
                                 trap_odno = t_state.get('trap_odno')
-                                if not trap_odno:
-                                    logging.warning(f"🚨 [{t}] 암살자 물량 보유 중이나 손절 덫(Trap) 누락 감지! 자가 치유(Self-Healing) 가동.")
+                                if not trap_odno and t_state.get('phase', 0) >= 2:
+                                    logging.warning(f"🚨 [{t}] 암살자 Phase 2 이상 진입 상태이나 손절 덫(Trap) 누락 감지! 자가 치유(Self-Healing) 가동.")
                                     
-                                    # 🚨 NEW: [주문 거절 전역 방어막 결속] 실시간 잔고(rt_qty) 스캔으로 수량 캡핑
+                                    # 🚨 NEW: [주문 거절 전역 방어막 결속] 실시간 잔고(rt_qty) 스캔으로 수량 캡핑 및 안전 추출
                                     rt_bal_heal = await _retry_api(broker.get_account_balance)
-                                    if rt_bal_heal and len(rt_bal_heal) > 1:
-                                        actual_qty_heal = int(_safe_float(rt_bal_heal[1].get(t, {}).get('qty', 0)))
+                                    if rt_bal_heal and isinstance(rt_bal_heal, (list, tuple)) and len(rt_bal_heal) > 1:
+                                        safe_rt_heal_dict = rt_bal_heal[1] if isinstance(rt_bal_heal[1], dict) else {}
+                                        _t_data_heal = safe_rt_heal_dict.get(t)
+                                        actual_qty_heal = int(_safe_float(_t_data_heal.get('qty', 0) if isinstance(_t_data_heal, dict) else 0))
                                     else:
-                                        actual_qty_heal = int(_safe_float(safe_holdings.get(t, {}).get('qty', 0)))
+                                        _t_hold_heal = safe_holdings.get(t)
+                                        actual_qty_heal = int(_safe_float(_t_hold_heal.get('qty', 0) if isinstance(_t_hold_heal, dict) else 0))
 
                                     t_state['qty'] = min(t_state['qty'], actual_qty_heal)
 
                                     if t_state['qty'] > 0:
-                                        trap_p = round(t_state['avg_price'] * 0.99, 2)
+                                        trap_p = round(t_state.get('last_entry_price', t_state['avg_price']) * 0.99, 2)
                                         t_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], trap_p, "LIMIT")
                                         if isinstance(t_res, dict) and t_res.get('rt_cd') == '0':
                                             t_state['trap_odno'] = str(t_res.get('odno') or '')
@@ -417,66 +446,73 @@ async def scheduled_sniper_monitor(context):
                                         logging.warning(f"🚨 [{t}] 자가 치유 보류: KIS 실잔고 0주. 체결 대기 또는 수동 청산 감지.")
                                         continue
                                  
-                                # 1. 덫 체결 여부 교차 검증 (손절 확인)
-                                unf = await _retry_api(broker.get_unfilled_orders_detail, t)
-                                safe_unf = unf if isinstance(unf, list) else []
-                                is_alive = any(isinstance(x, dict) and str(x.get('odno', '')) == trap_odno for x in safe_unf)
-                                
-                                if not is_alive:
-                                    # 🚨 NEW: [Time Paradox 팩트 교정] KIS 서버 원장 조회를 위한 KST 팩트 주입
-                                    ehist = await _retry_api(broker.get_execution_history, t, today_kst_str, today_kst_str)
-                                    safe_ehist = ehist if isinstance(ehist, list) else []
-                                    filled_rec = next((x for x in safe_ehist if isinstance(x, dict) and str(x.get('odno', '')) == trap_odno), None)
+                                # 1. 덫 체결 여부 교차 검증 (손절 탈출 감시망)
+                                if t_state.get('phase', 0) >= 2:
+                                    unf = await _retry_api(broker.get_unfilled_orders_detail, t)
+                                    safe_unf = unf if isinstance(unf, list) else []
+                                    is_alive = any(isinstance(x, dict) and str(x.get('odno', '')) == trap_odno for x in safe_unf)
                                     
-                                    if filled_rec and _safe_float(filled_rec.get('ft_ccld_qty', 0)) >= t_state['qty']:
-                                        t_state['qty'] = 0
-                                        t_state['strikes'] += 1
-                                        t_state['trap_odno'] = ""
+                                    if not is_alive:
+                                        # 🚨 NEW: [Time Paradox 팩트 교정] KIS 서버 원장 조회를 위한 최신 KST 팩트 주입
+                                        ehist = await _retry_api(broker.get_execution_history, t, today_kst_str_fresh, today_kst_str_fresh)
+                                        safe_ehist = ehist if isinstance(ehist, list) else []
+                                        filled_rec = next((x for x in safe_ehist if isinstance(x, dict) and str(x.get('odno', '')) == trap_odno), None)
                                         
-                                        try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
-                                        except Exception: pass
-                                        
-                                        # 🚨 MODIFIED: [Case 30 팩트 동기화] KIS 실잔고 오버라이드 유령 차단(Ghost-Sync) 결속
-                                        await asyncio.sleep(1.0)
-                                        new_bal = await _retry_api(broker.get_account_balance)
-                                        if new_bal and len(new_bal) > 1:
-                                            new_qty = int(_safe_float(new_bal[1].get(t, {}).get('qty', 0)))
-                                            if queue_ledger:
-                                                try: await asyncio.wait_for(asyncio.to_thread(queue_ledger.sync_with_broker, t, new_qty), timeout=10.0)
-                                                except Exception: pass
-                                        
-                                        if chat_id:
-                                            try: 
-                                                await asyncio.wait_for(context.bot.send_message(chat_id, f"🩸 <b>[{html.escape(str(t))}] 암살자 -1% 칼손절 완료</b>\n▫️ 85% 예산을 즉시 회수했습니다.\n▫️ 더 깊은 타점(-3%)으로 다중 타격망을 연장(Reload)합니다.", parse_mode='HTML'), timeout=15.0)
+                                        if filled_rec and _safe_float(filled_rec.get('ft_ccld_qty', 0)) >= t_state['qty']:
+                                            t_state['qty'] = 0
+                                            t_state['strikes'] += 1
+                                            t_state['trap_odno'] = ""
+                                            # 🚨 phase는 유지하여 다음 타점에서 Reload가 작동하도록 유도
+                                            
+                                            try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                             except Exception: pass
-                                        continue
-                                    else:
-                                        # 🚨 NEW: [Ghost-Trap 붕괴 수술] 취소 후 스윕 실패 등 미체결 상태로 덫이 증발한 경우
-                                        logging.warning(f"🚨 [{t}] 손절 덫(Trap) 미체결 증발 감지. 자가 치유 파이프라인으로 롤백합니다.")
-                                        t_state['trap_odno'] = ""
-                                        try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
-                                        except Exception: pass
-                                        continue # 다음 틱에 Self-Healing 발동
+                                            
+                                            # 🚨 MODIFIED: [Case 30 팩트 동기화] KIS 실잔고 오버라이드 유령 차단(Ghost-Sync) 결속
+                                            await asyncio.sleep(1.0)
+                                            new_bal = await _retry_api(broker.get_account_balance)
+                                            if new_bal and isinstance(new_bal, (list, tuple)) and len(new_bal) > 1:
+                                                safe_new_dict = new_bal[1] if isinstance(new_bal[1], dict) else {}
+                                                _t_data_new = safe_new_dict.get(t)
+                                                new_qty = int(_safe_float(_t_data_new.get('qty', 0) if isinstance(_t_data_new, dict) else 0))
+                                                if queue_ledger:
+                                                    try: await asyncio.wait_for(asyncio.to_thread(queue_ledger.sync_with_broker, t, new_qty), timeout=10.0)
+                                                    except Exception: pass
+                                            
+                                            if chat_id:
+                                                try: 
+                                                    await asyncio.wait_for(context.bot.send_message(chat_id, f"🩸 <b>[{html.escape(str(t))}] 암살자 -1% 연쇄 손절 완료</b>\n▫️ 예산을 전량 회수했습니다.\n▫️ 더 깊은 타점(-3%)으로 다중 타격망을 연장(Reload) 감시합니다.", parse_mode='HTML'), timeout=15.0)
+                                                except Exception: pass
+                                            continue
+                                        elif trap_odno:
+                                            # 🚨 NEW: [Ghost-Trap 붕괴 수술] 취소 후 스윕 실패 등 미체결 상태로 덫이 증발한 경우
+                                            logging.warning(f"🚨 [{t}] 손절 덫(Trap) 미체결 증발 감지. 자가 치유 파이프라인으로 롤백합니다.")
+                                            t_state['trap_odno'] = ""
+                                            try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                            except Exception: pass
+                                            continue # 다음 틱에 Self-Healing 발동
 
                                 # 2. OCO 섀도우 스위칭 (전량 익절)
                                 if action == 'SHADOW_EXIT':
                                     if trap_odno:
                                         await _retry_api(broker.cancel_order, t, trap_odno)
                                         await asyncio.sleep(0.06)
-                                    
+                                        
                                     bid_p = _safe_float(await _retry_api(broker.get_bid_price, t))
                                     if bid_p > 0:
-                                        # 🚨 MODIFIED: [잔고 동기화 팩트 수술] SHADOW_EXIT 스윕 타격 시 실시간 잔고를 재추출하여 KIS 서버 Reject 원천 방어
+                                        # 🚨 MODIFIED: [잔고 동기화 팩트 수술] SHADOW_EXIT 스윕 타격 시 실시간 잔고를 재추출하여 KIS 서버 Reject 원천 방어 (안전 캐스팅 락온)
                                         rt_bal = await _retry_api(broker.get_account_balance)
-                                        if rt_bal and len(rt_bal) > 1:
-                                            rt_qty = int(_safe_float(rt_bal[1].get(t, {}).get('qty', 0)))
+                                        if rt_bal and isinstance(rt_bal, (list, tuple)) and len(rt_bal) > 1:
+                                            safe_rt_dict = rt_bal[1] if isinstance(rt_bal[1], dict) else {}
+                                            _t_data_rt = safe_rt_dict.get(t)
+                                            rt_qty = int(_safe_float(_t_data_rt.get('qty', 0) if isinstance(_t_data_rt, dict) else 0))
                                             # KIS 서버 잔고가 존재하면 해당 수량을 캡핑, 아니면 암살자 캐시 수량을 폴백
                                             sell_qty = min(t_state['qty'], rt_qty)
                                         else:
                                             # 최악의 통신 실패 시에만 기존 로직으로 폴백
-                                            actual_qty = int(_safe_float(safe_holdings.get(t, {}).get('qty', 0)))
+                                            _t_hold_safe = safe_holdings.get(t)
+                                            actual_qty = int(_safe_float(_t_hold_safe.get('qty', 0) if isinstance(_t_hold_safe, dict) else 0))
                                             sell_qty = min(t_state['qty'], actual_qty)
-                                        
+                                            
                                         if sell_qty > 0:
                                             swp_res = await _retry_api(broker.send_order, t, "SELL", sell_qty, bid_p, "LIMIT")
                                             if isinstance(swp_res, dict) and swp_res.get('rt_cd') == '0':
@@ -513,15 +549,16 @@ async def scheduled_sniper_monitor(context):
                                             logging.warning(f"🚨 [{t}] 스윕 수량 0주 캡핑으로 주문 스킵 (Ghost-Dumping 방어)")
                                             
                             elif t_state.get('qty', 0) == 0:
-                                # 3. 딥-매수 격발 및 OCO 하단 덫 하드 장전
-                                if action == 'DEEP_BUY':
+                                # 3. 딥-매수 분할/무한 격발망 (Phase 1, 2, 3 로우레벨 라우팅)
+                                if action == 'DEEP_BUY_1':
                                     ask_p = _safe_float(await _retry_api(broker.get_ask_price, t))
                                     if ask_p > 0:
                                         seed_val = 0.0
                                         try: seed_val = _safe_float(await asyncio.wait_for(asyncio.to_thread(cfg.get_seed, t), timeout=5.0))
                                         except Exception: pass
                                         
-                                        av_budget = seed_val * 0.85
+                                        # 🚨 Phase 1: 대기 예산(85%)의 절반(50%)만 투입
+                                        av_budget = seed_val * 0.85 * 0.5
                                         buy_qty = int(math.floor(av_budget / ask_p)) if ask_p > 0 else 0
                                         
                                         if buy_qty > 0:
@@ -529,6 +566,97 @@ async def scheduled_sniper_monitor(context):
                                             if isinstance(b_res, dict) and b_res.get('rt_cd') == '0':
                                                 t_state['qty'] = buy_qty
                                                 t_state['avg_price'] = ask_p
+                                                t_state['phase'] = 1
+                                                t_state['last_entry_price'] = ask_p
+                                                
+                                                try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                                except Exception: pass
+                                                
+                                                # 🚨 Ghost-Sync
+                                                await asyncio.sleep(1.0)
+                                                new_bal = await _retry_api(broker.get_account_balance)
+                                                if new_bal and isinstance(new_bal, (list, tuple)) and len(new_bal) > 1:
+                                                    safe_new_dict = new_bal[1] if isinstance(new_bal[1], dict) else {}
+                                                    _t_data_new = safe_new_dict.get(t)
+                                                    new_qty = int(_safe_float(_t_data_new.get('qty', 0) if isinstance(_t_data_new, dict) else 0))
+                                                    if queue_ledger:
+                                                        try: await asyncio.wait_for(asyncio.to_thread(queue_ledger.sync_with_broker, t, new_qty), timeout=10.0)
+                                                        except Exception: pass
+                                                
+                                                if chat_id:
+                                                    try: 
+                                                        await asyncio.wait_for(context.bot.send_message(chat_id, f"⚔️ <b>[{html.escape(str(t))}] 암살자 1차 딥-매수 격발 완료!</b>\n▫️ 예산 50% 투입: {buy_qty}주 @ ${ask_p:.2f}\n▫️ 휩소 방어를 위해 손절 덫을 소각하고 2차 타점(-3%) 감시에 돌입합니다.", parse_mode='HTML'), timeout=15.0)
+                                                    except Exception: pass
+
+                                elif action == 'DEEP_BUY_2':
+                                    ask_p = _safe_float(await _retry_api(broker.get_ask_price, t))
+                                    if ask_p > 0:
+                                        seed_val = 0.0
+                                        try: seed_val = _safe_float(await asyncio.wait_for(asyncio.to_thread(cfg.get_seed, t), timeout=5.0))
+                                        except Exception: pass
+                                        
+                                        # 🚨 Phase 2: 잔여 예산(50%) 마저 투입
+                                        av_budget = seed_val * 0.85 * 0.5
+                                        buy_qty = int(math.floor(av_budget / ask_p)) if ask_p > 0 else 0
+                                        
+                                        if buy_qty > 0:
+                                            b_res = await _retry_api(broker.send_order, t, "BUY", buy_qty, ask_p, "LIMIT")
+                                            if isinstance(b_res, dict) and b_res.get('rt_cd') == '0':
+                                                old_qty = t_state.get('qty', 0)
+                                                old_avg = t_state.get('avg_price', 0.0)
+                                                new_qty = old_qty + buy_qty
+                                                new_avg = ((old_qty * old_avg) + (buy_qty * ask_p)) / new_qty if new_qty > 0 else ask_p
+                                                
+                                                t_state['qty'] = new_qty
+                                                t_state['avg_price'] = round(new_avg, 4)
+                                                t_state['phase'] = 2
+                                                t_state['last_entry_price'] = ask_p
+                                                
+                                                await asyncio.sleep(0.06)
+                                                # 🚨 Phase 2 체결 시에만 1+2차 물량 100% -1% 하드 손절망 장전
+                                                trap_p = round(ask_p * 0.99, 2)
+                                                s_res = await _retry_api(broker.send_order, t, "SELL", new_qty, trap_p, "LIMIT")
+                                                
+                                                if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
+                                                    t_state['trap_odno'] = str(s_res.get('odno') or '')
+                                                else:
+                                                    logging.warning(f"🚨 [{t}] 2차 딥-매수 직후 손절 덫 장전 실패. 다음 틱 자가 치유 대기.")
+                                                
+                                                try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                                except Exception: pass
+                                                
+                                                # Ghost-Sync
+                                                await asyncio.sleep(1.0)
+                                                new_bal = await _retry_api(broker.get_account_balance)
+                                                if new_bal and isinstance(new_bal, (list, tuple)) and len(new_bal) > 1:
+                                                    safe_new_dict = new_bal[1] if isinstance(new_bal[1], dict) else {}
+                                                    _t_data_new = safe_new_dict.get(t)
+                                                    new_qty_kis = int(_safe_float(_t_data_new.get('qty', 0) if isinstance(_t_data_new, dict) else 0))
+                                                    if queue_ledger:
+                                                        try: await asyncio.wait_for(asyncio.to_thread(queue_ledger.sync_with_broker, t, new_qty_kis), timeout=10.0)
+                                                        except Exception: pass
+                                                
+                                                if chat_id:
+                                                    try: 
+                                                        await asyncio.wait_for(context.bot.send_message(chat_id, f"⚔️ <b>[{html.escape(str(t))}] 암살자 2차 딥-매수 격발 완료!</b>\n▫️ 예산 100% 통합 누적: {buy_qty}주 @ ${ask_p:.2f} (평단 ${new_avg:.2f})\n▫️ 진입가 기준 -1% 하드 손절 덫(${trap_p:.2f}) 장전 완료.", parse_mode='HTML'), timeout=15.0)
+                                                    except Exception: pass
+
+                                elif action == 'DEEP_BUY_RELOAD':
+                                    ask_p = _safe_float(await _retry_api(broker.get_ask_price, t))
+                                    if ask_p > 0:
+                                        # 🚨 Phase 3 (무한 재진입): 확보된 가용 현금 100%를 영끌하여 투입
+                                        rt_bal = await _retry_api(broker.get_account_balance)
+                                        # 🚨 NEW: [IndexError 붕괴 방어] 현금 추출 시 튜플 객체 유효성 검증 강제 결속
+                                        avail_cash = _safe_float(rt_bal[0]) if isinstance(rt_bal, (list, tuple)) and len(rt_bal) > 0 else 0.0
+                                        buy_qty = int(math.floor(avail_cash / ask_p)) if ask_p > 0 else 0
+                                        
+                                        if buy_qty > 0:
+                                            b_res = await _retry_api(broker.send_order, t, "BUY", buy_qty, ask_p, "LIMIT")
+                                            if isinstance(b_res, dict) and b_res.get('rt_cd') == '0':
+                                                t_state['qty'] = buy_qty
+                                                t_state['avg_price'] = ask_p
+                                                t_state['phase'] = 3
+                                                t_state['last_entry_price'] = ask_p
                                                 
                                                 await asyncio.sleep(0.06)
                                                 trap_p = round(ask_p * 0.99, 2)
@@ -537,23 +665,25 @@ async def scheduled_sniper_monitor(context):
                                                 if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
                                                     t_state['trap_odno'] = str(s_res.get('odno') or '')
                                                 else:
-                                                    logging.warning(f"🚨 [{t}] 딥-매수 직후 손절 덫 장전 실패. 다음 틱에 자가 치유(Self-Healing) 대기.")
+                                                    logging.warning(f"🚨 [{t}] 무한 재진입 직후 손절 덫 장전 실패. 자가 치유 대기.")
                                                 
                                                 try: await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                                 except Exception: pass
                                                 
-                                                # 🚨 MODIFIED: [Case 30 팩트 동기화] KIS 실잔고 오버라이드 유령 차단(Ghost-Sync) 결속
+                                                # Ghost-Sync
                                                 await asyncio.sleep(1.0)
                                                 new_bal = await _retry_api(broker.get_account_balance)
-                                                if new_bal and len(new_bal) > 1:
-                                                    new_qty = int(_safe_float(new_bal[1].get(t, {}).get('qty', 0)))
+                                                if new_bal and isinstance(new_bal, (list, tuple)) and len(new_bal) > 1:
+                                                    safe_new_dict = new_bal[1] if isinstance(new_bal[1], dict) else {}
+                                                    _t_data_new = safe_new_dict.get(t)
+                                                    new_qty_kis = int(_safe_float(_t_data_new.get('qty', 0) if isinstance(_t_data_new, dict) else 0))
                                                     if queue_ledger:
-                                                        try: await asyncio.wait_for(asyncio.to_thread(queue_ledger.sync_with_broker, t, new_qty), timeout=10.0)
+                                                        try: await asyncio.wait_for(asyncio.to_thread(queue_ledger.sync_with_broker, t, new_qty_kis), timeout=10.0)
                                                         except Exception: pass
                                                 
                                                 if chat_id:
                                                     try: 
-                                                        await asyncio.wait_for(context.bot.send_message(chat_id, f"⚔️ <b>[{html.escape(str(t))}] 암살자 딥-매수 격발 완료!</b>\n▫️ 85% 예산을 풀 투입: {buy_qty}주 @ ${ask_p:.2f}\n▫️ -1% 하드 손절 덫(${trap_p:.2f}) 우선 장전 및 원화 섀도우 감시 돌입.", parse_mode='HTML'), timeout=15.0)
+                                                        await asyncio.wait_for(context.bot.send_message(chat_id, f"⚔️ <b>[{html.escape(str(t))}] 암살자 무한 재진입(Reload) 타격 완료!</b>\n▫️ 주문가능금액 100% 투입: {buy_qty}주 @ ${ask_p:.2f}\n▫️ 진입가 기준 -1% 하드 손절 덫(${trap_p:.2f}) 무한 장전 팩트 가동.", parse_mode='HTML'), timeout=15.0)
                                                     except Exception: pass
 
                     # ==============================================================
@@ -648,8 +778,10 @@ async def scheduled_sniper_monitor(context):
                                     else:
                                         try:
                                             await asyncio.sleep(0.06)
-                                            # 🚨 NEW: [Time Paradox 팩트 교정] KIS 원장 100% 동기화를 위해 today_kst_str 주입
-                                            exec_hist = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str, today_kst_str), timeout=10.0)
+                                            # 🚨 NEW: [Time Paradox 팩트 교정] KST 시간대 강제 주입
+                                            now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
+                                            today_kst_str_fresh = now_kst_fresh.strftime('%Y%m%d')
+                                            exec_hist = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str_fresh, today_kst_str_fresh), timeout=10.0)
                                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
                                             filled_rec = next((ex for ex in safe_exec if isinstance(ex, dict) and str(ex.get('odno', '')) == odno), None)
                                             if filled_rec: ccld_qty = int(_safe_float(filled_rec.get('ft_ccld_qty')))
@@ -671,9 +803,9 @@ async def scheduled_sniper_monitor(context):
                                     try:
                                         await asyncio.sleep(0.06) 
                                         # 🚨 NEW: [Time Paradox 팩트 교정]
-                                        exec_history = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str, today_kst_str), timeout=15.0)
+                                        exec_history = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str_fresh, today_kst_str_fresh), timeout=15.0)
                                     except Exception: exec_history = []
-                                        
+                                    
                                     actual_exec_price = next((_safe_float(ex.get('ft_ccld_unpr3')) for ex in exec_history if isinstance(ex, dict) and ex.get('sll_buy_dvsn_cd') == '02' and ex.get('odno') == odno and _safe_float(ex.get('ft_ccld_unpr3')) > 0), next((_safe_float(ex.get('ft_ccld_unpr3')) for ex in exec_history if isinstance(ex, dict) and ex.get('sll_buy_dvsn_cd') == '02' and _safe_float(ex.get('ft_ccld_unpr3')) > 0), limit_p))
                                     display_price = actual_exec_price if actual_exec_price > 0 else limit_p
         
@@ -760,12 +892,15 @@ async def scheduled_sniper_monitor(context):
    
                             try:
                                 await asyncio.sleep(0.06) 
-                                # 🚨 NEW: [주문 거절 전역 방어막 결속] V14 스나이퍼 매도 시에도 실시간 잔고(rt_qty) 스캔으로 수량 캡핑
+                                # 🚨 NEW: [주문 거절 전역 방어막 결속] V14 스나이퍼 매도 시에도 실시간 잔고(rt_qty) 스캔으로 수량 캡핑 (안전 캐스팅 쉴드 주입)
                                 rt_bal_v14 = await _retry_api(broker.get_account_balance)
-                                if rt_bal_v14 and len(rt_bal_v14) > 1:
-                                    rt_qty_v14 = int(_safe_float(rt_bal_v14[1].get(t, {}).get('qty', 0)))
+                                if rt_bal_v14 and isinstance(rt_bal_v14, (list, tuple)) and len(rt_bal_v14) > 1:
+                                    safe_rt_v14_dict = rt_bal_v14[1] if isinstance(rt_bal_v14[1], dict) else {}
+                                    _t_data_v14 = safe_rt_v14_dict.get(t)
+                                    rt_qty_v14 = int(_safe_float(_t_data_v14.get('qty', 0) if isinstance(_t_data_v14, dict) else 0))
                                 else:
-                                    rt_qty_v14 = int(_safe_float(safe_holdings.get(t, {}).get('qty', 0)))
+                                    _t_hold_v14 = safe_holdings.get(t)
+                                    rt_qty_v14 = int(_safe_float(_t_hold_v14.get('qty', 0) if isinstance(_t_hold_v14, dict) else 0))
                                     
                                 qty = min(qty, rt_qty_v14)
                                 
@@ -796,8 +931,10 @@ async def scheduled_sniper_monitor(context):
                                     else:
                                         try:
                                             await asyncio.sleep(0.06)
-                                            # 🚨 NEW: [Time Paradox 팩트 교정]
-                                            exec_hist = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str, today_kst_str), timeout=10.0)
+                                            # 🚨 NEW: [Time Paradox 팩트 교정] KST 시간대 강제 주입
+                                            now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
+                                            today_kst_str_fresh = now_kst_fresh.strftime('%Y%m%d')
+                                            exec_hist = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str_fresh, today_kst_str_fresh), timeout=10.0)
                                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
                                             filled_rec = next((ex for ex in safe_exec if isinstance(ex, dict) and str(ex.get('odno', '')) == odno), None)
                                             if filled_rec: ccld_qty = int(_safe_float(filled_rec.get('ft_ccld_qty')))
@@ -818,10 +955,12 @@ async def scheduled_sniper_monitor(context):
                                         except Exception: pass
                                     try:
                                         await asyncio.sleep(0.06) 
-                                        # 🚨 NEW: [Time Paradox 팩트 교정]
-                                        exec_history = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str, today_kst_str), timeout=15.0)
+                                        # 🚨 NEW: [Time Paradox 팩트 교정] KST 시간대 강제 주입
+                                        now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
+                                        today_kst_str_fresh = now_kst_fresh.strftime('%Y%m%d')
+                                        exec_history = await asyncio.wait_for(asyncio.to_thread(broker.get_execution_history, t, today_kst_str_fresh, today_kst_str_fresh), timeout=15.0)
                                     except Exception: exec_history = []
-                                         
+                                    
                                     actual_exec_price = next((_safe_float(ex.get('ft_ccld_unpr3')) for ex in exec_history if isinstance(ex, dict) and ex.get('sll_buy_dvsn_cd') == '01' and str(ex.get('odno', '')) == odno and _safe_float(ex.get('ft_ccld_unpr3')) > 0), next((_safe_float(ex.get('ft_ccld_unpr3')) for ex in exec_history if isinstance(ex, dict) and ex.get('sll_buy_dvsn_cd') == '01' and _safe_float(ex.get('ft_ccld_unpr3')) > 0), limit_p))
                                     display_price = actual_exec_price if actual_exec_price > 0 else limit_p
  

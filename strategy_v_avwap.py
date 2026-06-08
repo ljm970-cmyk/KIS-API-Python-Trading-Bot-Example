@@ -218,7 +218,7 @@ class VAvwapHybridPlugin:
     
                 if prev_vwap == 0.0:
                     prev_vwap = prev_close
-                   
+                    
                 return {
                     "prev_close": prev_close,
                     "prev_vwap": prev_vwap,
@@ -230,8 +230,8 @@ class VAvwapHybridPlugin:
                 if attempt == 2: return None
                 time.sleep(1.0 * (2 ** attempt))
 
-    # 🚨 NEW: [Phase 2 암살자 퀀트 브레인 복원] 듀얼 엑시트 및 무한 타격 엔진 정밀 락온
-    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avg_price=0.0, qty=0, alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, regime_data=None, is_simulation=False, sortie_mode="SINGLE", **kwargs):
+    # 🚨 NEW: [Phase 2 암살자 퀀트 브레인 복원] 분할 타격망, 무한 재진입 타점 연산 및 HA 벡터화 연산 팩트 교정
+    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avwap_avg_price=0.0, avwap_qty=0, avwap_alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, is_simulation=False, sortie_mode="SINGLE", **kwargs):
         is_holiday = kwargs.get('is_holiday', False)
         now_est = now_est or datetime.datetime.now(ZoneInfo('America/New_York'))
         today_est_date = now_est.date()
@@ -241,11 +241,14 @@ class VAvwapHybridPlugin:
             is_holiday = True
 
         avwap_state = avwap_state if isinstance(avwap_state, dict) else {}
-        strikes = int(self._safe_float(avwap_state.get('strikes', 0)))
+        
+        # 🚨 [Fact Binding] 상태 스키마 추출
+        phase = int(self._safe_float(avwap_state.get('phase', 0)))
+        last_entry_price = self._safe_float(avwap_state.get('last_entry_price', 0.0))
         
         # 🚨 [Fact Binding] Scheduler kwargs 추출 및 동적 수수료율 락온
-        avwap_qty = int(self._safe_float(kwargs.get('avwap_qty', 0)))
-        avwap_avg_price = self._safe_float(kwargs.get('avwap_avg_price', 0.0))
+        avwap_qty = int(self._safe_float(avwap_qty))
+        avwap_avg_price = self._safe_float(avwap_avg_price)
         target_krw = self._safe_float(kwargs.get('target_krw', 1000000.0))
         
         # 🚨 [ZeroDivision 방어막] 환율 결측 시 폴백 적용
@@ -308,9 +311,6 @@ class VAvwapHybridPlugin:
 
         # 🚨 [초단타 OCO 듀얼 엑시트 교전망] 85% 현금화 생존 최우선 사수
         if avwap_qty > 0 and exchange_rate > 0:
-            if exec_curr_p <= avwap_avg_price * 0.99:
-                return _build_res('CUT_LOSS', f'진입가(${avwap_avg_price:.2f}) 기준 -1% 손절 덫 터치')
-                
             total_invested_usd = avwap_qty * avwap_avg_price
             
             # 🚨 MODIFIED: [Zero-Division 붕괴 방어막] 수수료 오염으로 인한 분모 0 붕괴 차단
@@ -318,9 +318,18 @@ class VAvwapHybridPlugin:
             # 🚨 MODIFIED: [Target 2 수술] OCO 듀얼 엑시트 원화 목표가 역산식 매수 수수료 가산 누락분(1 + fee_rate) 100% 팩트 교정
             target_price_usd = ((target_krw / exchange_rate) + (total_invested_usd * (1.0 + fee_rate))) / safe_denom
             
+            # 상단 전량 익절 감시
             if exec_curr_p >= target_price_usd:
                 return _build_res('SHADOW_EXIT', f'원화 목표액(₩{int(target_krw):,}) 관통 스윕 격발!', tp=target_price_usd)
-            return _build_res('OBSERVING', f'{session_name} 무중단 교전 중 (목표가: ${target_price_usd:.2f})', tp=target_price_usd)
+            
+            # 하단 손절 덫 감시 (2차 이상 격발 물량 한정)
+            if phase >= 2:
+                cut_loss_price = last_entry_price * 0.99 if last_entry_price > 0 else avwap_avg_price * 0.99
+                if exec_curr_p <= cut_loss_price:
+                    return _build_res('CUT_LOSS_ALL', f'해당 진입가 기준 -1% 손절 덫 터치')
+                
+                # 존버 바이패스: 2차 이상 격발 후에는 무조건 관망세 유지 (추가 딥매수 차단)
+                return _build_res('OBSERVING', f'{session_name} 무중단 교전 중 (익절/손절 대기, 추가 매수 차단)', tp=target_price_usd)
 
         # 🚨 [타겟-앵커 정밀 추출] 실매매 종목(exec_ticker)의 시가를 정확히 팩트 추출
         exec_session_open = 0.0
@@ -333,21 +342,29 @@ class VAvwapHybridPlugin:
         if exec_session_open == 0.0:
             return _build_res('OBSERVING', f'{session_name} 실매매 종목 시가(Open) 추출 대기중')
 
-        # 🚨 [상승/하락장 무한 타격망 판별]
+        # 🚨 [상승/하락장 판별 및 무한 타격망 타점 분기]
         is_bull = exec_session_open > prev_close
-        target_drop_pct = -3.0 - (3.0 * strikes) if is_bull else -6.0 - (3.0 * strikes)
+        
+        if is_bull:
+            target_drop_pct = -3.0 * (phase + 1)
+        else:
+            target_drop_pct = -6.0 - (3.0 * phase)
+            
         exec_target_price = exec_session_open * (1 + target_drop_pct / 100.0)
 
         # 🚨 [하락장 Numpy HA 하드 리셋 벡터화 연산망]
-        if not is_bull:
+        requires_ha = not (is_bull and phase == 0)
+        is_ha_bull = False
+        
+        if requires_ha:
             if df_1min_base is None or df_1min_base.empty or 'time_est' not in df_1min_base.columns:
-                return _build_res('OBSERVING', '하락장 HA 연산용 기초지수 데이터 부재')
+                return _build_res('OBSERVING', 'HA 연산용 기초지수 데이터 부재')
             
             df_base_today = df_1min_base[df_1min_base.index.date == today_est_date].copy()
             df_base_session = df_base_today[df_base_today['time_est'] >= ha_start_str].copy()
             
             if df_base_session.empty:
-                return _build_res('OBSERVING', f'하락장 기초지수 HA 세션({ha_start_str}~) 데이터 집계 중')
+                return _build_res('OBSERVING', f'기초지수 HA 세션({ha_start_str}~) 데이터 집계 중')
                 
             # 🚨 [Numpy Vectorization 락온] 결측치(NaN) 방어막 ffill().bfill() 체인 및 np.nan_to_num 제독
             o_arr = np.nan_to_num(df_base_session['open'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
@@ -360,7 +377,7 @@ class VAvwapHybridPlugin:
                 ha_o = np.zeros_like(o_arr)
                 ha_o[0] = o_arr[0]
                 
-                # Numpy 벡터 루프 (순수 Python 루프보다 수십 배 빠름)
+                # Numpy 고속 벡터 루프 연산
                 for i in range(1, len(o_arr)):
                     ha_o[i] = (ha_o[i-1] + ha_c[i-1]) / 2.0
                 
@@ -368,9 +385,9 @@ class VAvwapHybridPlugin:
                 last_ha_close = ha_c[-1]
                 
                 if last_ha_close <= last_ha_open:
-                    return _build_res('OBSERVING', f'하락장({target_drop_pct}%) 타점 대기 (HA 양봉 컨펌 필요)')
+                    return _build_res('OBSERVING', f'타점({target_drop_pct}%) 대기 (HA 양봉 컨펌 필요)')
             else:
-                return _build_res('OBSERVING', '하락장 HA 연산 실패 (배열 크기 0)')
+                return _build_res('OBSERVING', 'HA 연산 실패 (배열 크기 0)')
 
         # 🚨 [타점 딥-매수 판별 및 캡핑 쉴드 검증]
         if exec_curr_p <= exec_target_price:
@@ -378,7 +395,15 @@ class VAvwapHybridPlugin:
             if is_bull and main_actual_avg > 0:
                 if exec_curr_p >= main_actual_avg:
                     return _build_res('OBSERVING', f'상승장 캡핑: 현재가(${exec_curr_p:.2f}) >= 본진평단(${main_actual_avg:.2f})')
-                    
-            return _build_res('DEEP_BUY', f'{"상승" if is_bull else "하락"}장 무한 타점({target_drop_pct}%) 관통 및 방어막 해제', tp=exec_target_price)
+                
+            # 격발 Action 스키마 맵핑
+            if phase == 0:
+                action_str = 'DEEP_BUY_1'
+            elif phase == 1:
+                action_str = 'DEEP_BUY_2'
+            else:
+                action_str = 'DEEP_BUY_RELOAD'
+                
+            return _build_res(action_str, f'{"상승" if is_bull else "하락"}장 무한 타점({target_drop_pct}%) 관통 및 방어막 해제', tp=exec_target_price)
 
         return _build_res('OBSERVING', f'{"상승" if is_bull else "하락"}장 타점({target_drop_pct}%) 추적 대기중', tp=exec_target_price)

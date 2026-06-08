@@ -13,6 +13,9 @@
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어를 위한 html.escape 쉴드 전역 강제 주입.
 # 🚨 MODIFIED: [JSON Iterable 붕괴 방어] active_tickers 문자열 오염 시 봇이 오프라인되는 현상(Silent Death)을 막기 위한 isinstance 리스트 강제 캐스팅 락온.
 # 🚨 MODIFIED: [Async I/O 코루틴 붕괴 수술] _get_exchange_rate 내부 동기 함수화로 asyncio.to_thread 래핑 시 발생하는 TypeError(Coroutine) 즉사 버그 완벽 소각.
+# 🚨 NEW: [Phase 1/2/3 무한타격 렌더링 락온] 암살자 교전 상태에 따른 분할 딥-매수(phase) 및 HA 필수 여부를 UI에 동적 오버라이드.
+# 🚨 NEW: [KeyError 즉사 버그 방어] 달력 API(mcal) 반환 객체 및 DataFrame 객체의 컬럼 결측 시 발생하는 런타임 붕괴를 막기 위해 columns 교차 검증 쉴드 전면 결속.
+# 🚨 NEW: [I/O Thread Crash 방어] _read_state 내부 EAFP 패턴 주입으로 I/O 예외의 비동기 전이 원천 차단.
 # ==========================================================
 import logging
 import datetime
@@ -76,16 +79,18 @@ class AvwapConsolePlugin:
         market_open = None
         market_close = None
         
-        # 🚨 [State Mismatch 방어] None(통신 실패)과 empty(휴장일 팩트)를 분기하여 멱등성 보장
-        if schedule is None or schedule.empty:
-            if schedule is None and now_est.weekday() < 5: 
+        # 🚨 [KeyError 및 State Mismatch 방어] mcal 응답 객체 컬럼 교차 검증
+        if schedule is not None and not schedule.empty and 'market_open' in schedule.columns and 'market_close' in schedule.columns:
+            market_open = schedule.iloc[0]['market_open'].astimezone(est)
+            market_close = schedule.iloc[0]['market_close'].astimezone(est)
+        elif schedule is not None and schedule.empty:
+            is_holiday = True
+        else:
+            if now_est.weekday() < 5: 
                 market_open = now_est.replace(hour=9, minute=30, second=0, microsecond=0)
                 market_close = now_est.replace(hour=16, minute=0, second=0, microsecond=0)
             else: 
                 is_holiday = True
-        else:
-            market_open = schedule.iloc[0]['market_open'].astimezone(est)
-            market_close = schedule.iloc[0]['market_close'].astimezone(est)
 
         if is_holiday:
             status_code = "HOLIDAY"
@@ -193,22 +198,39 @@ class AvwapConsolePlugin:
                 curr_p, prev_c, base_curr_p, base_amp5, df_1m, df_base, ma_5day, fee_rate, target_krw = 0.0, 0.0, 0.0, 0.0, None, None, 0.0, 0.0007, 1000000.0
 
             # 🚨 [암살자 딥-레스큐 실전 렌더링 팩트 파싱]
+            # 🚨 NEW: [phase 및 last_entry_price 스키마 확장] 분할 타격 상태 추적을 위한 변수 추가
             avwap_qty, avwap_avg, avwap_inv_usd, target_usd, cut_loss = 0, 0.0, 0.0, 0.0, 0.0
+            phase = 0
+            last_entry_price = 0.0
             is_assassin_active = False
+            
             state_file = f"data/avwap_trade_state_{t}.json"
             try:
                 def _read_state():
-                    with open(state_file, 'r', encoding='utf-8') as f:
-                        return json.load(f)
+                    # 🚨 NEW: [I/O Thread Crash 방어] EAFP 패턴 적용으로 예외 흡수
+                    try:
+                        with open(state_file, 'r', encoding='utf-8') as f:
+                            return json.load(f)
+                    except (OSError, json.JSONDecodeError):
+                        return {}
+
                 state_data = await asyncio.wait_for(asyncio.to_thread(_read_state), timeout=5.0)
                 
                 if isinstance(state_data, dict):
                     avwap_qty = int(self._safe_float(state_data.get('qty', 0)))
+                    phase = int(self._safe_float(state_data.get('phase', 0)))
+                    last_entry_price = self._safe_float(state_data.get('last_entry_price', 0.0))
+                    
                     if avwap_qty > 0:
                         is_assassin_active = True
                         avwap_avg = self._safe_float(state_data.get('avg_price', 0.0))
                         avwap_inv_usd = avwap_qty * avwap_avg
-                        cut_loss = round(avwap_avg * 0.99, 2)
+                        
+                        # 🚨 NEW: 2차/무한 재진입 타격망의 조건부 컷오프(손절망) 연산 팩트 교정
+                        if last_entry_price > 0.0:
+                            cut_loss = round(last_entry_price * 0.99, 2)
+                        else:
+                            cut_loss = round(avwap_avg * 0.99, 2)
                         
                         # 🚨 [ZeroDivision 붕괴 수술] 수수료 가산식 분모 0 붕괴 차단
                         safe_denom = avwap_qty * max(0.0001, (1.0 - fee_rate))
@@ -234,12 +256,15 @@ class AvwapConsolePlugin:
                 if 'time_est' in df_b_today.columns:
                     # VWAP은 정규장(09:30~16:00) 기준 누적 연산이 표준
                     df_b_reg = df_b_today[(df_b_today['time_est'] >= '093000') & (df_b_today['time_est'] <= '155959')].copy()
-                    if not df_b_reg.empty:
+                    
+                    # 🚨 [KeyError 붕괴 원천 차단] 필수 연산 컬럼 교차 검증 쉴드 결속
+                    required_cols = ['high', 'low', 'close', 'volume']
+                    if not df_b_reg.empty and all(c in df_b_reg.columns for c in required_cols):
                         # 🚨 [Quant Logic 교정] 정통 퀀트 트레이딩 표준 연산으로 교정 (High+Low+Close)/3.0
                         df_b_reg['tp'] = (df_b_reg['high'].astype(float) + df_b_reg['low'].astype(float) + df_b_reg['close'].astype(float)) / 3.0
                         df_b_reg['vol'] = df_b_reg['volume'].astype(float)
                         df_b_reg['vol_tp'] = df_b_reg['tp'] * df_b_reg['vol']
-                        
+            
                         # 🚨 [ZeroDivision 붕괴 수술] 거래량 결측 보호
                         c_vol = df_b_reg['vol'].sum()
                         if c_vol > 0:
@@ -265,7 +290,9 @@ class AvwapConsolePlugin:
                 df_aft = df_today[(df_today['time_est'] >= '160100') & (df_today['time_est'] <= '200000')]
 
             def _calc_session_metrics(df_session, p_close):
-                if df_session.empty:
+                # 🚨 [KeyError 붕괴 원천 차단] 필수 연산 컬럼 교차 검증 쉴드 결속
+                req_cols = ['open', 'high', 'low']
+                if df_session.empty or not all(c in df_session.columns for c in req_cols):
                     return 0.0, 0.0, 0.0, False, 0.0, 0.0, 0.0
                 
                 s_open = self._safe_float(df_session['open'].iloc[0])
@@ -306,13 +333,13 @@ class AvwapConsolePlugin:
             else:
                 msg += f"▫️ 정규장 개장 대기 중 (VWAP 연산 불가)\n\n"
 
-            # 🚨 [UI 가독성 팩트 교정] 시가 기반 상승장/하락장 판별 및 무한 하락 타점 렌더링
+            # 🚨 NEW: [HA 양봉 조건부 표출망 락온] 상승/하락장에 따른 HA 렌더링
             msg += f"🌅 <b>[ 프리장 스펙 (04:00~09:29) ]</b>\n"
             if pre_open > 0:
                 msg += f"▫️ 시가: <b>${pre_open:.2f}</b> (고가 ${pre_high:.2f} / 저가 ${pre_low:.2f})\n"
                 msg += f"▫️ 판별: {'상승장' if pre_bull else '하락장'} (시가 vs 전일종가)\n"
                 msg += f"🔻 무한 하락 타점 추적 (시가 기준)\n"
-                msg += f"       1차: <b>${pre_t1:.2f}</b> / 2차: <b>${pre_t2:.2f}</b> / 3차: <b>${pre_t3:.2f}</b>\n\n"
+                msg += f"       1차: <b>${pre_t1:.2f}</b>{'' if pre_bull else ' (+HA 필수)'} / 2차: <b>${pre_t2:.2f}</b> (+HA 필수) / 3차: <b>${pre_t3:.2f}</b> (+HA 필수)\n\n"
             else:
                 msg += "▫️ 데이터 집계 대기 중...\n\n"
 
@@ -321,7 +348,7 @@ class AvwapConsolePlugin:
                 msg += f"▫️ 시가: <b>${reg_open:.2f}</b> (고가 ${reg_high:.2f} / 저가 ${reg_low:.2f})\n"
                 msg += f"▫️ 판별: {'상승장' if reg_bull else '하락장'} (시가 vs 전일종가)\n"
                 msg += f"🔻 무한 하락 타점 추적 (시가 기준)\n"
-                msg += f"       1차: <b>${reg_t1:.2f}</b> / 2차: <b>${reg_t2:.2f}</b> / 3차: <b>${reg_t3:.2f}</b>\n\n"
+                msg += f"       1차: <b>${reg_t1:.2f}</b>{'' if reg_bull else ' (+HA 필수)'} / 2차: <b>${reg_t2:.2f}</b> (+HA 필수) / 3차: <b>${reg_t3:.2f}</b> (+HA 필수)\n\n"
             else:
                 msg += "▫️ 정규장 개장 대기 중...\n\n"
 
@@ -330,7 +357,7 @@ class AvwapConsolePlugin:
                 msg += f"▫️ 시가: <b>${aft_open:.2f}</b> (고가 ${aft_high:.2f} / 저가 ${aft_low:.2f})\n"
                 msg += f"▫️ 판별: {'상승장' if aft_bull else '하락장'} (시가 vs 전일종가)\n"
                 msg += f"🔻 무한 하락 타점 추적 (시가 기준)\n"
-                msg += f"       1차: <b>${aft_t1:.2f}</b> / 2차: <b>${aft_t2:.2f}</b> / 3차: <b>${aft_t3:.2f}</b>\n\n"
+                msg += f"       1차: <b>${aft_t1:.2f}</b>{'' if aft_bull else ' (+HA 필수)'} / 2차: <b>${aft_t2:.2f}</b> (+HA 필수) / 3차: <b>${aft_t3:.2f}</b> (+HA 필수)\n\n"
             else:
                 msg += "▫️ 애프터장 개장 대기 중...\n\n"
 
@@ -341,13 +368,28 @@ class AvwapConsolePlugin:
             else:
                 msg += "▫️ 5일 평균가(SMA 5): 대기 중...\n\n"
 
-            # 🚨 [암살자 딥-레스큐 교전망 현황 렌더링 락온]
+            # 🚨 NEW: [암살자 분할 딥-레스큐 교전망 현황 정밀 렌더링 락온]
             msg += f"⚔️ <b>[ 암살자 딥-레스큐 교전망 현황 ]</b>\n"
             if is_assassin_active:
-                msg += f"▫️ 교전 상태: <b>ON (OCO 듀얼 엑시트 대기 중)</b>\n"
+                if phase == 1:
+                    msg += f"▫️ 교전 상태: <b>1차 딥-매수 완료 (50% 투입, 휩소 방어를 위한 관망 중)</b>\n"
+                elif phase == 2:
+                    msg += f"▫️ 교전 상태: <b>2차 딥-매수 완료 (100% 누적 투입, 1+2차 통합 연쇄 손절망 가동 중)</b>\n"
+                elif phase >= 3:
+                    msg += f"▫️ 교전 상태: <b>무한 재진입 타격망 가동 중 (주문가능금액 100% 투입, 진입가 손절망 가동 중)</b>\n"
+                else:
+                    msg += f"▫️ 교전 상태: <b>ON (OCO 듀얼 엑시트 대기 중)</b>\n"
+
                 msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
                 msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (환산 ₩{int(target_krw):,})\n"
-                msg += f"▫️ 하드 손절: <b>탈출가 ${cut_loss:.2f}</b> (-1% KIS 덫 장전 완료)\n"
+                
+                # 🚨 phase 조건부 손절망 UI 팩트 오버라이드
+                if phase >= 2:
+                    msg += f"▫️ 하드 손절: <b>탈출가 ${cut_loss:.2f}</b> (-1% KIS 덫 장전 완료)\n"
+                elif phase == 1:
+                    msg += f"▫️ 하드 손절: <b>장전 보류 (1차 물량 휩소 방어 차원 홀딩)</b>\n"
+                else:
+                    msg += f"▫️ 하드 손절: <b>탈출가 ${cut_loss:.2f}</b> (-1% KIS 덫 장전 완료)\n"
             else:
                 msg += f"▫️ 교전 상태: <b>OFF (대기 중 / 무포지션)</b>\n"
 
