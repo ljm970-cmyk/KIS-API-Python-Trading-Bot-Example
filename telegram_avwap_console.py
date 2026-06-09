@@ -6,7 +6,7 @@
 # 🚨 MODIFIED: [V86.00 텍스트 팩트 롤오버] '딥-레스큐' 및 '암살자' 레거시 명칭 영구 소각. 새벽 수금원 및 프리장 스캘퍼 퀀트 네이밍을 거쳐 '초고도화 인텔리전스 관제탑'으로 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [Quant Logic 팩트 교정] 고가/저가(High/Low) 기반 타점 산출 맹점을 소각하고, 각 세션의 시가(Open) 기준 상승장/하락장 판별(3/6/9% vs 6/9/12%) 팩트 연산 전면 이식.
 # 🚨 MODIFIED: [암살자 딥-레스큐 실전 렌더링 락온] avwap_trade_state 파일을 EAFP 샌드박스로 파싱하여, 교전 중(qty > 0)일 때 원화 환산 목표 스윕가 및 -1% 하단 손절 덫 팩트 노출 완료.
-# 🚨 MODIFIED: [ZeroDivision 붕괴 수술] OCO 듀얼 엑시트 원화 역산 시 수수료(fee_rate) 가산식의 분모 0 붕괴를 막기 위한 safe_denom 쉴드 락온.
+# 🚨 MODIFIED: [ZeroDivision 붕괴 수술] OCO 듀얼 엑시트 원화/수익률 역산 시 수수료(fee_rate) 가산식의 분모 0 붕괴를 막기 위한 safe_denom 쉴드 락온.
 # 🚨 MODIFIED: [Time Paradox UI 렌더링 붕괴 수술] 야후 파이낸스 1분봉 관통 시간을 연산할 때, 전일(Yesterday) 데이터 혼입을 막기 위해 무조건 `now_est.date()` 로 슬라이싱하도록 100% 팩트 락온.
 # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] 데이터 추출 시 순차적(Sequential) await 및 0.06초 샌드위치 지연(TPS 캡핑), 3단 지수 백오프 강제 락온.
 # 🚨 MODIFIED: [Insight 14, 25] API String-Float 및 NaN/Inf 맹독성 포맷팅 쉴드. `_safe_float` 코어 래핑 전면 결속 완료.
@@ -16,6 +16,8 @@
 # 🚨 NEW: [Phase 1/2/3 무한타격 렌더링 락온] 암살자 교전 상태에 따른 분할 딥-매수(phase) 및 HA 필수 여부를 UI에 동적 오버라이드.
 # 🚨 NEW: [KeyError 즉사 버그 방어] 달력 API(mcal) 반환 객체 및 DataFrame 객체의 컬럼 결측 시 발생하는 런타임 붕괴를 막기 위해 columns 교차 검증 쉴드 전면 결속.
 # 🚨 NEW: [I/O Thread Crash 방어] _read_state 내부 EAFP 패턴 주입으로 I/O 예외의 비동기 전이 원천 차단.
+# 🚨 NEW: [듀얼 익절 모드 렌더링 이식] 목표 모드(KRW/PCT)에 따른 동적 목표가 역산 및 UI 팩트 분기 표출망 결속 완료.
+# 🚨 NEW: [듀얼 섀도우 트래킹 스탠바이 표출] 잔고 0주 및 phase > 0 일 때 무한 재진입망 감시 현황(상단 V반등/하단 심해) 실시간 렌더링 이식.
 # ==========================================================
 import logging
 import datetime
@@ -27,6 +29,7 @@ import os
 import json
 import pandas as pd
 import pandas_market_calendars as mcal  
+
 import yfinance as yf
 import html  
 
@@ -192,10 +195,15 @@ class AvwapConsolePlugin:
                 
                 fee_rate = self._safe_float(await _get_with_retry(self.cfg.get_fee, t)) / 100.0
                 target_krw = self._safe_float(await _get_with_retry(self.cfg.get_avwap_target_krw, t))
+                
+                # 🚨 NEW: [목표가 듀얼 역산 엔진] KRW/PCT 모드 스키마 동적 패싱
+                target_mode = str(await _get_with_retry(getattr(self.cfg, 'get_avwap_target_mode', lambda x: "KRW"), t)).upper()
+                target_pct = self._safe_float(await _get_with_retry(getattr(self.cfg, 'get_avwap_target_pct', lambda x: 10.0), t))
 
             except Exception as e:
                 logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
                 curr_p, prev_c, base_curr_p, base_amp5, df_1m, df_base, ma_5day, fee_rate, target_krw = 0.0, 0.0, 0.0, 0.0, None, None, 0.0, 0.0007, 1000000.0
+                target_mode, target_pct = "KRW", 10.0
 
             # 🚨 [암살자 딥-레스큐 실전 렌더링 팩트 파싱]
             # 🚨 NEW: [phase 및 last_entry_price 스키마 확장] 분할 타격 상태 추적을 위한 변수 추가
@@ -234,7 +242,13 @@ class AvwapConsolePlugin:
                         
                         # 🚨 [ZeroDivision 붕괴 수술] 수수료 가산식 분모 0 붕괴 차단
                         safe_denom = avwap_qty * max(0.0001, (1.0 - fee_rate))
-                        target_usd = ((target_krw / exchange_rate) + (avwap_inv_usd * (1.0 + fee_rate))) / safe_denom
+                        
+                        # 🚨 NEW: [듀얼 익절 역산 엔진 렌더링 팩트 동기화]
+                        if target_mode == "PCT":
+                            gross_invest = avwap_inv_usd * (1.0 + fee_rate)
+                            target_usd = (gross_invest * (1.0 + target_pct / 100.0)) / safe_denom
+                        else:
+                            target_usd = ((target_krw / exchange_rate) + (avwap_inv_usd * (1.0 + fee_rate))) / safe_denom
             except Exception:
                 pass
 
@@ -264,7 +278,7 @@ class AvwapConsolePlugin:
                         df_b_reg['tp'] = (df_b_reg['high'].astype(float) + df_b_reg['low'].astype(float) + df_b_reg['close'].astype(float)) / 3.0
                         df_b_reg['vol'] = df_b_reg['volume'].astype(float)
                         df_b_reg['vol_tp'] = df_b_reg['tp'] * df_b_reg['vol']
-            
+                        
                         # 🚨 [ZeroDivision 붕괴 수술] 거래량 결측 보호
                         c_vol = df_b_reg['vol'].sum()
                         if c_vol > 0:
@@ -381,7 +395,12 @@ class AvwapConsolePlugin:
                     msg += f"▫️ 교전 상태: <b>ON (OCO 듀얼 엑시트 대기 중)</b>\n"
 
                 msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
-                msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (환산 ₩{int(target_krw):,})\n"
+                
+                # 🚨 NEW: [목표가 듀얼 렌더링] KRW vs PCT 분기망 표출
+                if target_mode == "PCT":
+                    msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (수익률 {target_pct}%)\n"
+                else:
+                    msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (환산 ₩{int(target_krw):,})\n"
                 
                 # 🚨 phase 조건부 손절망 UI 팩트 오버라이드
                 if phase >= 2:
@@ -391,7 +410,11 @@ class AvwapConsolePlugin:
                 else:
                     msg += f"▫️ 하드 손절: <b>탈출가 ${cut_loss:.2f}</b> (-1% KIS 덫 장전 완료)\n"
             else:
-                msg += f"▫️ 교전 상태: <b>OFF (대기 중 / 무포지션)</b>\n"
+                # 🚨 NEW: [듀얼 섀도 트래킹 무한 재진입 스탠바이 표출] 잔고 0주이되 phase 1 이상일 때
+                if phase > 0:
+                    msg += f"▫️ 교전 상태: <b>듀얼 섀도우 트래킹 가동 중 (상단 V자 반등 / 하단 심해 줍줍 스캔)</b>\n"
+                else:
+                    msg += f"▫️ 교전 상태: <b>OFF (대기 중 / 무포지션)</b>\n"
 
             # 🚨 [관측 전용 아키텍처 전환] 수동 매수/매도 제어 버튼 영구 삭제 유지
             if is_holiday:

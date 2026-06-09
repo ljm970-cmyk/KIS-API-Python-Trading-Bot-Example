@@ -17,6 +17,7 @@
 # 🚨 NEW: [동적 T값 스케일링] scale_dynamic_t 헬퍼 결속 (20/40분할 매수/매도 팩트 연산 보장)
 # 🚨 NEW: [Zero-Injection 차단] get_absolute_t_val 및 calculate_v14_state 내부 리버스 분기망 구축 (추가 시드 유입 원천 봉쇄 및 쿼터 예산 팩트 교정)
 # 🚨 NEW: [Phase 1 암살자 목표수익 스키마 구축] AVWAP_TARGET_KRW_CFG 파일 연동 및 안전 접근 래퍼(Getter/Setter) 신설 팩트 주입
+# 🚨 NEW: [암살자 듀얼 익절 스키마 결속] AVWAP_TARGET_MODE_CFG(KRW/PCT) 및 AVWAP_TARGET_PCT_CFG(%) 스키마 추가. 원화 목표와 수익률 목표 동시 지원 기반 마련 완료.
 # ==========================================================
 
 import json
@@ -88,7 +89,10 @@ class ConfigManager:
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",       
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
-            "AVWAP_TARGET_KRW_CFG": "data/avwap_target_krw.json"
+            "AVWAP_TARGET_KRW_CFG": "data/avwap_target_krw.json",
+            # 🚨 NEW: [암살자 듀얼 익절 스키마 결속]
+            "AVWAP_TARGET_MODE_CFG": "data/avwap_target_mode.json",
+            "AVWAP_TARGET_PCT_CFG": "data/avwap_target_pct.json"
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -264,6 +268,27 @@ class ConfigManager:
             d[ticker] = self._safe_float(v)
             self._save_json(self.FILES["AVWAP_TARGET_KRW_CFG"], d)
 
+    # 🚨 NEW: [암살자 듀얼 익절 모드 제어 팩트 결속]
+    def get_avwap_target_mode(self, ticker):
+        val = self._load_json(self.FILES["AVWAP_TARGET_MODE_CFG"], {}).get(ticker, "KRW")
+        return str(val)
+
+    def set_avwap_target_mode(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_TARGET_MODE_CFG"], {})
+            d[ticker] = str(v)
+            self._save_json(self.FILES["AVWAP_TARGET_MODE_CFG"], d)
+
+    def get_avwap_target_pct(self, ticker):
+        val = self._load_json(self.FILES["AVWAP_TARGET_PCT_CFG"], {}).get(ticker, 10.0)
+        return self._safe_float(val)
+
+    def set_avwap_target_pct(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_TARGET_PCT_CFG"], {})
+            d[ticker] = self._safe_float(v)
+            self._save_json(self.FILES["AVWAP_TARGET_PCT_CFG"], d)
+
     def get_last_split_date(self, ticker):
         return str(self._load_json(self.FILES["SPLIT_HISTORY"], {}).get(ticker, ""))
 
@@ -348,6 +373,7 @@ class ConfigManager:
                     
                     raw_new_qty = r_qty * safe_ratio
                     new_qty = math.floor(raw_new_qty + 0.5)
+        
                     r['qty'] = new_qty if new_qty > 0 else (1 if r_qty > 0 else 0)
                     r['price'] = round(r_price / safe_ratio, 4)
                     if 'avg_price' in r:
@@ -426,7 +452,7 @@ class ConfigManager:
             est = ZoneInfo('America/New_York')
             today_str = datetime.datetime.now(est).strftime('%Y-%m-%d')
             new_id = 1 if not ledger else max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0]) + 1
-            
+             
             ledger.append({
                 "id": new_id, "date": today_str, "ticker": ticker, "side": "BUY",
                 "price": self._safe_float(actual_avg), "qty": int(self._safe_float(actual_qty)), "avg_price": self._safe_float(actual_avg), 
@@ -435,7 +461,7 @@ class ConfigManager:
             self._save_json(self.FILES["LEDGER"], ledger)
 
     def calibrate_avg_price(self, ticker, actual_avg):
-        with self._io_lock:
+         with self._io_lock:
             ledger = self.get_ledger()
             target_recs = [r for r in ledger if r.get('ticker') == ticker]
             if target_recs:
@@ -490,7 +516,7 @@ class ConfigManager:
                         if abs(self._safe_float(r.get('price', 0.0)) - actual_sell_price) >= 0.01:
                             r['price'] = actual_sell_price
                             changed_count += 1
-                             
+                              
             if changed_count > 0:
                 self._save_json(self.FILES["LEDGER"], ledger)
             
@@ -785,10 +811,10 @@ class ConfigManager:
         
     def set_version(self, t, v):
         with self._io_lock:
-            if t == "TQQQ": v = "V14"
-            d = self._load_json(self.FILES["VERSION_CFG"], self.DEFAULT_VERSION)
-            d[t] = v
-            self._save_json(self.FILES["VERSION_CFG"], d)
+             if t == "TQQQ": v = "V14"
+             d = self._load_json(self.FILES["VERSION_CFG"], self.DEFAULT_VERSION)
+             d[t] = v
+             self._save_json(self.FILES["VERSION_CFG"], d)
 
     def get_split_count(self, t): 
         return self._safe_float(self._load_json(self.FILES["SPLIT"], self.DEFAULT_SPLIT).get(t, 40.0))
@@ -811,9 +837,9 @@ class ConfigManager:
         
     def set_sniper_multiplier(self, t, v):
         with self._io_lock:
-            d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
-            d[t] = self._safe_float(v)
-            self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
+             d = self._load_json(self.FILES["SNIPER_MULTIPLIER_CFG"], self.DEFAULT_SNIPER_MULTIPLIER)
+             d[t] = self._safe_float(v)
+             self._save_json(self.FILES["SNIPER_MULTIPLIER_CFG"], d)
 
     def get_upward_sniper_mode(self, ticker): 
         return bool(self._load_json(self.FILES["UPWARD_SNIPER"], {}).get(ticker, False))
@@ -900,7 +926,7 @@ class ConfigManager:
             try:
                 return int(v)
             except ValueError:
-                return None
+                 return None
         return None
         
     def set_chat_id(self, v): 

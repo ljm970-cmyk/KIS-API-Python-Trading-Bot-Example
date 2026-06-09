@@ -3,12 +3,13 @@
 # ==========================================================
 # 🚨 MODIFIED: [Reset 0주 오인 패러독스 소각] 리셋(장부 소각) 후 새로운 스냅샷을 박제할 때, qty=0 을 강제 주입하던 치명적 하드코딩 버그를 소각하고 KIS 실잔고(kis_qty)와 평단가(kis_avg) 정밀 추출.
 # 🚨 NEW: [Phase 1 암살자 설정 UI 결속] CONFIG_AVWAP 토글 라우팅 및 INPUT -> AVWAP_KRW 목표 수익금 팻핑거 입력 대기 상태 락온.
-# 🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 내부의 os.path.exists 소각 및 원자적 쓰기(Atomic Write) 강제 주입 완료.
+# 🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 및 _process_reset_files 내부의 os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료.
 # 🚨 MODIFIED: [시그니처 Mismatch 소각] 텔레그램 라우터의 action, sub, data 파싱 구조를 100% 반영하여 handle 메서드 시그니처 완벽 수복.
 # 🚨 MODIFIED: [TypeError 방어] set_reverse_state 호출 시 누락된 파라미터(0.0)를 강제 주입하여 백엔드 스키마 충돌 원천 차단.
 # 🚨 MODIFIED: [Case 36 UI 충돌 절대 방어] 텔레그램 버튼 연타 시 발생하는 BadRequest 에러를 흡수하되, 진짜 에러는 로깅하도록 샌드박스 정밀 교정.
 # 🚨 MODIFIED: [데드코드 진공 압축] 최상단에서 이미 처리되는 query.answer()의 하위 분기별 중복 호출 찌꺼기 100% 영구 소각.
-# 🚨 MODIFIED: [통신 데드락 붕괴 소각] 최상단 query.answer() 호출에 5초 타임아웃 샌드박스 강제 래핑 완료.
+# 🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단).
+# 🚨 NEW: [Phase 3 암살자 듀얼 익절 스키마 결속] CONFIG_AVWAP -> TOGGLE_TARGET_MODE 라우팅 신설 및 AVWAP_PCT 팻핑거 입력 스키마 매핑 완료.
 # ==========================================================
 import logging
 import datetime
@@ -62,7 +63,7 @@ class CallbackConfigHandler:
                 from plugin_updater import SystemUpdater
                 updater = SystemUpdater()
                 try: 
-                    await query.edit_message_text("⏳ <b>[업데이트 승인됨]</b> GitHub 코드를 강제 페칭합니다...", parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text("⏳ <b>[업데이트 승인됨]</b> GitHub 코드를 강제 페칭합니다...", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
@@ -72,38 +73,38 @@ class CallbackConfigHandler:
                     safe_msg = html.escape(str(msg)) 
                     if success:
                         try: 
-                            await query.edit_message_text(f"✅ <b>[업데이트 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML')
+                            await asyncio.wait_for(query.edit_message_text(f"✅ <b>[업데이트 완료]</b> {safe_msg}\n\n🔄 시스템 데몬(pipiosbot)을 OS 단에서 재가동합니다. 다운타임 후 봇이 다시 깨어납니다.", parse_mode='HTML'), timeout=10.0)
                         except telegram.error.BadRequest as e:
                             if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                         except Exception: pass
                         await updater.restart_daemon()
                     else:
                         try: 
-                            await query.edit_message_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML')
+                            await asyncio.wait_for(query.edit_message_text(f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML'), timeout=10.0)
                         except telegram.error.BadRequest as e:
                             if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                         except Exception: pass
                 except Exception as e:
                     safe_err = html.escape(str(e))
                     try: 
-                        await query.edit_message_text(f"🚨 <b>[치명적 오류]</b> 프로세스 예외 발생: {safe_err}", parse_mode='HTML')
+                        await asyncio.wait_for(query.edit_message_text(f"🚨 <b>[치명적 오류]</b> 프로세스 예외 발생: {safe_err}", parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
 
             elif sub == "CANCEL":
                 try: 
-                    await query.edit_message_text("❌ 자가 업데이트를 취소했습니다.", parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text("❌ 자가 업데이트를 취소했습니다.", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
 
         elif action == "VERSION":
-            history_data = await asyncio.to_thread(self.cfg.get_full_version_history) or []
+            history_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_full_version_history), timeout=10.0) or []
             if sub == "LATEST":
                 msg, markup = self.view.get_version_message(history_data, page_index=None)
                 try: 
-                    await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
@@ -111,17 +112,17 @@ class CallbackConfigHandler:
                 page_idx = int(data[2]) if len(data) > 2 else 0
                 msg, markup = self.view.get_version_message(history_data, page_index=page_idx)
                 try: 
-                    await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
 
         elif action == "RESET":
             if sub == "MENU":
-                active_tickers = await asyncio.to_thread(self.cfg.get_active_tickers) or []
+                active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
                 msg, markup = self.view.get_reset_menu(active_tickers)
                 try: 
-                    await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
@@ -136,6 +137,10 @@ class CallbackConfigHandler:
                             s_state['orders'] = []
                             
                             dir_name = os.path.dirname(slice_file) or '.'
+                            # 🚨 MODIFIED: [Case 16] 디렉토리 보장 EAFP 샌드박스 추가 결속
+                            try: os.makedirs(dir_name, exist_ok=True)
+                            except OSError: pass
+                            
                             fd = None
                             tmp_path = None
                             try:
@@ -165,10 +170,10 @@ class CallbackConfigHandler:
                         except OSError: 
                             pass
                         
-                    await asyncio.to_thread(_hijack_vwap_lock)
-                    await asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker)
+                    await asyncio.wait_for(asyncio.to_thread(_hijack_vwap_lock), timeout=10.0)
+                    await asyncio.wait_for(asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker), timeout=10.0)
                     try: 
-                        await query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 금일 매매 잠금이 해제되었으며, 오염된 슬라이싱 엔진도 무효화되었습니다.</b>", parse_mode='HTML')
+                        await asyncio.wait_for(query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 금일 매매 잠금이 해제되었으며, 오염된 슬라이싱 엔진도 무효화되었습니다.</b>", parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
@@ -176,21 +181,21 @@ class CallbackConfigHandler:
                 if ticker:
                     msg, markup = self.view.get_reset_confirm_menu(ticker)
                     try: 
-                        await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
+                        await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
             elif sub == "CONFIRM":
                 if not ticker: return
                 
-                current_ver = str(await asyncio.to_thread(self.cfg.get_version, ticker) or "")
+                current_ver = str(await asyncio.wait_for(asyncio.to_thread(self.cfg.get_version, ticker), timeout=10.0) or "")
                 is_rev_active = (current_ver == "V_REV")
                 
-                await asyncio.to_thread(self.cfg.set_reverse_state, ticker, is_rev_active, 0, 0.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_reverse_state, ticker, is_rev_active, 0, 0.0), timeout=10.0)
              
-                ledger = await asyncio.to_thread(self.cfg.get_ledger) or []
+                ledger = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_ledger), timeout=10.0) or []
                 ledger_data = [r for r in ledger if isinstance(r, dict) and str(r.get('ticker')) != str(ticker)]
-                await asyncio.to_thread(self.cfg._save_json, self.cfg.FILES["LEDGER"], ledger_data)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg._save_json, self.cfg.FILES["LEDGER"], ledger_data), timeout=15.0)
                 
                 def _process_reset_files():
                     backup_file = self.cfg.FILES["LEDGER"].replace(".json", "_backup.json")
@@ -201,6 +206,10 @@ class CallbackConfigHandler:
                         b_data = [r for r in b_data if isinstance(r, dict) and str(r.get('ticker')) != str(ticker)]
                     
                         dir_name = os.path.dirname(backup_file) or '.'
+                        # 🚨 MODIFIED: [Case 16] 디렉토리 보장 EAFP 샌드박스 추가 결속
+                        try: os.makedirs(dir_name, exist_ok=True)
+                        except OSError: pass
+                        
                         fd = None
                         tmp_path = None
                         try:
@@ -222,13 +231,13 @@ class CallbackConfigHandler:
                     except OSError: pass
                     except Exception: pass
                      
-                await asyncio.to_thread(_process_reset_files)
+                await asyncio.wait_for(asyncio.to_thread(_process_reset_files), timeout=10.0)
             
                 if getattr(self, 'queue_ledger', None):
-                    await asyncio.to_thread(self.queue_ledger.clear_queue, ticker)
-                    await asyncio.to_thread(self.queue_ledger.sync_with_broker, ticker, 0, 0.0)
+                    await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.clear_queue, ticker), timeout=10.0)
+                    await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.sync_with_broker, ticker, 0, 0.0), timeout=10.0)
 
-                await asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker), timeout=10.0)
 
                 prev_c = 0.0
                 for attempt in range(3):
@@ -265,29 +274,31 @@ class CallbackConfigHandler:
                                 kis_avg = self._safe_float(holdings[ticker].get('avg', 0.0))
                             
                             from scheduler_core import get_budget_allocation
-                            active_tickers_list = await asyncio.to_thread(self.cfg.get_active_tickers) or []
-                            _, alloc_cash_dict = await asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, self.cfg)
+                            active_tickers_list = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
+                            _, alloc_cash_dict = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, self.cfg), timeout=10.0)
                             alloc_cash_dict = alloc_cash_dict or {}
                             available_cash = self._safe_float(alloc_cash_dict.get(ticker))
                             
-                            await asyncio.to_thread(
-                                self.strategy.get_plan, 
-                                ticker, 0.0, kis_avg, kis_qty, prev_c, 
-                                ma_5day=0.0, market_type="REG", available_cash=available_cash, 
-                                is_simulation=True, is_snapshot_mode=True
+                            await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    self.strategy.get_plan, 
+                                    ticker, 0.0, kis_avg, kis_qty, prev_c, 
+                                    ma_5day=0.0, market_type="REG", available_cash=available_cash, 
+                                    is_simulation=True, is_snapshot_mode=True
+                                ), timeout=15.0
                             )
                     except Exception as e:
                         logging.error(f"🚨 0주 강제 스냅샷 오버라이드 에러: {e}")
 
                 try:
-                    await query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 삼위일체 소각(Nuke) 및 초기화 완료!</b>\n▫️ 본장부, 백업장부, 큐(Queue) 찌꺼기 데이터가 100% 영구 삭제되었습니다.\n▫️ KIS 실잔고 동기화, 매매 잠금 해제 및 디커플링 타점 스냅샷 원자적 덮어쓰기가 완벽히 집행되었습니다.", parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 삼위일체 소각(Nuke) 및 초기화 완료!</b>\n▫️ 본장부, 백업장부, 큐(Queue) 찌꺼기 데이터가 100% 영구 삭제되었습니다.\n▫️ KIS 실잔고 동기화, 매매 잠금 해제 및 디커플링 타점 스냅샷 원자적 덮어쓰기가 완벽히 집행되었습니다.", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
        
             elif sub == "CANCEL":
                 try: 
-                    await query.edit_message_text("❌ 닫았습니다.", parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text("❌ 닫았습니다.", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
@@ -315,7 +326,7 @@ class CallbackConfigHandler:
                     
                 if not self.sync_engine.sync_locks[ticker].locked():
                     try: 
-                        await query.edit_message_text(f"🔄 <b>[{html.escape(str(ticker))}] 잔고 기반 대시보드 업데이트 중...</b>", parse_mode='HTML')
+                        await asyncio.wait_for(query.edit_message_text(f"🔄 <b>[{html.escape(str(ticker))}] 잔고 기반 대시보드 업데이트 중...</b>", parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
@@ -338,7 +349,7 @@ class CallbackConfigHandler:
         elif action == "HIST":
             if sub == "VIEW":
                 hid = int(data[2]) if len(data) > 2 else 0
-                hist_data = await asyncio.to_thread(self.cfg.get_history) or []
+                hist_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_history), timeout=10.0) or []
                 target = next((h for h in hist_data if isinstance(h, dict) and h.get('id') == hid), None)
                 if target:
                     safe_trades = target.get('trades') or []
@@ -350,13 +361,13 @@ class CallbackConfigHandler:
                                 t_rec['side'] = 'BUY'
             
                     try:
-                        qty, avg, invested, sold = await asyncio.to_thread(self.cfg.calculate_holdings, target.get('ticker'), safe_trades)
+                        qty, avg, invested, sold = await asyncio.wait_for(asyncio.to_thread(self.cfg.calculate_holdings, target.get('ticker'), safe_trades), timeout=10.0)
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True, history_id=hid)
                     except TypeError:
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True)
                      
                     try: 
-                        await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
+                        await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
@@ -368,11 +379,11 @@ class CallbackConfigHandler:
             elif sub == "IMG":
                 target_id = int(data[3]) if len(data) > 3 else None
                 if not ticker: return
-                hist_data = await asyncio.to_thread(self.cfg.get_history) or []
+                hist_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_history), timeout=10.0) or []
                 hist_list = [h for h in hist_data if isinstance(h, dict) and str(h.get('ticker')) == str(ticker)]
                 
                 if not hist_list:
-                    await context.bot.send_message(chat_id, f"📭 <b>[{html.escape(str(ticker))}]</b> 발급 가능한 졸업 기록이 존재하지 않습니다.", parse_mode='HTML')
+                    await asyncio.wait_for(context.bot.send_message(chat_id, f"📭 <b>[{html.escape(str(ticker))}]</b> 발급 가능한 졸업 기록이 존재하지 않습니다.", parse_mode='HTML'), timeout=10.0)
                     return
                 
                 target_hist = None
@@ -383,43 +394,45 @@ class CallbackConfigHandler:
                     target_hist = sorted(hist_list, key=lambda x: str(x.get('end_date') or ''), reverse=True)[0]
                 
                 try:
-                    await query.edit_message_text(f"🎨 <b>[{html.escape(str(ticker))}] 프리미엄 졸업 카드를 렌더링 중입니다...</b>", parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text(f"🎨 <b>[{html.escape(str(ticker))}] 프리미엄 졸업 카드를 렌더링 중입니다...</b>", parse_mode='HTML'), timeout=10.0)
 
                     profit_val = self._safe_float(target_hist.get('profit'))
                     yield_pct_val = self._safe_float(target_hist.get('yield'))
                     invested_val = self._safe_float(target_hist.get('invested'))
                     revenue_val = self._safe_float(target_hist.get('revenue'))
 
-                    img_path = await asyncio.to_thread(
-                        self.view.create_profit_image,
-                        ticker=target_hist.get('ticker'),
-                        profit=profit_val,
-                        yield_pct=yield_pct_val,
-                        invested=invested_val,
-                        revenue=revenue_val,
-                        end_date=target_hist.get('end_date')
+                    img_path = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self.view.create_profit_image,
+                            ticker=target_hist.get('ticker'),
+                            profit=profit_val,
+                            yield_pct=yield_pct_val,
+                            invested=invested_val,
+                            revenue=revenue_val,
+                            end_date=target_hist.get('end_date')
+                        ), timeout=15.0
                     )
             
                     if img_path:
                         def _read_img4(p):
                             with open(p, 'rb') as f_in: return f_in.read()
                         try:
-                            img_bytes4 = await asyncio.to_thread(_read_img4, img_path)
+                            img_bytes4 = await asyncio.wait_for(asyncio.to_thread(_read_img4, img_path), timeout=10.0)
                             if str(img_path).lower().endswith('.gif'):
-                                await context.bot.send_animation(chat_id=chat_id, animation=img_bytes4)
+                                await asyncio.wait_for(context.bot.send_animation(chat_id=chat_id, animation=img_bytes4), timeout=15.0)
                             else:
-                                await context.bot.send_photo(chat_id=chat_id, photo=img_bytes4)
-                            try: await query.delete_message()
+                                await asyncio.wait_for(context.bot.send_photo(chat_id=chat_id, photo=img_bytes4), timeout=15.0)
+                            try: await asyncio.wait_for(query.delete_message(), timeout=5.0)
                             except Exception: pass
                         except OSError:
-                            await query.edit_message_text("❌ 이미지 파일 읽기에 실패했습니다.", parse_mode='HTML')
+                            await asyncio.wait_for(query.edit_message_text("❌ 이미지 파일 읽기에 실패했습니다.", parse_mode='HTML'), timeout=10.0)
                     else:
-                        await query.edit_message_text("❌ 이미지 생성에 실패했습니다.", parse_mode='HTML')
+                        await asyncio.wait_for(query.edit_message_text("❌ 이미지 생성에 실패했습니다.", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception as e:
                     logging.error(f"📸 👑 졸업 이미지 생성/발송 실패: {e}")
-                    try: await query.edit_message_text("❌ 이미지 생성 중 오류가 발생했습니다.", parse_mode='HTML')
+                    try: await asyncio.wait_for(query.edit_message_text("❌ 이미지 생성 중 오류가 발생했습니다.", parse_mode='HTML'), timeout=10.0)
                     except Exception: pass
 
         elif action == "SET_VER":
@@ -444,17 +457,17 @@ class CallbackConfigHandler:
             max_qty = kis_qty
             
             try:
-                full_ledger = await asyncio.to_thread(self.cfg.get_ledger) or []
+                full_ledger = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_ledger), timeout=10.0) or []
                 recs = [r for r in full_ledger if isinstance(r, dict) and str(r.get('ticker')) == ticker]
                 if recs:
-                    ledger_qty, _, _, _ = await asyncio.to_thread(self.cfg.calculate_holdings, ticker, recs)
+                    ledger_qty, _, _, _ = await asyncio.wait_for(asyncio.to_thread(self.cfg.calculate_holdings, ticker, recs), timeout=10.0)
                     if ledger_qty > max_qty: max_qty = ledger_qty
             except Exception as e:
                 logging.error(f"🚨 모드 전환 전 V14 장부 검증 에러: {e}")
                 
             try:
                 if getattr(self, 'queue_ledger', None):
-                    q_data = await asyncio.to_thread(self.queue_ledger.get_queue, ticker) or []
+                    q_data = await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.get_queue, ticker), timeout=10.0) or []
                     if q_data:
                         vrev_qty = sum(int(self._safe_float(item.get('qty'))) for item in q_data if isinstance(item, dict))
                         if vrev_qty > max_qty: max_qty = vrev_qty
@@ -463,7 +476,7 @@ class CallbackConfigHandler:
             
             if max_qty > 0:
                 try:
-                    await query.edit_message_text(f"🛑 <b>[{html.escape(str(ticker))} 모드 전환 차단]</b>\n\n현재 계좌 또는 장부에 단 1주라도 잔고({max_qty}주)가 존재하면 코어 스위칭이 불가능합니다.\n전량 익절(0주) 후 0주 새출발 상태에서 다시 시도해 주십시오.", parse_mode='HTML')
+                    await asyncio.wait_for(query.edit_message_text(f"🛑 <b>[{html.escape(str(ticker))} 모드 전환 차단]</b>\n\n현재 계좌 또는 장부에 단 1주라도 잔고({max_qty}주)가 존재하면 코어 스위칭이 불가능합니다.\n전량 익절(0주) 후 0주 새출발 상태에서 다시 시도해 주십시오.", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
@@ -477,37 +490,37 @@ class CallbackConfigHandler:
                 return
             
             try: 
-                await query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML')
+                await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
             except telegram.error.BadRequest as e:
                 if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
             except Exception: pass
 
         elif action == "SET_VER_CONFIRM":
-            if not ticker: return
+             if not ticker: return
              
-            if sub == "V_REV":
-                await asyncio.to_thread(self.cfg.set_version, ticker, "V_REV")
-                await asyncio.to_thread(self.cfg.set_reverse_state, ticker, True, 0, 0.0)
-                await asyncio.to_thread(self.cfg.set_manual_vwap_mode, ticker, False) 
+             if sub == "V_REV":
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_version, ticker, "V_REV"), timeout=10.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_reverse_state, ticker, True, 0, 0.0), timeout=10.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_manual_vwap_mode, ticker, False), timeout=10.0) 
                 msg = f"✅ <b>[{html.escape(str(ticker))}] V-REV 역추세 모드(VWAP 자동) 락온 완료!</b>\n▫️ 다음 타격부터 역추세 엔진이 전면 가동됩니다."
-            elif sub == "V14_LOC":
-                await asyncio.to_thread(self.cfg.set_version, ticker, "V14")
-                await asyncio.to_thread(self.cfg.set_reverse_state, ticker, False, 0, 0.0)
-                await asyncio.to_thread(self.cfg.set_manual_vwap_mode, ticker, False)
+             elif sub == "V14_LOC":
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_version, ticker, "V14"), timeout=10.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_reverse_state, ticker, False, 0, 0.0), timeout=10.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_manual_vwap_mode, ticker, False), timeout=10.0)
                 msg = f"✅ <b>[{html.escape(str(ticker))}] V14 오리지널 (LOC 단일 타격) 락온 완료!</b>\n▫️ 다음 타격부터 오리지널 무매법이 가동됩니다."
-            elif sub == "V14_VWAP":
-                await asyncio.to_thread(self.cfg.set_version, ticker, "V14")
-                await asyncio.to_thread(self.cfg.set_reverse_state, ticker, False, 0, 0.0)
-                await asyncio.to_thread(self.cfg.set_manual_vwap_mode, ticker, True)
+             elif sub == "V14_VWAP":
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_version, ticker, "V14"), timeout=10.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_reverse_state, ticker, False, 0, 0.0), timeout=10.0)
+                await asyncio.wait_for(asyncio.to_thread(self.cfg.set_manual_vwap_mode, ticker, True), timeout=10.0)
                 msg = f"✅ <b>[{html.escape(str(ticker))}] V14 오리지널 (VWAP 자동) 락온 완료!</b>\n▫️ 다음 타격부터 VWAP 알고리즘에 위임합니다."
-            else:
+             else:
                 return
                 
-            try: 
-                await query.edit_message_text(msg, parse_mode='HTML')
-            except telegram.error.BadRequest as e:
+             try: 
+                await asyncio.wait_for(query.edit_message_text(msg, parse_mode='HTML'), timeout=10.0)
+             except telegram.error.BadRequest as e:
                 if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
-            except Exception: pass
+             except Exception: pass
 
         elif action == "TICKER":
             if sub == "ALL":
@@ -515,20 +528,20 @@ class CallbackConfigHandler:
                 msg_txt = "SOXL + TQQQ 통합"
             elif "," in sub:
                 if "SOXS" in sub.split(","):
-                    await context.bot.send_message(chat_id, "⚠️ [V61.00 절대 헌법] 숏(SOXS) 운용은 시스템 전역에서 100% 영구 소각되었습니다.")
+                    await asyncio.wait_for(context.bot.send_message(chat_id, "⚠️ [V61.00 절대 헌법] 숏(SOXS) 운용은 시스템 전역에서 100% 영구 소각되었습니다."), timeout=10.0)
                     return
                 target_tickers = sub.split(",")
                 msg_txt = " + ".join(target_tickers) + " 싱글 모멘텀"
             else:
                 if sub == "SOXS":
-                    await context.bot.send_message(chat_id, "⚠️ [V61.00 절대 헌법] 숏(SOXS) 운용은 시스템 전역에서 100% 영구 소각되었습니다.")
+                    await asyncio.wait_for(context.bot.send_message(chat_id, "⚠️ [V61.00 절대 헌법] 숏(SOXS) 운용은 시스템 전역에서 100% 영구 소각되었습니다."), timeout=10.0)
                     return
                 target_tickers = [sub]
                 msg_txt = sub + " 전용"
                
-            await asyncio.to_thread(self.cfg.set_active_tickers, target_tickers)
+            await asyncio.wait_for(asyncio.to_thread(self.cfg.set_active_tickers, target_tickers), timeout=10.0)
             try: 
-                await query.edit_message_text(f"✅ <b>[운용 종목 락온 완료]</b>\n▫️ <b>{html.escape(str(msg_txt))}</b> 모드로 전환되었습니다.\n▫️ /sync를 눌러 확인하십시오.", parse_mode='HTML')
+                await asyncio.wait_for(query.edit_message_text(f"✅ <b>[운용 종목 락온 완료]</b>\n▫️ <b>{html.escape(str(msg_txt))}</b> 모드로 전환되었습니다.\n▫️ /sync를 눌러 확인하십시오.", parse_mode='HTML'), timeout=10.0)
             except telegram.error.BadRequest as e:
                 if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
             except Exception: pass
@@ -536,16 +549,16 @@ class CallbackConfigHandler:
         elif action == "SEED":
             if not ticker: return
             controller.user_states[chat_id] = f"SEED_{sub}_{ticker}"
-            await context.bot.send_message(chat_id, f"💵 [{html.escape(str(ticker))}] 시드머니 금액 입력:", parse_mode='HTML')
+            await asyncio.wait_for(context.bot.send_message(chat_id, f"💵 [{html.escape(str(ticker))}] 시드머니 금액 입력:", parse_mode='HTML'), timeout=10.0)
 
         elif action == "CONFIG_AVWAP":
             if not ticker: return
             
             if sub == "TOGGLE":
                 try:
-                    current_state = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_avwap_hybrid_mode, ticker), timeout=5.0)
+                    current_state = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_avwap_hybrid_mode, ticker), timeout=10.0)
                     new_state = not current_state
-                    await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_hybrid_mode, ticker, new_state), timeout=5.0)
+                    await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_hybrid_mode, ticker, new_state), timeout=10.0)
                     
                     if hasattr(controller, 'cmd_settlement'):
                         try:
@@ -556,6 +569,23 @@ class CallbackConfigHandler:
                             logging.error(f"🚨 관제탑 UI 갱신 실패: {e}")
                 except Exception as e:
                     logging.error(f"🚨 [{ticker}] 암살자 모드 토글 실패: {e}")
+                    
+            # 🚨 NEW: [Phase 3 암살자 듀얼 익절 스키마 결속] 목표 모드 전환(KRW ↔ PCT)
+            elif sub == "TOGGLE_TARGET_MODE":
+                try:
+                    current_mode = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_avwap_target_mode, ticker), timeout=10.0)
+                    new_mode = "PCT" if str(current_mode).upper() == "KRW" else "KRW"
+                    await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_target_mode, ticker, new_mode), timeout=10.0)
+                    
+                    if hasattr(controller, 'cmd_settlement'):
+                        try:
+                            await controller.cmd_settlement(update, context)
+                        except telegram.error.BadRequest as e:
+                            if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                        except Exception as e:
+                            logging.error(f"🚨 관제탑 UI 갱신 실패: {e}")
+                except Exception as e:
+                    logging.error(f"🚨 [{ticker}] 암살자 익절 모드 토글 실패: {e}")
             
         elif action == "INPUT":
             if not ticker: return
@@ -567,13 +597,17 @@ class CallbackConfigHandler:
             elif sub == "STOCK_SPLIT": ko_name = "액면 분할/병합 비율 (예: 10분할은 10, 10병합은 0.1)"
             elif sub == "FEE": ko_name = "증권사 수수료율(%)"
             elif sub == "AVWAP_KRW": ko_name = "암살자 목표수익(₩)"
+            # 🚨 NEW: [Phase 3 암살자 설정 UI 결속] 수익률 입력 모드 신설
+            elif sub == "AVWAP_PCT": ko_name = "암살자 목표수익률(%)"
             else: ko_name = "값"
-            
+             
             if sub == "AVWAP_KRW":
                 desc = "섀도우 엔진이 달러($) 익절가로 역산할 <b>원화(KRW) 순수익금</b>을 숫자로 입력하세요.\n(예: 1000000)"
+            elif sub == "AVWAP_PCT":
+                desc = "섀도우 엔진이 달러($) 익절가로 역산할 <b>목표 수익률(%)</b>을 숫자로 입력하세요.\n(예: 10.0)"
             elif sub == "STOCK_SPLIT":
                 desc = "숫자만 입력하세요.\n(예: 액면분할 시 1주가 10주가 되었다면 10 입력, 10주가 1주로 병합되었다면 0.1 입력)"
             else:
                 desc = "숫자만 입력하세요."
                 
-            await context.bot.send_message(chat_id, f"✏️ <b>[{html.escape(str(ticker))}] {html.escape(str(ko_name))}</b>를 설정합니다.\n{desc}", parse_mode='HTML')
+            await asyncio.wait_for(context.bot.send_message(chat_id, f"✏️ <b>[{html.escape(str(ticker))}] {html.escape(str(ko_name))}</b>를 설정합니다.\n{desc}", parse_mode='HTML'), timeout=10.0)

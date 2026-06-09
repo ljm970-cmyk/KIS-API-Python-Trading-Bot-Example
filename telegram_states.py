@@ -16,6 +16,7 @@
 # 🚨 MODIFIED: [Insight 14 & 25] 클래스 내부에 _safe_float 래퍼를 전격 이식하여, 문자열 치환(ValueError 의존) 방식의 맹점을 소각하고 NaN/Inf 맹독성 데이터 유입 시 즉각 0.0 폴백 방어막 가동.
 # 🚨 MODIFIED: [제4헌법 무결성 수복] 다이렉트 JSON I/O(Split, Target) 연산 시 누락되었던 self.cfg._io_lock 뮤텍스를 강제 결속하여 TOCTOU 레이스 컨디션 데이터 증발 현상 완벽 차단.
 # 🚨 MODIFIED: [제2헌법 절대 준수] _safe_float 도입으로 인해 영원히 도달 불가능해진 하단 `except ValueError:` 데드코드 블록 100% 영구 소각 완료.
+# 🚨 NEW: [Phase 7 암살자 듀얼 익절 스키마 결속] CONF_AVWAP_PCT 라우팅 분기 신설. 수익률 목표 수동 입력 팻핑거 쉴드 락온 및 cmd_settlement 롤백 연계 완료.
 # ==========================================================
 
 import logging
@@ -352,6 +353,32 @@ class TelegramStates:
                 except Exception as e: logging.error(f"🚨 AVWAP 원화 목표치 설정 에러: {e}")
                 
                 try: await asyncio.wait_for(update.effective_message.reply_text(f"🎯 <b>[{safe_ticker}] 암살자 목표 수익금 ₩{int(val):,} 적용 완료!</b>\n▫️ 다음 섀도우 연산부터 KIS 원화 환산 팩트가 적용됩니다.", parse_mode='HTML'), timeout=10.0)
+                except Exception: pass
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
+
+            # ==========================================================
+            # 🎯 [Phase 7 NEW] 암살자 수익률(%) 목표 파싱 및 장부 기록
+            # ==========================================================
+            elif state.startswith("CONF_AVWAP_PCT"):
+                if val <= 0.0:
+                    try: await asyncio.wait_for(update.effective_message.reply_text("❌ 오류: 암살자 목표 수익률은 0보다 커야 합니다."), timeout=10.0)
+                    except Exception: pass
+                    return
+                    
+                # State 형식: CONF_AVWAP_PCT_SOXL -> parts: ["CONF", "AVWAP", "PCT", "SOXL"]
+                ticker = parts[3]
+                safe_ticker = html.escape(str(ticker))
+                
+                try: await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_target_pct, ticker, val), timeout=10.0)
+                except Exception as e: logging.error(f"🚨 AVWAP 수익률 목표치 설정 에러: {e}")
+                
+                try: await asyncio.wait_for(update.effective_message.reply_text(f"🎯 <b>[{safe_ticker}] 암살자 목표 수익률 {val}% 적용 완료!</b>\n▫️ 다음 섀도우 연산부터 수익률 기반 팩트가 적용됩니다.", parse_mode='HTML'), timeout=10.0)
                 except Exception: pass
                 
                 if hasattr(controller, 'cmd_settlement'):

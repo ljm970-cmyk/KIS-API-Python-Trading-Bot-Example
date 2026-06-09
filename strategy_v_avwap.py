@@ -19,9 +19,11 @@
 # 🚨 MODIFIED: [Case 01 절대 헌법 사수] 날짜 비교 시 '%Y-%m-%d' 시스템 표준 포맷 100% 강제 래핑 완료.
 # 🚨 MODIFIED: [AttributeError 궁극 수술] save_state 진입 시 state_data 객체의 오염(NoneType 유입)을 막기 위한 isinstance 쉴드 강제 주입 (최종 무결성 락온).
 # 🚨 NEW: [발목 타격망(Ankle-Catch) 팩트 교정] tracking_low 스키마를 신설하여 1차 타점(-6%) 관통 이력을 영구 보존. 주가가 반등(발목)하더라도 HA 양봉 출현 시 100% 즉시 딥-매수가 격발되도록 논리 패러독스 완전 소각 완료.
-# 🚨 NEW: [Phantom Nuke (유령 무한 매수) 방어망] 매수 체결(Phase 증가) 또는 손절(Strikes 증가) 시 tracking_low를 999999.0으로 원자적 하드 리셋하여 다중 타격망의 멱등성을 100% 사수 완료.
+# 🚨 NEW: [Phantom Nuke (유령 무한 매수) 방어망] 매수 체결(Phase 증가) 또는 손절(Strikes 증가) 시 tracking_low는 999999.0으로, tracking_high는 0.0으로 원자적 하드 리셋하여 다중 타격망의 멱등성을 100% 사수 완료.
 # 🚨 REMOVED: [Case 37 Slippage Cap 영구 소각] 포트폴리오 매니저의 수학적 증명에 따라, HA 조건부 격발 시 반등 폭을 제한하던 1.02배 캡핑 방어막을 전면 파기하고 순수 관통 후 양봉 격발 로직으로 100% 롤백.
 # 🚨 NEW: [Case 05 최후의 오발사 방어] exec_curr_p(현재가)가 0.0으로 유입될 경우, 무조건 타점을 터치한 것으로 오인하여 딥-매수가 격발되는 즉사 버그를 막기 위한 원천 방어 쉴드 락온.
+# 🚨 NEW: [듀얼 섀도우 덫 트래킹 엔진 결속] 손절 후 무포지션 상태에서 상단 윗덫(직전 진입가 회복) 또는 하단 심해덫(3% 추가 하락) 관통 시 HA 양봉 컨펌을 통한 무한 재진입 파이프라인 개통.
+# 🚨 NEW: [익절 목표가 듀얼 연산망 이식] 원화(KRW) 목표 모드와 수익률(PCT) 목표 모드 동시 지원. 수수료 및 슬리피지를 완벽히 상쇄하는 역산 엔진 구축.
 # ==========================================================
 import logging
 import datetime
@@ -283,6 +285,10 @@ class VAvwapHybridPlugin:
         
         avwap_qty = int(self._safe_float(avwap_qty))
         avwap_avg_price = self._safe_float(avwap_avg_price)
+        
+        # 🚨 NEW: [익절 목표 듀얼 연산망 (KRW/PCT) 스키마 추출]
+        target_mode = str(kwargs.get('target_mode', 'KRW')).upper()
+        target_pct = self._safe_float(kwargs.get('target_pct', 10.0))
         target_krw = self._safe_float(kwargs.get('target_krw', 1000000.0))
         
         exchange_rate = self._safe_float(kwargs.get('exchange_rate', 1400.0))
@@ -302,9 +308,10 @@ class VAvwapHybridPlugin:
         current_phase = int(self._safe_float(avwap_state.get('phase', 0)))
         current_strikes = int(self._safe_float(avwap_state.get('strikes', 0)))
 
-        # 🚨 [Phantom Nuke 방어망] 매수 체결(Phase 증가) 또는 손절(Strikes 증가) 시 tracking_low 하드 리셋
+        # 🚨 [Phantom Nuke 방어망] 매수 체결(Phase 증가) 또는 손절(Strikes 증가) 시 발목 타격망 100% 하드 리셋
         if current_phase > last_phase or current_strikes > last_strikes:
             tracking_low = 999999.0
+            tracking_high = 0.0  # 🚨 상단 윗덫 오발사 방지를 위해 고점(High)도 완벽히 리셋
             last_phase = current_phase
             last_strikes = current_strikes
             last_reset_time = now_est.strftime('%H%M%S')
@@ -313,8 +320,9 @@ class VAvwapHybridPlugin:
             persistent_state['last_strikes'] = last_strikes
             persistent_state['last_reset_time'] = last_reset_time
             persistent_state['tracking_low'] = tracking_low
+            persistent_state['tracking_high'] = tracking_high
             self.save_state(exec_ticker, now_est, persistent_state)
-            logging.info(f"🔄 [{exec_ticker}] 암살자 페이즈/스트라이크 변동 감지. 발목 타격망(Tracking Low) 하드 리셋 완료.")
+            logging.info(f"🔄 [{exec_ticker}] 암살자 페이즈/스트라이크 변동 감지. 듀얼 섀도우 타격망 하드 리셋 완료.")
 
         new_tracking_high = tracking_high
         new_tracking_low = tracking_low
@@ -322,15 +330,18 @@ class VAvwapHybridPlugin:
         if df_1min_exec is not None and not df_1min_exec.empty and 'time_est' in df_1min_exec.columns:
             df_today = df_1min_exec[df_1min_exec.index.date == today_est_date]
             df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '200000')]
+            
             if not df_pre.empty:
-                safe_high_series = pd.to_numeric(df_pre['high'], errors='coerce')
-                session_high = self._safe_float(safe_high_series.max())
-                if session_high > 0.0:
-                    new_tracking_high = max(tracking_high, session_high)
-
                 # 🚨 리셋 타임라인 이후의 데이터만 스캔하여 완벽한 발목 타점 색출
                 df_since_reset = df_pre[df_pre['time_est'] >= last_reset_time]
+                
                 if not df_since_reset.empty:
+                    safe_high_series = pd.to_numeric(df_since_reset['high'], errors='coerce').dropna()
+                    if not safe_high_series.empty:
+                        session_high = self._safe_float(safe_high_series.max())
+                        if session_high > 0.0:
+                            new_tracking_high = max(tracking_high, session_high)
+
                     safe_low_series = pd.to_numeric(df_since_reset['low'], errors='coerce').dropna()
                     safe_low_series = safe_low_series[safe_low_series > 0.0]
                     if not safe_low_series.empty:
@@ -338,6 +349,7 @@ class VAvwapHybridPlugin:
                         new_tracking_low = min(tracking_low, session_low)
 
         if exec_curr_p > 0.0:
+            new_tracking_high = max(new_tracking_high, exec_curr_p)
             new_tracking_low = min(new_tracking_low, exec_curr_p)
 
         persistent_state['tracking_high'] = self._safe_float(new_tracking_high)
@@ -369,10 +381,19 @@ class VAvwapHybridPlugin:
         if avwap_qty > 0 and exchange_rate > 0:
             total_invested_usd = avwap_qty * avwap_avg_price
             safe_denom = avwap_qty * max(0.0001, (1.0 - fee_rate))
-            target_price_usd = ((target_krw / exchange_rate) + (total_invested_usd * (1.0 + fee_rate))) / safe_denom
+            
+            # 🚨 NEW: [익절 목표가 듀얼 연산망] PCT 모드 수수료 100% 팩트 커버리지 역산 적용
+            if target_mode == "PCT":
+                gross_invest = total_invested_usd * (1.0 + fee_rate)
+                target_price_usd = (gross_invest * (1.0 + target_pct / 100.0)) / safe_denom
+            else:
+                target_price_usd = ((target_krw / exchange_rate) + (total_invested_usd * (1.0 + fee_rate))) / safe_denom
             
             if exec_curr_p >= target_price_usd:
-                return _build_res('SHADOW_EXIT', f'원화 목표액(₩{int(target_krw):,}) 관통 스윕 격발!', tp=target_price_usd, track_h=new_tracking_high, track_l=new_tracking_low)
+                if target_mode == "PCT":
+                    return _build_res('SHADOW_EXIT', f'수익률 목표가({target_pct}%) 관통 스윕 격발!', tp=target_price_usd, track_h=new_tracking_high, track_l=new_tracking_low)
+                else:
+                    return _build_res('SHADOW_EXIT', f'원화 목표액(₩{int(target_krw):,}) 관통 스윕 격발!', tp=target_price_usd, track_h=new_tracking_high, track_l=new_tracking_low)
             
             if phase >= 2:
                 cut_loss_price = last_entry_price * 0.99 if last_entry_price > 0 else avwap_avg_price * 0.99
@@ -393,70 +414,94 @@ class VAvwapHybridPlugin:
 
         is_bull = exec_session_open > prev_close
         
+        # 🚨 기본 매수 타점 연산 (1차/2차 격발 및 하단 심해 덫 기준)
         if is_bull:
             target_drop_pct = -3.0 * (phase + 1)
         else:
             target_drop_pct = -6.0 - (3.0 * phase)
             
         exec_target_price = exec_session_open * (1 + target_drop_pct / 100.0)
-
-        requires_ha = not (is_bull and phase == 0)
         
-        if requires_ha:
-            if df_1min_base is None or df_1min_base.empty or 'time_est' not in df_1min_base.columns:
-                return _build_res('OBSERVING', 'HA 연산용 기초지수 데이터 부재', 0.0, new_tracking_high, new_tracking_low)
-            
-            df_base_today = df_1min_base[df_1min_base.index.date == today_est_date].copy()
-            df_base_session = df_base_today[df_base_today['time_est'] >= ha_start_str].copy()
-            
-            if df_base_session.empty:
-                return _build_res('OBSERVING', f'기초지수 HA 세션({ha_start_str}~) 데이터 집계 중', 0.0, new_tracking_high, new_tracking_low)
-                
-            o_arr = np.nan_to_num(df_base_session['open'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
-            h_arr = np.nan_to_num(df_base_session['high'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
-            l_arr = np.nan_to_num(df_base_session['low'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
-            c_arr = np.nan_to_num(df_base_session['close'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
+        is_touched = False
+        touched_trap_type = ""
+        requires_ha = not (is_bull and phase == 0)
 
-            if len(o_arr) > 0:
-                ha_c = (o_arr + h_arr + l_arr + c_arr) / 4.0
-                ha_o = np.zeros_like(o_arr)
-                ha_o[0] = o_arr[0]
-                
-                for i in range(1, len(o_arr)):
-                    ha_o[i] = (ha_o[i-1] + ha_c[i-1]) / 2.0
-                
-                last_ha_open = ha_o[-1]
-                last_ha_close = ha_c[-1]
+        # 🚨 NEW: [듀얼 섀도우 덫 트래킹 (무한 재진입망)]
+        if avwap_qty == 0 and phase > 0:
+            upper_trap = last_entry_price
+            lower_trap = exec_target_price
             
-                if last_ha_close <= last_ha_open:
-                    return _build_res('OBSERVING', f'타점({target_drop_pct}%) 대기 (HA 양봉 컨펌 필요)', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
-            else:
-                return _build_res('OBSERVING', 'HA 연산 실패 (배열 크기 0)', 0.0, new_tracking_high, new_tracking_low)
-
-        # 🚨 MODIFIED: [발목 타격망 팩트 교정 및 Slippage Cap 완전 소각]
-        is_hit = False
-        if requires_ha:
-            # HA 필수: 바닥 관통 이력(tracking_low)만 확인 (반등 폭 제한 없음)
-            if new_tracking_low <= exec_target_price:
-                is_hit = True
+            if new_tracking_high >= upper_trap:
+                is_touched = True
+                touched_trap_type = "상단 윗덫(V반등)"
+            elif new_tracking_low <= lower_trap:
+                is_touched = True
+                touched_trap_type = "하단 심해 덫"
+                
+            # 무한 재진입의 경우 항상 HA 컨펌이 요구됨
+            requires_ha = True 
         else:
-            # HA 불필요 (상승장 1차 타격): 100% 현재가 기반 엄격한 타점 터치 시에만 격발
-            if exec_curr_p <= exec_target_price:
+            if requires_ha:
+                if new_tracking_low <= exec_target_price:
+                    is_touched = True
+                    touched_trap_type = "하단 타점"
+            else:
+                if exec_curr_p <= exec_target_price:
+                    is_touched = True
+                    touched_trap_type = "하단 타점"
+
+        if is_touched:
+            is_hit = False
+            
+            # 🚨 HA 연산은 덫이 Touch 된 경우에만 연산하여 퍼포먼스 최적화
+            if requires_ha:
+                if df_1min_base is None or df_1min_base.empty or 'time_est' not in df_1min_base.columns:
+                    return _build_res('OBSERVING', 'HA 연산용 기초지수 데이터 부재', 0.0, new_tracking_high, new_tracking_low)
+                
+                df_base_today = df_1min_base[df_1min_base.index.date == today_est_date].copy()
+                df_base_session = df_base_today[df_base_today['time_est'] >= ha_start_str].copy()
+                
+                if df_base_session.empty:
+                    return _build_res('OBSERVING', f'기초지수 HA 세션({ha_start_str}~) 데이터 집계 중', 0.0, new_tracking_high, new_tracking_low)
+                    
+                o_arr = np.nan_to_num(df_base_session['open'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
+                h_arr = np.nan_to_num(df_base_session['high'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
+                l_arr = np.nan_to_num(df_base_session['low'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
+                c_arr = np.nan_to_num(df_base_session['close'].ffill().bfill().astype(float).values, nan=0.0, posinf=0.0, neginf=0.0)
+
+                if len(o_arr) > 0:
+                    ha_c = (o_arr + h_arr + l_arr + c_arr) / 4.0
+                    ha_o = np.zeros_like(o_arr)
+                    ha_o[0] = o_arr[0]
+                    
+                    for i in range(1, len(o_arr)):
+                        ha_o[i] = (ha_o[i-1] + ha_c[i-1]) / 2.0
+                    
+                    last_ha_open = ha_o[-1]
+                    last_ha_close = ha_c[-1]
+                
+                    if last_ha_close > last_ha_open:
+                        is_hit = True
+                    else:
+                        return _build_res('OBSERVING', f'{touched_trap_type} 관통! (HA 양봉 컨펌 대기중)', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
+                else:
+                    return _build_res('OBSERVING', 'HA 연산 실패 (배열 크기 0)', 0.0, new_tracking_high, new_tracking_low)
+            else:
                 is_hit = True
 
-        if is_hit:
-            # 🚨 [상승장 절대 캡핑 쉴드] 평단가 상승 패러독스 방어
-            if is_bull and main_actual_avg > 0:
-                if exec_curr_p >= main_actual_avg:
-                    return _build_res('OBSERVING', f'상승장 캡핑: 현재가(${exec_curr_p:.2f}) >= 본진평단(${main_actual_avg:.2f})', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
-                
-            if phase == 0:
-                action_str = 'DEEP_BUY_1'
-            elif phase == 1:
-                action_str = 'DEEP_BUY_2'
-            else:
-                action_str = 'DEEP_BUY_RELOAD'
-                
-            return _build_res(action_str, f'{"상승" if is_bull else "하락"}장 무한 타점({target_drop_pct}%) 관통 확인 및 격발 인가', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
+            if is_hit:
+                # 🚨 [상승장 절대 캡핑 쉴드] 평단가 상승 패러독스 방어 (HA 여부 무관 유지)
+                if is_bull and main_actual_avg > 0:
+                    if exec_curr_p >= main_actual_avg:
+                        return _build_res('OBSERVING', f'상승장 캡핑: 현재가(${exec_curr_p:.2f}) >= 본진평단(${main_actual_avg:.2f})', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
+                    
+                if phase == 0:
+                    action_str = 'DEEP_BUY_1'
+                elif phase == 1:
+                    action_str = 'DEEP_BUY_2'
+                else:
+                    action_str = 'DEEP_BUY_RELOAD'
+                    
+                return _build_res(action_str, f'{"상승" if is_bull else "하락"}장 {touched_trap_type} 관통 및 HA 컨펌 완료! 격발 인가', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
 
-        return _build_res('OBSERVING', f'{"상승" if is_bull else "하락"}장 타점({target_drop_pct}%) 추적 대기중 (현재 최저: ${new_tracking_low:.2f})', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)
+        return _build_res('OBSERVING', f'{"상승" if is_bull else "하락"}장 듀얼 덫 추적 대기중 (현재 최저: ${new_tracking_low:.2f})', tp=exec_target_price, track_h=new_tracking_high, track_l=new_tracking_low)

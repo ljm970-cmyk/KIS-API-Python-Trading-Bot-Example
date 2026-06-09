@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [Python 딕셔너리 평가 맹독성 수술] dict.get(key, default)에서 값이 None일 때 default가 무시되고 None이 반환되어 _safe_float(None) -> 0.0 으로 오염되는 치명적 버그를 `or default` 단락 평가로 완벽 교정
 # 🚨 MODIFIED: [UI 뷰포트 진공 압축] 전원 스위치 버튼을 100% 영구 삭제하고, '관제탑 화면 열기' 단일 버튼으로 직관성을 극대화하여 팩트 교정 완료 (Phase 2).
 # 🚨 NEW: [Phase 1 암살자 설정 UI 결속] get_settlement_message 내 암살자 하이브리드 토글 및 원화 목표액 표출 엔진 신설 및 OCO 콜백 버튼 주입 완료
+# 🚨 NEW: [Phase 3 암살자 듀얼 익절 스키마 결속] get_settlement_message 내 KRW/PCT 익절 모드 동적 렌더링 및 `[🔄 목표 모드 전환(₩/%)]`, `[🎯 목표수익률(%)]` 듀얼 버튼 스위칭 락온 완료.
 # 🚨 MODIFIED: [마크다운 리스트 붕괴 방어] 텍스트 내 숫자 리스트(1., 2.)를 이모지(1️⃣, 2️⃣)로 100% 치환하여 텔레그램 파서 안전성 극대화
 # ==========================================================
 import os
@@ -353,7 +354,7 @@ class TelegramView:
             if fact_qty == 0 and not is_zero_start:
                 is_zero_start = True
                 plan_dict['orders'] = []
-                
+                 
                 if v_mode == "V_REV":
                     half_budget = (safe_seed * 0.15) * 0.5
                     if prev_close > 0:
@@ -374,7 +375,7 @@ class TelegramView:
                         if q1 == 0 and q2 == 0 and safe_one_portion >= p_buy > 0: q1 = int(math.floor(safe_one_portion / p_buy))
                         if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy1)"})
                         if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy2)"})
-            
+             
             if safe_split > 0 and safe_t_val > (safe_split * 1.1):
                 body_msg += "⚠️ <b>[🚨 시스템 긴급 경고: 비정상 T값 폭주 감지!]</b>\n"
                 body_msg += f"🔎 현재 T값(<b>{safe_t_val:.4f}T</b>)이 설정된 분할수(<b>{int(safe_split)}분할</b>) 초과했습니다!\n"
@@ -496,7 +497,7 @@ class TelegramView:
                                     min_price = min(self._safe_float(x.get('price')) for x in jubjub_orders)
                                     max_price = max(self._safe_float(x.get('price')) for x in jubjub_orders)
                                     total_jub_shares = sum(int(self._safe_float(x.get('qty'))) for x in jubjub_orders)
-                               
+                                   
                                     if min_price == max_price:
                                         price_str = f"${min_price:.2f}"
                                     else:
@@ -517,7 +518,7 @@ class TelegramView:
             if is_trade_active:
                 if t_info.get('is_locked', False):
                     body_msg += " (✅ 금일 주문 완료/잠금)\n"
-            
+             
         final_msg = header_msg + body_msg.strip()
         
         if not is_trade_active:
@@ -564,17 +565,23 @@ class TelegramView:
             
             if ver == "V_REV":
                 avwap_mode = "ON" if getattr(config, 'get_avwap_hybrid_mode', lambda x: False)(t) else "OFF"
-                avwap_krw = getattr(config, 'get_avwap_target_krw', lambda x: 1000000.0)(t)
+                
+                # 🚨 NEW: [익절 모드 듀얼 셀렉션] target_mode 에 따른 동적 렌더링
+                target_mode = str(getattr(config, 'get_avwap_target_mode', lambda x: "KRW")(t)).upper()
+                target_pct = self._safe_float(getattr(config, 'get_avwap_target_pct', lambda x: 10.0)(t))
+                avwap_krw = self._safe_float(getattr(config, 'get_avwap_target_krw', lambda x: 1000000.0)(t))
+                
+                target_display = f"₩{int(avwap_krw):,}" if target_mode == "KRW" else f"{target_pct}%"
                 
                 msg += f"▫️ 1회 예산: 총 시드의 15% (고정 할당)\n▫️ 목표: [가상1층]+0.6% / [상위층]+0.5%\n▫️ 자동복리: {comp_rate}% |\n▫️ 수수료: <b>{fee_rate}%</b>\n▫️ 갭 스위칭: <b>🤖 자율주행 (상승장 자동 가동)</b>\n"
-                msg += f"▫️ 암살자 모드: <b>{avwap_mode}</b> | 목표 수익: <b>₩{int(avwap_krw):,}</b>\n"
+                msg += f"▫️ 암살자 모드: <b>{avwap_mode}</b> | 목표 수익: <b>{target_display}</b>\n"
                 msg += f"▫️ 초고도화 관제탑: <b>365일 상시 가동 📡</b>\n"
                 msg += "⚖️ <b>엔진 스탠바이:</b> 15:26 EST 예약 덫 관측 ➔ 15:27 로컬 자체 슬라이싱 가동\n\n" 
             else:
                 msg += f"▫️ 분할: {split_cnt}회 | 목표: {target_profit}% | 복리: {comp_rate}%\n▫️ 수수료: <b>{fee_rate}%</b>\n"
                 v14_mode_txt = "🕒 자체 1분 슬라이싱 VWAP 엔진" if is_manual_vwap else "📉 LOC 단일 타격 (초안정성)" 
                 msg += f"▫️ 집행: <b>{v14_mode_txt}</b>\n\n"
-        
+         
             if t == "SOXL":
                 keyboard.append([InlineKeyboardButton("💎 오리지널 V14 세팅", callback_data=f"SET_VER:V14:{t}"), InlineKeyboardButton("⚖️ 역추세 V-REV 세팅", callback_data=f"SET_VER:V_REV:{t}")])
             elif t == "TQQQ":
@@ -583,13 +590,27 @@ class TelegramView:
             if ver == "V_REV":
                 if t == "SOXL": 
                     keyboard.append([InlineKeyboardButton(f"📡 {safe_t} 인텔리전스 관제탑 열기", callback_data=f"AVWAP:MENU:{t}")])
+                    
+                    # 🚨 NEW: [익절 모드 듀얼 셀렉션] 목표 모드 전환 및 동적 버튼 렌더링
+                    target_mode_str = "₩(원화)" if target_mode == "KRW" else "%(수익률)"
+                    target_btn_text = "🎯 목표수익(₩)" if target_mode == "KRW" else "🎯 목표수익률(%)"
+                    target_callback = f"INPUT:AVWAP_KRW:{t}" if target_mode == "KRW" else f"INPUT:AVWAP_PCT:{t}"
+                    
                     keyboard.append([
-                        InlineKeyboardButton("⚔️ 암살자 모드 토글", callback_data=f"CONFIG_AVWAP:TOGGLE:{t}"),
-                        InlineKeyboardButton("🎯 암살자 목표수익(₩)", callback_data=f"INPUT:AVWAP_KRW:{t}")
+                        InlineKeyboardButton("⚔️ 암살자 토글", callback_data=f"CONFIG_AVWAP:TOGGLE:{t}"),
+                        InlineKeyboardButton(f"🔄 익절 모드({target_mode_str})", callback_data=f"CONFIG_AVWAP:TOGGLE_TARGET_MODE:{t}")
                     ])
-        
-                keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
-                keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
+                    keyboard.append([
+                        InlineKeyboardButton(target_btn_text, callback_data=target_callback),
+                        InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}")
+                    ])
+                    keyboard.append([
+                        InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}"),
+                        InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")
+                    ])
+                else:
+                    keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
             else:
                 keyboard.append([InlineKeyboardButton(f"⚙️ {safe_t} 분할", callback_data=f"INPUT:SPLIT:{t}"), InlineKeyboardButton(f"🎯 {safe_t} 목표", callback_data=f"INPUT:TARGET:{t}"), InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}")])
                 keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
