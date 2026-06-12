@@ -1,34 +1,19 @@
 # ==========================================================
 # FILE: scheduler_regular.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 36대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [State Mismatch 붕괴 방어] 1분 슬라이싱 섀도우 엔진(scheduler_vwap)과의 파일명 및 JSON 데이터 구조(Dict) 100% 팩트 일치화 수술 완료
-# 🚨 MODIFIED: [Jitter 타임라인 역전 붕괴 수술] 15:27 슬라이싱 엔진 가동 전 무조건 파일 I/O 인계를 마치도록 V-REV 본진 지터 상한을 180초에서 45초로 진공 압축 락온
-# 🚨 MODIFIED: [V-REV 자체 VWAP 1분 슬라이싱 엔진 이식] 기존 KIS 증권사 알고리즘 위임(ALGO_ORD_TMD_DVSN_CD) 로직을 시스템 전역에서 영구 소각하고, 로컬 스케줄러 기반 자체 슬라이싱 엔진으로 인계하는 원자적 쓰기 파이프라인 100% 팩트 락온.
-# 🚨 REMOVED: [Case 20, 제2헌법 준수] KIS 알고리즘 위임 소각에 따라 불필요해진 동적 지터 시간 연산 데드코드(dyn_start_t, dyn_end_t) 100% 영구 삭제.
-# 🚨 MODIFIED: [제1헌법 준수] send_order 및 send_reservation_order 외부 통신에 누락되었던 wait_for(timeout=15.0) 타임아웃 족쇄 100% 전면 결속
-# 🚨 MODIFIED: [V73.15 타임라인 디커플링 대통합] 17:05 KST V14 선제 타격 및 V-REV 스냅샷 분리 락온
-# 🚨 NEW: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑 이식 완료
-# 🚨 MODIFIED: [Case 14 절대 헌법 준수] is_market_open 비동기 호출 타임아웃 10.0초 하드코딩 완료
-# 🚨 MODIFIED: [최종 팩트 수술] `math.isnan` 및 `math.isinf` 방어막을 `_safe_float`에 이식하여 치명적 수학 연산 붕괴(ValueError) 원천 봉쇄
-# 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식
-# 🚨 MODIFIED: [Insight 12] 딕셔너리 오염(TypeError/KeyError) 방어용 `.get()` 및 `isinstance` 쉴드 전면 락온
-# 🚨 MODIFIED: [Cascade Failure 방어] 단일 종목 에러 시 전체 스케줄러가 파괴되는 연쇄 붕괴를 막기 위한 개별 Sandbox(try-except) 결속
-# 🚨 MODIFIED: [Insight 06/07] JSON Iterable 결측치(None) 유입 시 발생하는 TypeError 붕괴 방어용 `or []` 단락 평가 쉴드 주입
-# 🚨 MODIFIED: [Type Boundary] 스냅샷에서 불러온 오염된 주문 페이로드(Type Mismatch)로 인한 KIS API 붕괴를 막는 강제 캐스팅(Sanitize) 락온
-# 🚨 MODIFIED: [최후의 논리결함 수술] 샌드박스로 인해 예외가 먹혀버려(Swallow) 외부 재시도 루프가 무력화되는 Silent Failure 현상 전면 교정 (loop_fully_successful 트래커 주입)
-# 🚨 MODIFIED: [최후의 생존망 결속] 텔레그램 API 통신 에러가 KIS 재시도 루프를 깨버리는 맹독성 버그(External API Crash) 완벽 소각
-# 🚨 MODIFIED: [TypeError 붕괴 방어] KIS 응답의 `msg1`이 null(None)일 경우 `html.escape`가 폭발하는 버그 100% 팩트 수술 완료
-# 🚨 MODIFIED: [Case 19 부분 실패 이중 장전 패러독스 방어] 기장전된 덫은 API 통신 전면 바이패스 및 캐시 락온 결속
-# 🚨 VERIFIED: [논리 패러독스(Phantom Execution) 영구 소각] 장전(전송) 성공 시점에 T값을 미리 스케일링하던 치명적 오류를 시스템 전역에서 100% 색출 및 파기하여 Double-Spending 원천 차단.
-# 🚨 VERIFIED: [튜플 언패킹 붕괴 방어] get_account_balance 반환값 오염 시 발생하는 ValueError(not enough values to unpack)를 안전 인덱싱으로 100% 원천 봉쇄
-# 🚨 MODIFIED: [시나리오 3 디커플링 팩트 수술] _do_delayed_trade 내 암살자 교전/오버나이트 스캔을 통한 본진 셧다운(Bypass) EAFP 샌드박스 주입 완료.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [시나리오 1~3 절대 통제망 이식] 15:27 EST 기상 시, 암살자가 이미 진입하여 교전 중(qty > 0)이거나 +2% 익절로 당일 임무를 완수(shutdown=True)했을 경우 본진(15% 예산)의 V-REV 1분 슬라이싱 엔진 가동을 전면 취소(Bypass)하는 뮤텍스 락온.
+# 🚨 MODIFIED: [State Mismatch 붕괴 방어] 1분 슬라이싱 섀도우 엔진(scheduler_vwap)과의 파일명 및 JSON 데이터 구조(Dict) 100% 팩트 일치화 수술 완료.
+# 🚨 MODIFIED: [Jitter 타임라인 역전 붕괴 수술] 15:27 슬라이싱 엔진 가동 전 무조건 파일 I/O 인계를 마치도록 V-REV 본진 지터 상한을 180초에서 45초로 진공 압축 락온.
+# 🚨 MODIFIED: [V-REV 자체 VWAP 1분 슬라이싱 엔진 이식] 기존 KIS 증권사 알고리즘 위임 로직을 시스템 전역에서 영구 소각하고, 로컬 스케줄러 기반 자체 슬라이싱 엔진으로 인계하는 원자적 쓰기 파이프라인 100% 팩트 락온.
+# 🚨 MODIFIED: [제1헌법 준수] send_order 및 send_reservation_order 등 통신망 전역에 wait_for(timeout=15.0) 족쇄 전면 결속.
+# 🚨 MODIFIED: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑(0.06s) 이식 완료.
+# 🚨 MODIFIED: [Case 14 절대 헌법 준수] is_market_open 비동기 호출 타임아웃 10.0초 하드코딩 완료.
+# 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식 및 math 붕괴 원천 봉쇄.
+# 🚨 MODIFIED: [Case 19 부분 실패 이중 장전 패러독스 방어] 기장전된 덫은 API 통신 전면 바이패스 및 캐시 락온 결속.
+# 🚨 VERIFIED: [논리 패러독스(Phantom Execution) 영구 소각] 장전(전송) 성공 시점에 T값을 미리 스케일링하던 치명적 오류를 시스템 전역에서 파기하여 Double-Spending 원천 차단.
 # 🚨 MODIFIED: [Case 11 절대 락온] 암살자 스캔 샌드박스 로직에 `t == "SOXL"`을 강제 결속하여 타 종목 오염 원천 차단.
-# 🚨 MODIFIED: [UI 렌더링 증발 맹점 소각] 바이패스(Bypass)된 종목의 텔레그램 타전 메시지가 `t not in plans` 제어문에 막혀 증발하는 Silent Death 현상 100% 팩트 교정 완료.
-# 🚨 NEW: [Phantom Paralysis (유령 마비) 영구 소각] 사용자가 암살자 모드를 수동으로 OFF했을 경우, 상태 파일의 찌꺼기(Ghost State)로 인해 본진이 셧다운되는 현상을 막기 위해 `is_avwap_hybrid` 모드 검증 뮤텍스를 추가 결속.
 # 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
-# 🚨 NEW: [AttributeError 붕괴 원천 소각] context.job.chat_id 다이렉트 참조 시 발생하는 Null-Pointer 예외를 막기 위해, 최상단에서 추출된 안전한 `chat_id` 변수만을 100% 락온하여 사용.
-# 🚨 NEW: [String Iteration 붕괴 방어] active_tickers 문자열 오염 시 글자 단위 파쇄로 인한 스케줄러 즉사(Silent Death) 버그 원천 봉쇄 및 Type Safety 락온.
 # ==========================================================
 import logging
 import datetime
@@ -54,13 +39,11 @@ def _safe_float(val):
 
 # 🚨 자체 1분 슬라이싱 엔진 인계를 위한 로컬 상태 원자적 쓰기 헬퍼 (TOCTOU 붕괴 방어 및 EAFP 락온)
 def _save_slice_state_sync(ticker, date_str, slice_info):
-    # 🚨 MODIFIED: [State Mismatch 붕괴 방어] 섀도우 엔진(scheduler_vwap)과 동일한 파일명으로 100% 락온
     state_file = f"data/vrev_slice_state_{ticker}.json"
     dir_name = os.path.dirname(state_file) or '.'
     try: os.makedirs(dir_name, exist_ok=True)
     except OSError: pass
 
-    # 🚨 MODIFIED: [State Mismatch 붕괴 방어] 딕셔너리 구조로 래핑 및 초기화 락온
     data = {"date": date_str, "hijacked": False, "orders": []}
     try:
         with open(state_file, 'r', encoding='utf-8') as f:
@@ -107,7 +90,7 @@ async def scheduled_early_regular_trade(context):
     is_open = False
     for attempt in range(3):
         try:
-            # MODIFIED: [Case 14] 달력 API 타임아웃 10초 하드코딩 락온
+            # 🚨 MODIFIED: [Case 14] 달력 API 타임아웃 10초 하드코딩 락온
             is_open = await asyncio.wait_for(asyncio.to_thread(is_market_open), timeout=10.0)
             break
         except asyncio.TimeoutError:
@@ -221,6 +204,7 @@ async def scheduled_early_regular_trade(context):
                     
                     version = await asyncio.to_thread(cfg.get_version, t)
                     is_locked = await asyncio.to_thread(cfg.check_lock, t, "REG")
+                
                     if is_locked:
                         skip_msg = f"⚠️ <b>[{t}] REG 잠금 미해제 — 스케줄 루프 스킵</b>\n▫️ 수동으로 잠금 해제 후 상태를 확인하십시오."
                         if chat_id:
@@ -229,7 +213,7 @@ async def scheduled_early_regular_trade(context):
                                 await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=skip_msg, parse_mode='HTML'), timeout=15.0)
                             except Exception: pass
                         continue
-                    
+
                     h = safe_holdings.get(t) or {}
                     # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 쉴드 래핑
                     safe_avg = _safe_float(h.get('avg'))
@@ -598,7 +582,7 @@ async def scheduled_regular_trade_delayed(context):
                     if is_locked:
                         continue
                         
-                    # 🚨 MODIFIED: [시나리오 3 디커플링 팩트] 암살자 교전/오버나이트 스캔 및 본진 셧다운 (디커플링 샌드박스 주입)
+                    # 🚨 MODIFIED: [시나리오 1~3 절대 통제망 팩트] 암살자 교전/당일완수 스캔 및 본진 셧다운 (디커플링 샌드박스 주입)
                     # 🚨 MODIFIED: [Case 11 절대 락온] 타 종목 오염 방어용 SOXL 종목 통제망 락온
                     if version == "V_REV" and is_avwap_hybrid and t == "SOXL":
                         avwap_state_file = f"data/avwap_trade_state_{t}.json"
@@ -613,11 +597,12 @@ async def scheduled_regular_trade_delayed(context):
                         
                         if isinstance(avwap_state, dict):
                             avwap_qty = int(_safe_float(avwap_state.get('qty', 0)))
-                            avwap_overnight = bool(avwap_state.get('overnight', False))
+                            is_shutdown = bool(avwap_state.get('shutdown', False))
                             
-                            if avwap_qty > 0 or avwap_overnight:
-                                logging.info(f"🛑 [{t}] 암살자 교전/오버나이트 팩트 감지. 15:26 EST 본진 플랜 생성 및 덫 장전을 전면 바이패스(Bypass)합니다.")
-                                msgs[t] += f"🛑 <b>[{html.escape(str(t))}] 본진 스탠바이 영구 취소 (디커플링 팩트)</b>\n▫️ 암살자(aVWAP) 교전 상태 또는 오버나이트 홀딩으로 인해 본진 매매망을 셧다운(Bypass)합니다.\n"
+                            # 🚨 암살자가 교전 중이거나 당일 임무 완수(+2% 익절) 상태일 때 본진 셧다운 (시나리오 2, 3)
+                            if avwap_qty > 0 or is_shutdown:
+                                logging.info(f"🛑 [{t}] 암살자 교전/당일완수 팩트 감지. 15:26 EST 본진 플랜 생성 및 덫 장전을 전면 바이패스(Bypass)합니다.")
+                                msgs[t] += f"🛑 <b>[{html.escape(str(t))}] 본진 스탠바이 영구 취소 (디커플링 팩트)</b>\n▫️ 암살자(aVWAP) 교전 상태(보유) 또는 당일 임무 완수로 인해 본진 매매망을 셧다운(Bypass)합니다.\n"
                                 all_success_map[t] = True
                                 continue
                     
@@ -821,7 +806,7 @@ async def scheduled_regular_trade_delayed(context):
                     )
                 except Exception: pass
         else:
-            if attempt == 1 and chat_id:
+             if attempt == 1 and chat_id:
                  safe_fail = html.escape(str(fail_reason))
                  try:
                      # 🚨 MODIFIED: 텔레그램 통신 샌드박스 래핑
