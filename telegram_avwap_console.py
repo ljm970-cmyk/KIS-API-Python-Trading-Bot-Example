@@ -17,6 +17,8 @@
 # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] 데이터 추출 시 순차적(Sequential) await 및 0.06초 샌드위치 지연(TPS 캡핑), 3단 지수 백오프 강제 락온.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴(Silent Death) 방어를 위한 html.escape 쉴드 전역 강제 주입.
 # 🚨 MODIFIED: [Case 24 결측치 방어] 정규장/프리장 1분봉 데이터(df_pre, df_reg) 부재 시 ValueError를 막기 위해 단락 평가(if not empty) 강제.
+# 🚨 NEW: [올인 타격 렌더링 팩트] '85% 예산 교전망' ➔ '주문가능금액 100% 올인 교전망'으로 직관적 팩트 렌더링 교정.
+# 🚨 NEW: [MOC 덤핑 렌더링 팩트] '강제 덤핑 대기 중' ➔ '매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백)'으로 내부 아키텍처와 100% 동기화된 렌더링 팩트 교체.
 # ==========================================================
 import logging
 import datetime
@@ -307,7 +309,8 @@ class AvwapConsolePlugin:
 
         # 🚨 NEW: [Phase 2 암살자 ON/OFF 토글 상태 팩트 브리핑]
         if is_avwap_hybrid or is_assassin_active:
-            msg += f"⚔️ <b>[ 암살자(aVWAP) 85% 예산 교전망 (🟢 가동중) ]</b>\n"
+            # 🚨 MODIFIED: [렌더링 팩트 교정] '85% 예산' ➔ '주문가능금액 100% 올인'
+            msg += f"⚔️ <b>[ 암살자(aVWAP) 주문가능금액 100% 올인 교전망 (🟢 가동중) ]</b>\n"
         else:
             msg += f"⚠️ <b>[ 암살자 타격망 OFF (단순 관측 모드) ]</b>\n"
 
@@ -316,7 +319,8 @@ class AvwapConsolePlugin:
             msg += f"▫️ 교전 상태: <b>ON (-3% 타점 관통 및 진입 완료)</b>\n"
             msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
             msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (+2% 지정가 락온)\n"
-            msg += f"▫️ 자본 잠김 방어: <b>15:59 EST 도달 시 전량 강제 덤핑 대기 중</b>\n"
+            # 🚨 MODIFIED: [렌더링 팩트 교정] 강제 덤핑 ➔ 매수 1호가 스윕 덤핑 (결측시 -5% 폴백)
+            msg += f"▫️ 자본 잠김 방어: <b>15:59 EST 도달 시 전량 매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백)</b>\n"
         else:
             if is_avwap_hybrid:
                 msg += f"▫️ 교전 상태: <b>ON (세션 VWAP -3% 타점 관통 대기 중)</b>\n"
