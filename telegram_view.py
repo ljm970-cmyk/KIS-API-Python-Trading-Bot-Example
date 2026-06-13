@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [Python 딕셔너리 평가 맹독성 수술] dict.get(key, default)에서 값이 None일 때 default가 무시되고 None이 반환되어 _safe_float(None) -> 0.0 으로 오염되는 치명적 버그를 `or default` 단락 평가로 완벽 교정.
 # 🚨 MODIFIED: [마크다운 리스트 붕괴 방어] 텍스트 내 숫자 리스트(1., 2.)를 이모지(1️⃣, 2️⃣)로 100% 치환하여 텔레그램 파서 안전성 극대화.
 # 🚨 MODIFIED: [Case 16 위반 교정] 이미지 렌더링(create_profit_image) 시 원자적 쓰기 실패에 따른 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 최상단 전진 배치.
+# 🚨 NEW: [명예의 전당 소각] 졸업 기록 상세 뷰포트에 영구 소각 버튼 추가 및 재확인(Confirm) 뷰 렌더링 메서드 신설.
 # ==========================================================
 import os
 import math
@@ -81,7 +82,6 @@ class TelegramView:
         
         safe_ver = html.escape(str(latest_version))
         msg = f"🌌 <b>[ 옴니 매트릭스 퀀트 엔진 {safe_ver} ]</b>\n"
-        # 🚨 MODIFIED: 데이 트레이딩 아키텍처에 맞춘 타임라인 브리핑 전면 리빌딩
         msg += "💠 무결성 싱글 롱 모멘텀 (SOXL 전용) & 순수 리버전 데이 트레이딩\n\n"
         
         msg += f"🕒 <b>[ 운영 스케줄 ({dst_state}) ]</b>\n"
@@ -193,7 +193,7 @@ class TelegramView:
                         InlineKeyboardButton(f"✏️ {layer_num}지층 수정", callback_data=f"EDIT_Q:{ticker}:{item_date}"),
                         InlineKeyboardButton(f"🗑️ {layer_num}지층 삭제", callback_data=f"DEL_REQ:{ticker}:{item_date}")
                     ])
-            
+        
         msg += "-"*30 + "</code>\n\n"
         msg += "🚨 <b>[ 비상 수혈 통제소 ]</b>\n"
         msg += "최근 매수한 <b>1지층</b>을 시장가(MOC)로 강제 덤핑하여 가용 예산을 확보합니다."
@@ -232,7 +232,6 @@ class TelegramView:
 
     def get_avwap_warning_menu(self, ticker):
         safe_t = html.escape(str(ticker))
-        # 🚨 MODIFIED: 순수 리버전 데이 트레이딩 아키텍처 안내 브리핑으로 100% 교체
         msg = f"👁️ <b>[{safe_t} 순수 리버전 데이 트레이딩 관제탑 가동 승인]</b>\n\n"
         msg += "⚠️ <b>[ 수동 제어 및 팻핑거 뇌관 100% 소각 완료 ]</b>\n"
         msg += "과거의 복잡했던 휩소 방어(HA 컨펌) 및 수동 목표가/수익률 설정 로직은 시스템 전역에서 영구 소각되었습니다.\n\n"
@@ -452,7 +451,7 @@ class TelegramView:
                 raw_guidance = str(t_info.get('v_rev_guidance') or " (가이던스 대기 중)")
                 if is_zero_start:
                     raw_guidance = '\n'.join([line for line in raw_guidance.split('\n') if "잭팟" not in line and "상위층" not in line])
-                 
+                
                 v_rev_q_lots_val = self._safe_float(t_info.get('v_rev_q_lots') or 0.0)
                 if not is_zero_start and fact_qty > 0 and v_rev_q_lots_val > 0:
                     try:
@@ -493,7 +492,7 @@ class TelegramView:
                                     min_price = min(self._safe_float(x.get('price')) for x in jubjub_orders)
                                     max_price = max(self._safe_float(x.get('price')) for x in jubjub_orders)
                                     total_jub_shares = sum(int(self._safe_float(x.get('qty'))) for x in jubjub_orders)
-                                   
+                                    
                                     if min_price == max_price:
                                         price_str = f"${min_price:.2f}"
                                     else:
@@ -502,7 +501,7 @@ class TelegramView:
                                     body_msg += f" 🔴 🧲줍줍: <b>{price_str} x {total_jub_shares}주</b> (LOC)\n"
                                 rendered_jubjub = True
                             continue
-                     
+                        
                         ico = "🔴" if str(o.get('side', '')) == 'BUY' else "🔵"
                         safe_desc = html.escape(str(o.get('desc', ''))).replace("🩸", "")
                         if "수혈" in str(o.get('desc', '')): ico = "🩸"
@@ -637,6 +636,16 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
+    # 🚨 NEW: [명예의 전당 소각] 2단계 격발망 UI (Fat Finger 방어)
+    def get_history_delete_confirm_menu(self, hist_id):
+        safe_id = html.escape(str(hist_id))
+        msg = f"🚨 <b>[졸업 기록 영구 소각 최종 확인]</b>\n\n정말 이 명예의 전당 기록(ID: {safe_id})을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다!"
+        keyboard = [
+            [InlineKeyboardButton("🔥 네, 즉시 영구 소각합니다", callback_data=f"HIST:DEL_EXEC:{hist_id}")],
+            [InlineKeyboardButton("❌ 아니오, 돌아가기", callback_data=f"HIST:VIEW:{hist_id}")]
+        ]
+        return msg, InlineKeyboardMarkup(keyboard)
+
     def create_ledger_dashboard(self, ticker, qty, avg, invested, sold, records, t_val, split, is_history=False, is_reverse=False, history_id=None):
         safe_t = html.escape(str(ticker))
         groups = {}
@@ -685,6 +694,9 @@ class TelegramView:
             keyboard.append([InlineKeyboardButton("🔙 장부 업데이트", callback_data=f"REC:SYNC:{ticker}")])
         else:
             keyboard.append([InlineKeyboardButton("🖼️ 프리미엄 졸업 카드 발급", callback_data=f"HIST:IMG:{ticker}{f':{history_id}' if history_id else ''}")])
+            # 🚨 NEW: [명예의 전당 소각] 소각 작전 1단계 뷰포트 진입 버튼 추가
+            if history_id:
+                keyboard.append([InlineKeyboardButton("🗑️ 졸업 기록 영구 소각", callback_data=f"HIST:DEL_REQ:{history_id}")])
             keyboard.append([InlineKeyboardButton("🔙 역사 목록", callback_data="HIST:LIST")])
 
         return report, InlineKeyboardMarkup(keyboard)

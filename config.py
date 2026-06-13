@@ -11,6 +11,8 @@
 # 🚨 MODIFIED: [TOCTOU 레이스 컨디션 수술] os.path.exists 동기스캔 전면 소각 및 EAFP 패턴 100% 락온 유지.
 # 🚨 MODIFIED: [AttributeError 붕괴 방어] JSON 내부 요소 오염 시 발생하는 타입 캐스팅 에러 원천 차단.
 # 🚨 MODIFIED: [Case 16] tempfile 스코프 전진 배치로 UnboundLocalError 붕괴 차단.
+# 🚨 NEW: [명예의 전당 소각] delete_history 메서드 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
+# 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
 # ==========================================================
 
 import json
@@ -55,7 +57,6 @@ VWAP_PROFILES = {
 
 class ConfigManager:
     def __init__(self):
-        # 🚨 MODIFIED: 암살자 목표 관련 스키마 영구 소각 완료
         self.FILES = {
             "TOKEN": "data/token.dat",
             "CHAT_ID": "data/chat_id.dat",
@@ -80,7 +81,7 @@ class ConfigManager:
             "MASTER_SWITCH": "data/master_switch.json",
             "SNIPER_BUY_LOCKED": "data/sniper_buy_locked.json",
             "SNIPER_SELL_LOCKED": "data/sniper_sell_locked.json",
-            "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",       
+            "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",     
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json"
         }
@@ -287,7 +288,7 @@ class ConfigManager:
             locks.clear()
             locks.update(surviving_locks)
         self._atomic_update_locks(_update)
-         
+        
     def reset_lock_for_ticker(self, ticker):
         est = ZoneInfo('America/New_York')
         today = datetime.datetime.now(est).strftime('%Y-%m-%d')
@@ -406,7 +407,7 @@ class ConfigManager:
             if len(target_recs) > 0:
                 logging.warning(f"⚠️ [보안 차단] {ticker}의 장부 기록이 이미 존재하여 파괴적 INIT 덮어쓰기를 차단했습니다.")
                 return
-                 
+                  
             est = ZoneInfo('America/New_York')
             today_str = datetime.datetime.now(est).strftime('%Y-%m-%d')
             new_id = 1 if not ledger else max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0]) + 1
@@ -474,7 +475,7 @@ class ConfigManager:
                         if abs(self._safe_float(r.get('price', 0.0)) - actual_sell_price) >= 0.01:
                             r['price'] = actual_sell_price
                             changed_count += 1
-                              
+                               
             if changed_count > 0:
                 self._save_json(self.FILES["LEDGER"], ledger)
             
@@ -566,13 +567,13 @@ class ConfigManager:
                 
             split = self.get_split_count(ticker)
             dynamic_t = self._safe_float(state.get("dynamic_t", 0.0))
-             
+            
             if action == "SELL":
                 if split <= 20: dynamic_t *= 0.9
                 else: dynamic_t *= 0.95
             elif action == "BUY":
                 dynamic_t += (split - dynamic_t) * 0.25
-                 
+                
             state["dynamic_t"] = round(dynamic_t, 4)
             d[ticker] = state
             self._save_json(self.FILES["REVERSE_CFG"], d)
@@ -593,7 +594,7 @@ class ConfigManager:
                         rem_cash=state.get("rem_cash", 0.0),
                         is_day_one=False
                     )
-                return True
+                    return True
         return False
 
     def calculate_v14_state(self, ticker):
@@ -698,7 +699,7 @@ class ConfigManager:
                     ledger.append(rec_limit)
                     target_recs.append(rec_limit)
 
-            self._save_json(self.FILES["LEDGER"], ledger)
+                self._save_json(self.FILES["LEDGER"], ledger)
 
             fee_rate = self.get_fee(ticker) / 100.0
             net_invested = raw_total_buy * (1.0 + fee_rate)
@@ -731,6 +732,27 @@ class ConfigManager:
         raw_data = self._load_json(self.FILES["HISTORY"], [])
         return [h for h in raw_data if isinstance(h, dict)]
 
+    # 🚨 NEW: [명예의 전당 소각] 특정 졸업 기록(ID) 영구 소각 및 중복 타격(Double Tap) 붕괴 방어 팩트 결속
+    def delete_history(self, hist_id: int) -> bool:
+        with self._io_lock:
+            history = self.get_history()
+            if not history:
+                return False
+                
+            original_len = len(history)
+            # 🚨 MODIFIED: [타입 오염 붕괴 방어] id 값 비교 시 _safe_float 후 int 캐스팅을 거쳐 JSON 파싱 타입 불일치 즉사 버그 차단
+            safe_target_id = int(self._safe_float(hist_id))
+            remaining_history = [
+                h for h in history 
+                if isinstance(h, dict) and int(self._safe_float(h.get('id', 0))) != safe_target_id
+            ]
+            
+            if len(remaining_history) == original_len:
+                return False # 삭제 대상 없음 (중복 타격 붕괴 패러독스 방어 멱등성 보장)
+                
+            self._save_json(self.FILES["HISTORY"], remaining_history)
+            return True
+
     def get_full_version_history(self):
         return VERSION_HISTORY
 
@@ -755,7 +777,7 @@ class ConfigManager:
 
     def get_compound_rate(self, t): 
         return self._safe_float(self._load_json(self.FILES["COMPOUND_CFG"], self.DEFAULT_COMPOUND).get(t, 70.0))
-        
+         
     def set_compound_rate(self, t, v):
         with self._io_lock:
             d = self._load_json(self.FILES["COMPOUND_CFG"], self.DEFAULT_COMPOUND)
@@ -804,9 +826,9 @@ class ConfigManager:
         
     def set_upward_sniper_mode(self, ticker, v):
         with self._io_lock:
-            d = self._load_json(self.FILES["UPWARD_SNIPER"], {})
-            d[ticker] = bool(v)
-            self._save_json(self.FILES["UPWARD_SNIPER"], d)
+             d = self._load_json(self.FILES["UPWARD_SNIPER"], {})
+             d[ticker] = bool(v)
+             self._save_json(self.FILES["UPWARD_SNIPER"], d)
 
     def get_avwap_hybrid_mode(self, ticker): 
         return bool(self._load_json(self.FILES["AVWAP_HYBRID_CFG"], {}).get(ticker, False))
@@ -866,7 +888,7 @@ class ConfigManager:
         return self._load_file(self.FILES["SECRET_MODE"]) == 'True'
         
     def set_secret_mode(self, v): 
-        with self._io_lock:
+         with self._io_lock:
             self._save_file(self.FILES["SECRET_MODE"], str(v))
     
     def get_active_tickers(self): 
@@ -878,15 +900,14 @@ class ConfigManager:
         with self._io_lock:
             self._save_json(self.FILES["TICKER"], v)
     
+    # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
     def get_chat_id(self): 
         v = self._load_file(self.FILES["CHAT_ID"])
         if v:
-            try:
-                return int(v)
-            except ValueError:
-                return None
+            safe_v = int(self._safe_float(v))
+            return safe_v if safe_v != 0 else None
         return None
         
     def set_chat_id(self, v): 
-        with self._io_lock:
+         with self._io_lock:
             self._save_file(self.FILES["CHAT_ID"], v)

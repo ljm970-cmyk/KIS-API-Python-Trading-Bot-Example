@@ -8,8 +8,9 @@
 # 🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 및 _process_reset_files 내부의 os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료.
 # 🚨 MODIFIED: [시그니처 Mismatch 소각] 텔레그램 라우터의 action, sub, data 파싱 구조를 100% 반영하여 handle 메서드 시그니처 완벽 수복.
 # 🚨 MODIFIED: [TypeError 방어] set_reverse_state 호출 시 누락된 파라미터(0.0)를 강제 주입하여 백엔드 스키마 충돌 원천 차단.
-# 🚨 MODIFIED: [데드코드 진공 압축] 최상단에서 이미 처리되는 query.answer()의 하위 분기별 중복 호출 찌꺼기 100% 영구 소각.
+# 🚨 MODIFIED: [커스텀 토스트 팝업 패러독스 완벽 교정] 최상단의 범용 query.answer()가 하위 라우팅의 커스텀 로딩 팝업("🔥 소각 중...")을 씹어먹는 현상을 막기 위해 needs_custom_toast 바이패스 락온망 구축.
 # 🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단).
+# 🚨 NEW: [명예의 전당 소각] HIST:DEL_REQ, HIST:DEL_EXEC 액션 라우팅 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
 # ==========================================================
 import logging
 import datetime
@@ -52,11 +53,18 @@ class CallbackConfigHandler:
         chat_id = update.effective_chat.id
         ticker = data[2] if len(data) > 2 else ""
 
-        # 🚨 콜백 무응답 타임아웃 데드락 100% 방어망
-        try: 
-            await asyncio.wait_for(query.answer(), timeout=5.0)
-        except Exception as e:
-            logging.warning(f"⚠️ [Callback] 콜백 쿼리 응답 타임아웃/실패 (진행 계속됨): {e}")
+        # 🚨 MODIFIED: [커스텀 토스트 팝업 사수] 하위 모듈에서 명시적인 로딩/에러 팝업을 띄워야 하는 라우팅은 최상단 범용 응답을 바이패스(Bypass)합니다.
+        needs_custom_toast = False
+        if action == "UPDATE" and sub == "CONFIRM": needs_custom_toast = True
+        elif action == "RESET" and sub in ["LOCK", "CONFIRM"]: needs_custom_toast = True
+        elif action == "REC" and sub == "SYNC": needs_custom_toast = True
+        elif action == "HIST" and sub in ["DEL_EXEC", "IMG"]: needs_custom_toast = True
+
+        if not needs_custom_toast:
+            try: 
+                await asyncio.wait_for(query.answer(), timeout=5.0)
+            except Exception as e:
+                logging.warning(f"⚠️ [Callback] 콜백 쿼리 응답 타임아웃/실패 (진행 계속됨): {e}")
 
         if action == "UPDATE":
             if sub == "CONFIRM":
@@ -101,9 +109,6 @@ class CallbackConfigHandler:
                 except Exception: pass
 
         elif action == "VERSION":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             history_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_full_version_history), timeout=10.0) or []
             if sub == "LATEST":
                 msg, markup = self.view.get_version_message(history_data, page_index=None)
@@ -122,9 +127,6 @@ class CallbackConfigHandler:
                 except Exception: pass
 
         elif action == "RESET":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if sub == "MENU":
                 active_tickers = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
                 msg, markup = self.view.get_reset_menu(active_tickers)
@@ -218,7 +220,7 @@ class CallbackConfigHandler:
                             b_data = json.load(f)
                         if not isinstance(b_data, list): b_data = []
                         b_data = [r for r in b_data if isinstance(r, dict) and str(r.get('ticker')) != str(ticker)]
-                    
+                        
                         dir_name = os.path.dirname(backup_file) or '.'
                         # 🚨 MODIFIED: [Case 16] 디렉토리 보장 EAFP 샌드박스 추가 결속
                         try: os.makedirs(dir_name, exist_ok=True)
@@ -292,7 +294,7 @@ class CallbackConfigHandler:
                             _, alloc_cash_dict = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, self.cfg), timeout=10.0)
                             alloc_cash_dict = alloc_cash_dict or {}
                             available_cash = self._safe_float(alloc_cash_dict.get(ticker))
-                            
+                    
                             await asyncio.wait_for(
                                 asyncio.to_thread(
                                     self.strategy.get_plan, 
@@ -318,9 +320,6 @@ class CallbackConfigHandler:
                 except Exception: pass
 
         elif action == "REC":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if sub == "VIEW": 
                 if not ticker: return
                 async with self.tx_lock:
@@ -360,15 +359,12 @@ class CallbackConfigHandler:
                                 except Exception:
                                     if attempt == 2: holdings = {}
                                     else: await asyncio.sleep(1.0 * (2 ** attempt))
-                            
+                    
                         await self.sync_engine._display_ledger(ticker, chat_id, context, message_obj=query.message, pre_fetched_holdings=holdings)
 
         elif action == "HIST":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if sub == "VIEW":
-                hid = int(data[2]) if len(data) > 2 else 0
+                hid = int(self._safe_float(data[2])) if len(data) > 2 else 0
                 hist_data = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_history), timeout=10.0) or []
                 target = next((h for h in hist_data if isinstance(h, dict) and h.get('id') == hid), None)
                 if target:
@@ -395,6 +391,35 @@ class CallbackConfigHandler:
             elif sub == "LIST":
                 if hasattr(controller, 'cmd_history'):
                     await controller.cmd_history(update, context)
+
+            # 🚨 NEW: [명예의 전당 소각] 1단계 - 소각 재확인(Confirm) 뷰 렌더링
+            elif sub == "DEL_REQ":
+                hid = int(self._safe_float(data[2])) if len(data) > 2 else 0
+                msg, markup = self.view.get_history_delete_confirm_menu(hid)
+                try: 
+                    await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
+                except telegram.error.BadRequest as e:
+                    if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                except Exception: pass
+
+            # 🚨 NEW: [명예의 전당 소각] 2단계 - 실제 소각 집행 및 제자리 갱신 (Height Collapse 방어)
+            elif sub == "DEL_EXEC":
+                hid = int(self._safe_float(data[2])) if len(data) > 2 else 0
+                try: await asyncio.wait_for(query.answer("🔥 소각 중...", show_alert=False), timeout=5.0)
+                except Exception: pass
+                
+                success = False
+                try:
+                    success = await asyncio.wait_for(asyncio.to_thread(self.cfg.delete_history, hid), timeout=10.0)
+                except Exception as e:
+                    logging.error(f"🚨 명예의 전당 소각 에러: {e}")
+                    
+                if success:
+                    if hasattr(controller, 'cmd_history'):
+                        await controller.cmd_history(update, context)
+                else:
+                    try: await asyncio.wait_for(query.answer("⚠️ 이미 소각된 기록이거나 찾을 수 없습니다.", show_alert=True), timeout=5.0)
+                    except Exception: pass
 
             elif sub == "IMG":
                 target_id = int(data[3]) if len(data) > 3 else None
@@ -457,9 +482,6 @@ class CallbackConfigHandler:
                     except Exception: pass
 
         elif action == "SET_VER":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if not ticker: return
             
             try:
@@ -520,9 +542,6 @@ class CallbackConfigHandler:
             except Exception: pass
 
         elif action == "SET_VER_CONFIRM":
-             try: await asyncio.wait_for(query.answer(), timeout=5.0)
-             except Exception: pass
-             
              if not ticker: return
              
              if sub == "V_REV":
@@ -550,9 +569,6 @@ class CallbackConfigHandler:
              except Exception: pass
 
         elif action == "TICKER":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if sub == "ALL":
                 target_tickers = ["SOXL", "TQQQ"]
                 msg_txt = "SOXL + TQQQ 통합"
@@ -577,17 +593,11 @@ class CallbackConfigHandler:
             except Exception: pass
             
         elif action == "SEED":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if not ticker: return
             controller.user_states[chat_id] = f"SEED_{sub}_{ticker}"
             await asyncio.wait_for(context.bot.send_message(chat_id, f"💵 [{html.escape(str(ticker))}] 시드머니 금액 입력:", parse_mode='HTML'), timeout=10.0)
 
         elif action == "CONFIG_AVWAP":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if not ticker: return
             
             if sub == "TOGGLE":
@@ -607,9 +617,6 @@ class CallbackConfigHandler:
                     logging.error(f"🚨 [{ticker}] 암살자 모드 토글 실패: {e}")
             
         elif action == "INPUT":
-            try: await asyncio.wait_for(query.answer(), timeout=5.0)
-            except Exception: pass
-            
             if not ticker: return
             controller.user_states[chat_id] = f"CONF_{sub}_{ticker}"
             
