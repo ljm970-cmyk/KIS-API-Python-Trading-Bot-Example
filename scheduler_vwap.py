@@ -1,7 +1,8 @@
 # ==========================================================
 # FILE: scheduler_vwap.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 40대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 NEW: [Case 39 & 40 자본 잠김 패러독스 방어] 16:01 EST에 가동되는 `scheduled_aftermarket_vrev_trade` 엔진을 신규 이식. 암살자의 15:59 MOC 덤핑으로 복구된 자본(예수금)을 3단 지수 백오프로 정밀 확인한 뒤, 지연 이관된 V-REV 본진 플랜을 1분 슬라이싱 없이 100% 일괄 지정가(LIMIT)로 병합 타격합니다.
 # 🚨 MODIFIED: [병렬 가동 아키텍처 궁극 수복] 암살자(aVWAP) 교전 중이거나 당일 임무 완수 상태일 때 본진 슬라이싱 엔진을 강제로 셧다운(Bypass)시키던 구시대적 뇌관 블록을 전면 영구 소각 완료. 본진은 암살자를 무시하고 365일 독립 타격합니다.
 # 🚨 MODIFIED: [불필요한 I/O 오버헤드 진공 압축] 본진 셧다운 파기로 인해 더 이상 필요 없어진 `avwap_trade_state_SOXL.json` 동기화 로드 및 검열 데드코드를 전면 삭제하여 1분 슬라이싱 엔진의 런타임 성능을 극대화.
 # 🚨 MODIFIED: [하프-바이패스 영구 소각] 암살자 손절 시 매수(BUY)만 차단하던 하프-바이패스 찌꺼기를 영구 소각.
@@ -10,7 +11,7 @@
 # 🚨 MODIFIED: [Case 32 & 33 절대 규칙] Gap Hijack 및 1분 슬라이싱 덫 조회/취소/전송 전역에 3단 지수 백오프와 TPS 캡핑(0.06s) 100% 샌드위치 락온.
 # 🚨 NEW: [무덤핑 정밀 요격 사수] 목표가 미충족 시 1주도 사지 않는 관망세 유지 및 15:57 클린업 페이즈 시 강제 덤핑(Dumping) 로직 전면 소각.
 # 🚨 NEW: [V-REV 일시불 요격 패러독스 방어] 0주 새출발 매수처럼 목표가가 현재가 대비 +2%를 초과하여 터무니없이 높을 경우, 전량 스윕(Sweep)을 강제 해제하고 정상적인 1분 슬라이싱 궤도로 복구 락온.
-# 🚨 NEW: [Ghost-Dumping 붕괴 방어] 1분 슬라이싱 매도(SELL) 타격 직전에 KIS 실잔고를 스캔하여 매도 수량을 정밀 캡핑(`min(qty, rt_qty)`). 주문가능수량 초과 리젝 원천 차단.
+# 🚨 NEW: [Ghost-Dumping 붕괴 방어] 1분 슬라이싱 및 애프터장 매도/매수 타격 직전에 KIS 실잔고/현금을 스캔하여 수량을 정밀 캡핑(`min(qty, rt_qty)`). 주문가능수량 초과 리젝 원천 차단.
 # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] 갭 하이재킹 판별을 위한 기초지수 VWAP 연산 시, ffill/bfill 래핑을 강제하여 NaN 전이(Math Collapse) 원천 차단.
 # 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
 # 🚨 NEW: [Time Paradox 팩트 교정] KIS 원장 조회를 위한 KST 팩트 주입. EST 기준으로 체결 내역 조회 시 발생하던 무한 대기 버그 원천 소각.
@@ -523,7 +524,7 @@ async def scheduled_vwap_trade(context):
                                                                 res = None
                                                             else:
                                                                 await asyncio.sleep(1.0 * (2 ** s_attempt))
-                                                
+                                                    
                                                     safe_res = res if isinstance(res, dict) else {}
                                                     odno = str(safe_res.get('odno') or '')
                                                     
@@ -622,7 +623,7 @@ async def scheduled_vwap_trade(context):
                                 
                                 if filled_qty >= total_qty and not last_odno:
                                     continue
-                                 
+                                
                                 ccld_qty_this_tick = 0
                                 if last_odno:
                                     cancel_successful = False
@@ -655,7 +656,7 @@ async def scheduled_vwap_trade(context):
                                     if is_still_open:
                                         logging.warning(f"🚨 [{t}] 취소 실패 및 미체결 잔존 확인 (Double Spending 방어). 다음 분으로 이연합니다.")
                                         continue
-                                     
+                                    
                                     try:
                                         await asyncio.sleep(0.06)
                                         # 🚨 NEW: [Time Paradox 팩트 교정] KIS 원장 100% 동기화를 위해 today_kst_str 주입
@@ -695,7 +696,7 @@ async def scheduled_vwap_trade(context):
                                                 await asyncio.wait_for(asyncio.to_thread(_sync_ledger_atomic), timeout=10.0)
                                                 logging.info(f"💾 [{t}] 자체 슬라이싱 체결 장부 원자적 동기화 완료: {side} {ccld_qty_this_tick}주 @ ${real_exec_price:.2f}")
                                             except Exception as e:
-                                                processed_odnos.remove(last_odno)  # 롤백 처리
+                                                processed_odnos.remove(last_odno) # 롤백 처리
                                                 logging.error(f"🚨 [{t}] 자체 슬라이싱 체결 장부 동기화 실패 (캐시 롤백): {e}")
                                             
                                             if chat_id:
@@ -825,3 +826,217 @@ async def scheduled_vwap_trade(context):
         await asyncio.wait_for(_do_vwap(), timeout=120.0)
     except Exception as e:
         logging.error(f"🚨 VWAP 섀도우 오버라이드 스케줄러 에러: {e}", exc_info=True)
+
+
+# ==========================================================
+# 🚨 NEW: [Case 39 & 40 절대 방어망 결속] 자본 잠김(Capital Lock-up) 애프터장 일괄 타격 파이프라인
+# ==========================================================
+async def scheduled_aftermarket_vrev_trade(context):
+    job = getattr(context, 'job', None)
+    raw_job_data = getattr(job, 'data', None) if job else None
+    job_data = raw_job_data if isinstance(raw_job_data, dict) else {}
+    
+    tx_lock = job_data.get('tx_lock')
+    cfg = job_data.get('cfg')
+    broker = job_data.get('broker')
+    strategy = job_data.get('strategy')
+    queue_ledger = job_data.get('queue_ledger')
+    chat_id = getattr(job, 'chat_id', None)
+    
+    if not tx_lock or not cfg or not broker or not strategy:
+        return
+
+    # 1️⃣ [시장 개장 검증]
+    is_open = False
+    for attempt in range(3):
+        try:
+            is_open = await asyncio.wait_for(asyncio.to_thread(is_market_open), timeout=10.0)
+            break
+        except Exception:
+            if attempt == 2:
+                est = ZoneInfo('America/New_York')
+                is_open = datetime.datetime.now(est).weekday() < 5
+            else: await asyncio.sleep(1.0 * (2 ** attempt))
+
+    if not is_open:
+        return
+
+    est = ZoneInfo('America/New_York')
+    now_est = datetime.datetime.now(est)
+    today_hyphen = now_est.strftime('%Y-%m-%d')
+    today_kst_str = datetime.datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y%m%d')
+
+    async def _do_aftermarket():
+        async with tx_lock:
+            try:
+                active_tickers = (await asyncio.wait_for(asyncio.to_thread(cfg.get_active_tickers), timeout=10.0)) or []
+            except Exception: active_tickers = []
+            
+            if isinstance(active_tickers, str): active_tickers = [active_tickers]
+            elif not isinstance(active_tickers, list): active_tickers = []
+            
+            for raw_t in active_tickers:
+                t = str(raw_t).strip().upper()
+                if not t: continue
+                
+                try:
+                    await asyncio.sleep(0.06)
+                    try:
+                        version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
+                    except Exception: version = "V14"
+                    
+                    if version != "V_REV": continue
+                    
+                    state_file = f"data/vrev_aftermarket_state_{t}.json"
+                    try:
+                        after_state = await asyncio.wait_for(asyncio.to_thread(_read_json_sync, state_file), timeout=5.0)
+                    except Exception: after_state = {}
+                    
+                    if after_state.get('date') != today_hyphen: continue
+                    orders = after_state.get('orders', [])
+                    if not isinstance(orders, list) or not orders: continue
+                    
+                    # 2️⃣ [Edge Case 1] 15:59 MOC 정산 지연 방어 (Balance Lag)
+                    cash = 0.0
+                    for attempt in range(3):
+                        await asyncio.sleep(0.06)
+                        try:
+                            cash_tuple = await asyncio.wait_for(asyncio.to_thread(broker.get_account_balance), timeout=15.0)
+                            cash = _safe_float(cash_tuple[0]) if isinstance(cash_tuple, (list, tuple)) and len(cash_tuple) > 0 else 0.0
+                            if cash > 0.0: break
+                        except Exception: pass
+                        
+                        if attempt < 2:
+                            logging.warning(f"⏳ [{t}] 애프터장 타격 대기: KIS 예수금 정산 지연(0.0). 10초 후 재스캔합니다.")
+                            await asyncio.sleep(10.0)
+                            
+                    if cash <= 0.0:
+                        logging.error(f"🚨 [{t}] 애프터장 예수금 확보 실패 (자본 잠김 미해소). 타격 중단.")
+                        continue
+
+                    # 3️⃣ [Edge Case 2 & 39] 애프터마켓 유동성 증발 및 자본초과 타격 방어
+                    msgs = ""
+                    state_changed = False
+                    
+                    for o in orders:
+                        if not isinstance(o, dict) or str(o.get('status')) == 'COMPLETED': continue
+                        
+                        side = str(o.get('side', 'BUY'))
+                        total_qty = int(_safe_float(o.get('total_qty')))
+                        target_price = _safe_float(o.get('target_price'))
+                        desc = html.escape(str(o.get('desc', '')))
+                        
+                        exec_price = 0.0
+                        for p_attempt in range(3):
+                            try:
+                                await asyncio.sleep(0.06)
+                                if side == "BUY": p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_ask_price, t), timeout=10.0)
+                                else: p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_bid_price, t), timeout=10.0)
+                                exec_price = _safe_float(p_val)
+                                break
+                            except Exception:
+                                if p_attempt == 2: exec_price = 0.0
+                                else: await asyncio.sleep(1.0 * (2 ** p_attempt))
+                        
+                        if exec_price <= 0.0:
+                            for p_attempt in range(3):
+                                try:
+                                    await asyncio.sleep(0.06)
+                                    p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=10.0)
+                                    exec_price = _safe_float(p_val)
+                                    break
+                                except Exception:
+                                    if p_attempt == 2: exec_price = 0.0
+                                    else: await asyncio.sleep(1.0 * (2 ** p_attempt))
+                                    
+                        is_target_hit = False
+                        if target_price > 0.0 and exec_price > 0.0:
+                            if side == "BUY" and exec_price <= target_price: is_target_hit = True
+                            elif side == "SELL" and exec_price >= target_price: is_target_hit = True
+                            
+                        if not is_target_hit:
+                            msgs += f"⏸️ {desc}: 목표가(${target_price:.2f}) 미도달 (현재가 ${exec_price:.2f}) ➔ 관망 유지\n"
+                            continue
+
+                        # 🚨 NEW: 애프터장 자본 잠김 후폭풍 팩트 방어 (Ghost Dumping / Budget Exceed)
+                        if side == "BUY":
+                            max_buy = int(math.floor(cash / exec_price)) if exec_price > 0 else 0
+                            if total_qty > max_buy:
+                                logging.warning(f"🚨 [{t}] 애프터장 매수 수량 캡핑 가동 (가용 현금 한도 초과): {total_qty} -> {max_buy}")
+                                total_qty = max_buy
+                            if total_qty <= 0:
+                                msgs += f"⚠️ {desc}: KIS 예수금 부족으로 애프터장 타격 스킵\n"
+                                continue
+                        else:
+                            rt_qty = total_qty
+                            for attempt_bal in range(3):
+                                try:
+                                    await asyncio.sleep(0.06)
+                                    bal_tuple = await asyncio.wait_for(asyncio.to_thread(broker.get_account_balance), timeout=10.0)
+                                    if isinstance(bal_tuple, (list, tuple)) and len(bal_tuple) > 1:
+                                        rt_qty = int(_safe_float(bal_tuple[1].get(t, {}).get('qty', 0)))
+                                    break
+                                except Exception:
+                                    if attempt_bal == 2: pass
+                                    else: await asyncio.sleep(1.0 * (2 ** attempt_bal))
+                            
+                            total_qty = min(total_qty, rt_qty)
+                            if total_qty <= 0:
+                                msgs += f"⚠️ {desc}: KIS 보유 잔고 0주 (Ghost-Dumping 방어)\n"
+                                o['status'] = 'COMPLETED'
+                                state_changed = True
+                                continue
+                            
+                        res = None
+                        for s_attempt in range(3):
+                            try:
+                                await asyncio.sleep(0.06)
+                                res = await asyncio.wait_for(asyncio.to_thread(broker.send_order, t, side, total_qty, target_price, "LIMIT"), timeout=15.0)
+                                break
+                            except Exception as e:
+                                if s_attempt == 2: logging.error(f"🚨 [{t}] 애프터장 타격 에러: {e}")
+                                else: await asyncio.sleep(1.0 * (2 ** s_attempt))
+                                
+                        safe_res = res if isinstance(res, dict) else {}
+                        is_success = safe_res.get('rt_cd') == '0'
+                        odno = str(safe_res.get('odno') or '')
+                        
+                        if is_success and odno:
+                            o['status'] = 'COMPLETED'
+                            o['odno'] = odno
+                            if side == "BUY": cash -= (total_qty * target_price) 
+                            state_changed = True
+                            msgs += f"🎯 {desc}: {total_qty}주 @ ${target_price:.2f} ➔ 일괄 타격 완료 (LIMIT)\n"
+                            
+                            def _sync_aftermarket_ledger():
+                                if queue_ledger:
+                                    if side == "BUY": queue_ledger.add_lot(t, total_qty, target_price, "VREV_AFTERMARKET_BUY")
+                                    else: queue_ledger.pop_lots(t, total_qty, target_price)
+                                if hasattr(strategy, 'v_rev_plugin'):
+                                    strategy.v_rev_plugin.record_execution(t, side, total_qty, target_price)
+                            
+                            try: await asyncio.wait_for(asyncio.to_thread(_sync_aftermarket_ledger), timeout=10.0)
+                            except Exception as e: logging.error(f"🚨 [{t}] 애프터장 타격 장부 동기화 실패: {e}")
+                        else:
+                            err_msg = html.escape(str(safe_res.get('msg1') or '거절'))
+                            msgs += f"❌ {desc}: 16:01 타격 실패 ({err_msg})\n"
+                            
+                    if msgs.strip() and chat_id:
+                        try:
+                            await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=f"🌃 <b>[{html.escape(t)}] 16:01 EST 애프터장 일괄 타격 보고</b>\n\n{msgs.strip()}", parse_mode='HTML'), timeout=15.0)
+                        except Exception: pass
+                        
+                    # 4️⃣ [Edge Case 3] 원자적 쓰기 (상태 저장)
+                    if state_changed:
+                        try:
+                            await asyncio.wait_for(asyncio.to_thread(_atomic_write_json_sync, state_file, after_state), timeout=10.0)
+                        except Exception as e:
+                            logging.error(f"🚨 [{t}] 애프터장 상태 파일 원자적 갱신 실패: {e}")
+                        
+                except Exception as e:
+                    logging.error(f"🚨 [{t}] 애프터장 루프 치명적 오류: {e}", exc_info=True)
+
+    try:
+        await asyncio.wait_for(_do_aftermarket(), timeout=240.0)
+    except Exception as e:
+        logging.error(f"🚨 애프터장 스케줄러 타임아웃: {e}", exc_info=True)

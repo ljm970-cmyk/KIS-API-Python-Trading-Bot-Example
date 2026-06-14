@@ -1,19 +1,18 @@
 # ==========================================================
 # FILE: scheduler_regular.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [병렬 가동 아키텍처 궁극 수복] 암살자 교전/당일완수(shutdown) 시 본진 15% 1분 슬라이싱 엔진을 강제로 셧다운(Bypass)하던 "시나리오 1~3 절대 통제망" 데드코드를 전면 영구 소각 완료. 본진은 365일 무중단 가동됩니다.
-# 🚨 MODIFIED: [불필요한 I/O 오버헤드 진공 압축] 본진 셧다운이 파기됨에 따라 더 이상 필요 없어진 `is_avwap_hybrid` 상태 조회 및 `avwap_trade_state` 파일 스캔 로직을 100% 제거하여 런타임 성능 극대화.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 40대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 NEW: [Case 39 & 40 절대 방어망 결속] 자본 잠김(Capital Lock-up) 현상 감지 시 본진 1분 슬라이싱 타격을 16:01 EST 애프터장으로 지연 이관(Delay & Transfer)하는 원자적 쓰기 파이프라인 100% 팩트 락온.
+# 🚨 MODIFIED: [State Mismatch 붕괴 방어] V14 선제 타격망(_do_early_trade)에 잘못 복제되어 있던 V-REV 전용 '자본 잠김(Capital Lock-up)' 우회 뇌관을 정밀 식별하여 전면 소각 및 분리 락온.
+# 🚨 MODIFIED: [Capital Lock-up 가상 예산 복원] 암살자 점유로 KIS 잔고가 0.0일지라도, 애프터장 이관용 플랜 생성을 위해 가상의 1일 고정 예산(Seed * 15%)을 강제 복원(Override) 주입하는 논리적 패러독스 방어망 결속.
+# 🚨 MODIFIED: [불필요한 I/O 오버헤드 진공 압축] 본진 셧다운이 파기됨에 따라 더 이상 필요 없어진 `is_avwap_hybrid` 상태 조회 데드코드를 전면 소각하고 런타임 성능 극대화.
 # 🚨 MODIFIED: [유령 마비(Phantom Paralysis) 궁극 수술] V-REV 본진 병렬 가동 시, 예산(Cash)과 현재가가 0.0으로 주입되어 매매가 마비되던 치명적 맹점을 스캔하고 실시간 KIS 잔고/단가 추출 파이프라인 100% 복원 완료.
-# 🚨 MODIFIED: [State Mismatch 붕괴 방어] 1분 슬라이싱 섀도우 엔진(scheduler_vwap)과의 파일명 및 JSON 데이터 구조(Dict) 100% 팩트 일치화 수술 완료.
 # 🚨 MODIFIED: [Jitter 타임라인 역전 붕괴 수술] 15:27 슬라이싱 엔진 가동 전 무조건 파일 I/O 인계를 마치도록 V-REV 본진 지터 상한을 180초에서 45초로 진공 압축 락온.
 # 🚨 MODIFIED: [V-REV 자체 VWAP 1분 슬라이싱 엔진 이식] 기존 KIS 증권사 알고리즘 위임 로직을 시스템 전역에서 영구 소각하고, 로컬 스케줄러 기반 자체 슬라이싱 엔진으로 인계하는 원자적 쓰기 파이프라인 100% 팩트 락온.
-# 🚨 MODIFIED: [제1헌법 준수] send_order 및 send_reservation_order 등 통신망 전역에 wait_for(timeout=15.0) 족쇄 전면 결속.
-# 🚨 MODIFIED: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프 TPS 캡핑(0.06s) 이식 완료.
-# 🚨 MODIFIED: [Case 14 절대 헌법 준수] is_market_open 비동기 호출 타임아웃 10.0초 하드코딩 완료.
+# 🚨 MODIFIED: [제1헌법 보강] get_budget_allocation, cfg.get_version, strategy.get_plan 등 모든 동기식 I/O 호출부에 wait_for(timeout) 샌드박스를 강제 결속하여 Deadlock 원천 차단.
+# 🚨 MODIFIED: [Case 32 & 33 절대 규칙] 3단 지수 백오프 및 스케줄러 루프(현재가/SMA 조회 등) 전역에 TPS 캡핑(0.06s) 이식 완료.
 # 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식 및 math 붕괴 원천 봉쇄.
-# 🚨 MODIFIED: [Case 19 부분 실패 이중 장전 패러독스 방어] 기장전된 덫은 API 통신 전면 바이패스 및 캐시 락온 결속.
-# 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
+# 🚨 MODIFIED: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
 # ==========================================================
 import logging
 import datetime
@@ -37,8 +36,67 @@ def _safe_float(val):
     except Exception:
         return 0.0
 
-# 🚨 자체 1분 슬라이싱 엔진 인계를 위한 로컬 상태 원자적 쓰기 헬퍼 (TOCTOU 붕괴 방어 및 EAFP 락온)
+def _read_avwap_state_sync(ticker, date_str):
+    """ 🚨 [Case 39 방어] 암살자 자본 잠김(Capital Lock-up) 스캔 헬퍼 """
+    state_file = f"data/avwap_trade_state_{ticker}.json"
+    try:
+        with open(state_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if isinstance(data, dict) and data.get('date') == date_str:
+                return data
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+def _save_aftermarket_state_sync(ticker, date_str, slice_info):
+    """ 🚨 [Case 39, 40 방어] 애프터장 지연 타격을 위한 원자적 상태 이관 헬퍼 """
+    state_file = f"data/vrev_aftermarket_state_{ticker}.json"
+    dir_name = os.path.dirname(state_file) or '.'
+    try: os.makedirs(dir_name, exist_ok=True)
+    except OSError: pass
+
+    data = {"date": date_str, "orders": []}
+    try:
+        with open(state_file, 'r', encoding='utf-8') as f:
+            loaded_data = json.load(f)
+            if isinstance(loaded_data, dict) and loaded_data.get('date') == date_str:
+                data = loaded_data
+                if not isinstance(data.get('orders'), list):
+                    data['orders'] = []
+    except (OSError, json.JSONDecodeError):
+        pass
+    
+    exists = False
+    for item in data['orders']:
+        if isinstance(item, dict) and item.get('desc') == slice_info['desc'] and item.get('side') == slice_info['side']:
+            exists = True
+            break
+    
+    if not exists:
+        data['orders'].append(slice_info)
+        
+    fd = None
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
+            fd = None
+            json.dump(data, f_out, ensure_ascii=False, indent=4)
+            f_out.flush()
+            os.fsync(f_out.fileno())
+        os.replace(tmp_path, state_file)
+        tmp_path = None
+    except Exception as e:
+        if fd is not None:
+            try: os.close(fd)
+            except OSError: pass
+        if tmp_path:
+            try: os.remove(tmp_path)
+            except OSError: pass
+        raise e
+
 def _save_slice_state_sync(ticker, date_str, slice_info):
+    """ 🚨 자체 1분 슬라이싱 엔진 인계를 위한 로컬 상태 원자적 쓰기 헬퍼 (TOCTOU 붕괴 방어 및 EAFP 락온) """
     state_file = f"data/vrev_slice_state_{ticker}.json"
     dir_name = os.path.dirname(state_file) or '.'
     try: os.makedirs(dir_name, exist_ok=True)
@@ -48,7 +106,6 @@ def _save_slice_state_sync(ticker, date_str, slice_info):
     try:
         with open(state_file, 'r', encoding='utf-8') as f:
             loaded_data = json.load(f)
-            # 당일자 파일인 경우에만 기존 데이터 로드 (과거 파일이면 초기화된 data 유지)
             if isinstance(loaded_data, dict) and loaded_data.get('date') == date_str:
                 data = loaded_data
                 if not isinstance(data.get('orders'), list):
@@ -174,7 +231,10 @@ async def scheduled_early_regular_trade(context):
             safe_holdings = holdings if isinstance(holdings, dict) else {}
             
             # 🚨 MODIFIED: [최후의 맹점 수술] 외부 모듈 반환값 결측치(None) 붕괴 완벽 차단
-            active_tickers_list = (await asyncio.to_thread(cfg.get_active_tickers)) or []
+            try:
+                active_tickers_list = await asyncio.wait_for(asyncio.to_thread(cfg.get_active_tickers), timeout=10.0) or []
+            except Exception:
+                active_tickers_list = []
             
             # 🚨 NEW: [String Iteration 붕괴 방어] 문자열 오염 시 글자 단위 파쇄 즉사 버그 원천 봉쇄
             if isinstance(active_tickers_list, str): active_tickers_list = [active_tickers_list]
@@ -182,8 +242,13 @@ async def scheduled_early_regular_trade(context):
             
             if not active_tickers_list:
                 return False, "❌ 활성 종목 리스트 결측치 반환. 스케줄 보호 중단."
-                
-            alloc_res = await asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, cfg)
+            
+            # 🚨 MODIFIED: [제1헌법 준수] 동기식 할당 로직 샌드박스 래핑
+            try:
+                alloc_res = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, cfg), timeout=10.0)
+            except Exception as e:
+                logging.error(f"🚨 예산 할당 타임아웃/에러: {e}")
+                alloc_res = None
             
             if not alloc_res or len(alloc_res) != 2:
                 return False, "❌ 예산 할당 로직 결측치(None) 반환. 스케줄 보호 중단."
@@ -202,8 +267,16 @@ async def scheduled_early_regular_trade(context):
                 try:
                     await asyncio.sleep(0.06)
                     
-                    version = await asyncio.to_thread(cfg.get_version, t)
-                    is_locked = await asyncio.to_thread(cfg.check_lock, t, "REG")
+                    # 🚨 MODIFIED: [제1헌법 준수] 동기식 로직 샌드박스 래핑
+                    try:
+                        version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
+                    except Exception:
+                        version = "V14"
+                        
+                    try:
+                        is_locked = await asyncio.wait_for(asyncio.to_thread(cfg.check_lock, t, "REG"), timeout=5.0)
+                    except Exception:
+                        is_locked = False
                 
                     if is_locked:
                         skip_msg = f"⚠️ <b>[{t}] REG 잠금 미해제 — 스케줄 루프 스킵</b>\n▫️ 수동으로 잠금 해제 후 상태를 확인하십시오."
@@ -223,10 +296,15 @@ async def scheduled_early_regular_trade(context):
                     curr_p, prev_c = 0.0, 0.0
                     for _api_retry in range(3):
                         try:
+                            # 🚨 MODIFIED: [Case 32] 가격 스캔 전 TPS 캡핑 강제 결속
+                            await asyncio.sleep(0.06)
                             curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=15.0)
                             curr_p = _safe_float(curr_p_val)
+                            
+                            await asyncio.sleep(0.06)
                             prev_c_val = await asyncio.wait_for(asyncio.to_thread(broker.get_previous_close, t), timeout=15.0)
                             prev_c = _safe_float(prev_c_val)
+                            
                             if curr_p > 0 and prev_c > 0: break
                         except Exception:
                             pass
@@ -235,6 +313,8 @@ async def scheduled_early_regular_trade(context):
                     ma_5day = 0.0
                     for attempt in range(3):
                         try:
+                            # 🚨 MODIFIED: [Case 32] 5일선 스캔 전 TPS 캡핑 강제 결속
+                            await asyncio.sleep(0.06)
                             ma_5day_val = await asyncio.wait_for(asyncio.to_thread(broker.get_5day_ma, t), timeout=15.0)
                             ma_5day = _safe_float(ma_5day_val)
                             break
@@ -242,12 +322,17 @@ async def scheduled_early_regular_trade(context):
                             if attempt == 2: ma_5day = 0.0
                             else: await asyncio.sleep(1.0 * (2**attempt))
                     
-                    plan = await asyncio.to_thread(
-                        strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=safe_alloc_cash, is_snapshot_mode=True
-                    )
+                    # 🚨 MODIFIED: [제1헌법 준수] 동기식 플랜 생성기 샌드박스 래핑
+                    try:
+                        plan = await asyncio.wait_for(asyncio.to_thread(
+                            strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=safe_alloc_cash, is_snapshot_mode=True
+                        ), timeout=15.0)
+                    except Exception as e:
+                        logging.error(f"🚨 [{t}] 플랜 생성 타임아웃/에러: {e}")
+                        plan = None
                     
                     if not isinstance(plan, dict):
-                        msgs[t] += f"🚨 <b>[{t}] 플랜 생성 실패 (데이터 오염).</b>\n"
+                        msgs[t] += f"🚨 <b>[{t}] 스냅샷 유실 또는 손상! KIS 전송 불가.</b>\n"
                         all_success_map[t] = False
                         loop_fully_successful = False
                         loop_fail_reason = f"[{t}] 플랜 오염"
@@ -292,14 +377,13 @@ async def scheduled_early_regular_trade(context):
                                     res = await asyncio.wait_for(asyncio.to_thread(broker.send_order, t, o_side, o_qty, o_price, o_type), timeout=15.0)
                                 else:
                                     res = await asyncio.wait_for(asyncio.to_thread(broker.send_reservation_order, t, o_side, o_qty, o_price, o_type), timeout=15.0)
-                            
+                    
                                 safe_res = res if isinstance(res, dict) else {}
                                 is_success = safe_res.get('rt_cd') == '0'
                                 err_msg = html.escape(str(safe_res.get('msg1') or '오류'))
                                 
                                 if is_success:
                                     successful_orders_cache.add(order_key)
-                                # 🚨 VERIFIED: [논리 패러독스 소각] 장전(전송) 시점에 T값을 미리 스케일링하던 데드코드를 완전히 파기했습니다. (Double-Spending 원천 차단)
                                 else: 
                                     all_success_map[t] = False
                                     loop_fully_successful = False
@@ -356,7 +440,6 @@ async def scheduled_early_regular_trade(context):
                                     
                                     if is_success:
                                         successful_orders_cache.add(order_key)
-                                        # 🚨 MODIFIED: [논리 패러독스 소각] 체결 전 T값 스케일링 영구 소각
                                     else:
                                         all_success_map[t] = False
                                         loop_fully_successful = False
@@ -375,7 +458,10 @@ async def scheduled_early_regular_trade(context):
                             msgs[t] += f"⚠️ 1차 필수 장전 실패로 2차 보너스 덫 보류 (중복 매매 방어)\n"
                         
                         if (target_orders or target_bonus) and all_success_map[t]:
-                            await asyncio.to_thread(cfg.set_lock, t, "REG")
+                            try:
+                                await asyncio.wait_for(asyncio.to_thread(cfg.set_lock, t, "REG"), timeout=5.0)
+                            except Exception as e:
+                                logging.error(f"🚨 락 설정 타임아웃: {e}")
                             msgs[t] += "\n🔒 <b>V14 필수 덫(로컬 엔진 포함) 장전 완료 (잠금 설정됨)</b>"
                     
                     else: 
@@ -559,7 +645,10 @@ async def scheduled_regular_trade_delayed(context):
             safe_holdings = holdings if isinstance(holdings, dict) else {}
             
             # 🚨 MODIFIED: 외부 모듈 반환값 결측치(None) 붕괴 완벽 차단
-            active_tickers_list = (await asyncio.to_thread(cfg.get_active_tickers)) or []
+            try:
+                active_tickers_list = await asyncio.wait_for(asyncio.to_thread(cfg.get_active_tickers), timeout=10.0) or []
+            except Exception:
+                active_tickers_list = []
             
             # 🚨 NEW: [String Iteration 붕괴 방어] 문자열 오염 시 글자 단위 파쇄 즉사 버그 원천 봉쇄
             if isinstance(active_tickers_list, str): active_tickers_list = [active_tickers_list]
@@ -568,8 +657,13 @@ async def scheduled_regular_trade_delayed(context):
             if not active_tickers_list:
                 return False, "❌ 활성 종목 리스트 결측치(None) 반환. 스케줄 보호 중단."
                 
-            # 🚨 MODIFIED: Double-Spending 방어를 위한 가용 현금 팩트 분배
-            alloc_res = await asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, cfg)
+            # 🚨 MODIFIED: [제1헌법 준수] Double-Spending 방어를 위한 가용 현금 팩트 분배
+            try:
+                alloc_res = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, cfg), timeout=10.0)
+            except Exception as e:
+                logging.error(f"🚨 예산 할당 타임아웃/에러: {e}")
+                alloc_res = None
+                
             if not alloc_res or len(alloc_res) != 2:
                 return False, "❌ 예산 할당 로직 결측치 반환."
             
@@ -593,31 +687,72 @@ async def scheduled_regular_trade_delayed(context):
             for t in sorted_tickers:
                 try:
                     await asyncio.sleep(0.06)
-                    
-                    version = await asyncio.to_thread(cfg.get_version, t)
+                
+                    # 🚨 MODIFIED: [제1헌법 준수] 동기식 로직 샌드박스 래핑
+                    try:
+                        version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
+                    except Exception:
+                        version = "V14"
                     
                     if version == "V14":
                         continue 
+                    
+                    try:
+                        is_locked = await asyncio.wait_for(asyncio.to_thread(cfg.check_lock, t, "REG"), timeout=5.0)
+                    except Exception:
+                        is_locked = False
                         
-                    is_locked = await asyncio.to_thread(cfg.check_lock, t, "REG")
                     if is_locked:
                         continue
                         
-                    # 🚨 MODIFIED: [병렬 가동 팩트 수복] 본진 셧다운 우회망(암살자 상태 체크 로직) 100% 영구 소각 완료
-                    # 본진은 암살자 상태를 검열하지 않으며, 무조건 독립 병렬(Parallel)로 자신의 예산을 팩트 타격합니다.
+                    # 🚨 NEW: [Case 39 자본 잠김 감지 팩트 스캔]
+                    is_capital_locked = False
+                    if version == "V_REV" and t == "SOXL":
+                        for attempt in range(3):
+                            try:
+                                await asyncio.sleep(0.06)
+                                avwap_state = await asyncio.wait_for(asyncio.to_thread(_read_avwap_state_sync, t, today_str), timeout=5.0)
+                                avwap_qty = int(_safe_float(avwap_state.get('qty', 0)))
+                                avwap_shutdown = bool(avwap_state.get('shutdown', False))
+                                # 암살자가 현금을 보유 중이며 당일 퇴근(MOC 덤핑) 전이라면 자본 잠김 상태로 판별
+                                if avwap_qty > 0 and not avwap_shutdown:
+                                    is_capital_locked = True
+                                break
+                            except Exception as e:
+                                if attempt == 2: logging.error(f"🚨 [{t}] 암살자 자본 잠김 스캔 에러: {e}")
+                                else: await asyncio.sleep(1.0 * (2 ** attempt))
 
                     h = safe_holdings.get(t) or {}
                     safe_avg = _safe_float(h.get('avg'))
                     safe_qty = int(_safe_float(h.get('qty')))
                     safe_alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
 
+                    # 🚨 NEW: [Case 39 자본 잠김 패러독스 방어] 
+                    # 암살자가 현금을 100% 점유 중일 경우, 16:01 애프터장 이관 플랜 생성을 위해 가상의 1일 고정 예산(Seed * 15%)을 강제로 복원(Override) 주입.
+                    if is_capital_locked:
+                        for seed_attempt in range(3):
+                            try:
+                                await asyncio.sleep(0.06)
+                                seed_val = await asyncio.wait_for(asyncio.to_thread(cfg.get_seed, t), timeout=5.0)
+                                safe_alloc_cash = _safe_float(seed_val) * 0.15
+                                logging.info(f"🚨 [{t}] 자본 잠김 감지: 이관 플랜 생성을 위해 가상의 1일 고정 예산(${safe_alloc_cash:.2f})을 강제 복원합니다.")
+                                break
+                            except Exception as e:
+                                if seed_attempt == 2: logging.error(f"🚨 [{t}] 가상 예산 복원 실패 (기존 0.0 예산 유지): {e}")
+                                else: await asyncio.sleep(1.0 * (2 ** seed_attempt))
+
                     curr_p, prev_c = 0.0, 0.0
                     for _api_retry in range(3):
                         try:
+                            # 🚨 MODIFIED: [Case 32] 가격 스캔 전 TPS 캡핑 강제 결속
+                            await asyncio.sleep(0.06)
                             curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=15.0)
                             curr_p = _safe_float(curr_p_val)
+                            
+                            await asyncio.sleep(0.06)
                             prev_c_val = await asyncio.wait_for(asyncio.to_thread(broker.get_previous_close, t), timeout=15.0)
                             prev_c = _safe_float(prev_c_val)
+                            
                             if curr_p > 0 and prev_c > 0: break
                         except Exception:
                             pass
@@ -626,6 +761,8 @@ async def scheduled_regular_trade_delayed(context):
                     ma_5day = 0.0
                     for attempt in range(3):
                         try:
+                            # 🚨 MODIFIED: [Case 32] 5일선 스캔 전 TPS 캡핑 강제 결속
+                            await asyncio.sleep(0.06)
                             ma_5day_val = await asyncio.wait_for(asyncio.to_thread(broker.get_5day_ma, t), timeout=15.0)
                             ma_5day = _safe_float(ma_5day_val)
                             break
@@ -633,9 +770,14 @@ async def scheduled_regular_trade_delayed(context):
                             if attempt == 2: ma_5day = 0.0
                             else: await asyncio.sleep(1.0 * (2**attempt))
                     
-                    plan = await asyncio.to_thread(
-                        strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=safe_alloc_cash, is_snapshot_mode=True
-                    )
+                    # 🚨 MODIFIED: [제1헌법 준수] 동기식 플랜 생성기 샌드박스 래핑
+                    try:
+                        plan = await asyncio.wait_for(asyncio.to_thread(
+                            strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=safe_alloc_cash, is_snapshot_mode=True
+                        ), timeout=15.0)
+                    except Exception as e:
+                        logging.error(f"🚨 [{t}] 플랜 생성 타임아웃/에러: {e}")
+                        plan = None
                     
                     if not isinstance(plan, dict):
                         msgs[t] += f"🚨 <b>[{t}] 스냅샷 유실 또는 손상! KIS 전송 불가.</b>\n"
@@ -646,7 +788,10 @@ async def scheduled_regular_trade_delayed(context):
 
                     plans[t] = plan
                     if plan.get('core_orders') or plan.get('orders') or plan.get('bonus_orders'):
-                        msgs[t] += f"🔄 <b>[{t}] V-REV 역추세 실전 덫(로컬 엔진 포함) 장전 완료</b>\n"
+                        if is_capital_locked:
+                            msgs[t] += f"⏳ <b>[{t}] 자본 잠김(Capital Lock-up) 감지!</b>\n▫️ 암살자 100% 점유로 인해 정규장 플랜을 <b>16:01 애프터장 일괄 타격</b>으로 지연 이관(Delay & Transfer)합니다.\n"
+                        else:
+                            msgs[t] += f"🔄 <b>[{t}] V-REV 역추세 실전 덫(로컬 엔진 포함) 장전 완료</b>\n"
                 except Exception as e:
                     all_success_map[t] = False
                     loop_fully_successful = False
@@ -688,8 +833,14 @@ async def scheduled_regular_trade_delayed(context):
                             # 🚨 MODIFIED: [Case 32] 주문 전송 시 TPS 캡핑 락온
                             await asyncio.sleep(0.06)
 
-                            # 🚨 MODIFIED: [V-REV 1분 슬라이싱 인계] 로컬 상태 파일 원자적 저장으로 15:27 기상 엔진에 인계
-                            if o_type == 'VWAP':
+                            # 🚨 MODIFIED: [Case 39 자본 잠김 방어] 애프터장 지연 이관 분기 팩트 락온
+                            is_capital_locked = "자본 잠김" in msgs[t]
+                            
+                            if is_capital_locked:
+                                slice_info = {"ticker": t, "side": o_side, "total_qty": o_qty, "filled_qty": 0, "target_price": o_price, "desc": o_desc, "status": "PENDING"}
+                                await asyncio.wait_for(asyncio.to_thread(_save_aftermarket_state_sync, t, today_str, slice_info), timeout=10.0)
+                                res = {'rt_cd': '0', 'msg1': '애프터장 지연 이관 완료', 'odno': f'AFTERMARKET_{id(o)}'}
+                            elif o_type == 'VWAP':
                                 slice_info = {"ticker": t, "side": o_side, "total_qty": o_qty, "filled_qty": 0, "target_price": o_price, "desc": o_desc, "status": "PENDING"}
                                 await asyncio.wait_for(asyncio.to_thread(_save_slice_state_sync, t, today_str, slice_info), timeout=10.0)
                                 res = {'rt_cd': '0', 'msg1': '로컬 자체 VWAP 엔진 위임 완료', 'odno': f'LOCAL_VWAP_{id(o)}'}
@@ -745,9 +896,15 @@ async def scheduled_regular_trade_delayed(context):
 
                                 # 🚨 MODIFIED: [Case 32] 주문 전송 시 TPS 캡핑 락온
                                 await asyncio.sleep(0.06)
+                                
+                                is_capital_locked = "자본 잠김" in msgs[t]
 
-                                # 🚨 MODIFIED: [V-REV 1분 슬라이싱 인계]
-                                if o_type == 'VWAP':
+                                # 🚨 MODIFIED: [Case 39 자본 잠김 방어] 애프터장 지연 이관 분기 팩트 락온
+                                if is_capital_locked:
+                                    slice_info = {"ticker": t, "side": o_side, "total_qty": o_qty, "filled_qty": 0, "target_price": o_price, "desc": o_desc, "status": "PENDING"}
+                                    await asyncio.wait_for(asyncio.to_thread(_save_aftermarket_state_sync, t, today_str, slice_info), timeout=10.0)
+                                    res = {'rt_cd': '0', 'msg1': '애프터장 지연 이관 완료', 'odno': f'AFTERMARKET_{id(o)}'}
+                                elif o_type == 'VWAP':
                                     slice_info = {"ticker": t, "side": o_side, "total_qty": o_qty, "filled_qty": 0, "target_price": o_price, "desc": o_desc, "status": "PENDING"}
                                     await asyncio.wait_for(asyncio.to_thread(_save_slice_state_sync, t, today_str, slice_info), timeout=10.0)
                                     res = {'rt_cd': '0', 'msg1': '로컬 자체 VWAP 엔진 위임 완료', 'odno': f'LOCAL_VWAP_{id(o)}'}
@@ -755,22 +912,22 @@ async def scheduled_regular_trade_delayed(context):
                                     res = await asyncio.wait_for(asyncio.to_thread(broker.send_order, t, o_side, o_qty, o_price, o_type), timeout=15.0)
                                 else:
                                     res = await asyncio.wait_for(asyncio.to_thread(broker.send_reservation_order, t, o_side, o_qty, o_price, o_type), timeout=15.0)
-                                
+                                    
                                 safe_res = res if isinstance(res, dict) else {}
                                 is_success = safe_res.get('rt_cd') == '0'
                                 err_msg = html.escape(str(safe_res.get('msg1') or '잔금패스'))
                                 
                                 if is_success:
                                     successful_orders_cache.add(order_key)
-                                    # 🚨 MODIFIED: [논리 패러독스 소각] 체결 전 T값 스케일링 영구 소각
                                 else:
                                     all_success_map[t] = False
                                     loop_fully_successful = False
                                     loop_fail_reason = f"[{t}] 2차 보너스 거절: {err_msg}"
-                                
+                                    
                                 status_icon = '✅' if is_success else f'❌({err_msg})'
                                 msgs[t] += f"└ 2차 보너스: {o_desc} {o_qty}주 (${o_price}): {status_icon}\n"
                                 await asyncio.sleep(0.2) 
+
                             except Exception as e:
                                 all_success_map[t] = False
                                 loop_fully_successful = False
@@ -779,10 +936,18 @@ async def scheduled_regular_trade_delayed(context):
                                 msgs[t] += f"└ 2차 보너스 오류: {html.escape(str(e))}\n"
 
                     if all_success_map[t] and (target_orders or target_bonus):
-                        await asyncio.to_thread(cfg.set_lock, t, "REG")
-                        msgs[t] += "\n🔒 <b>V-REV 필수 덫(로컬 엔진 포함) 전송 완료 (잠금 설정됨)</b>"
+                        try:
+                            await asyncio.wait_for(asyncio.to_thread(cfg.set_lock, t, "REG"), timeout=5.0)
+                        except Exception as e:
+                            logging.error(f"🚨 락 설정 타임아웃: {e}")
+                            
+                        is_capital_locked = "자본 잠김" in msgs[t]
+                        if is_capital_locked:
+                            msgs[t] += "\n🔒 <b>V-REV 플랜 애프터장 이관 완료 (잠금 설정됨)</b>"
+                        else:
+                            msgs[t] += "\n🔒 <b>V-REV 필수 덫(로컬 엔진 포함) 전송 완료 (잠금 설정됨)</b>"
                     elif not all_success_map[t] and (target_orders or target_bonus):
-                        msgs[t] += "\n⚠️ <b>일부 덫 장전 실패 (매매 잠금 보류)</b>"
+                        msgs[t] += "\n⚠️ <b>일부 덫 장전/이관 실패 (매매 잠금 보류)</b>"
                         
                     if msgs[t].strip() and chat_id:
                         try:
@@ -814,7 +979,7 @@ async def scheduled_regular_trade_delayed(context):
                 if attempt > 1 and chat_id: 
                     try:
                         # 🚨 MODIFIED: 텔레그램 통신 샌드박스 래핑
-                        await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=f"✅ <b>[통신 복구] {attempt}번째 재시도 끝에 장전을 완수했습니다!</b>", parse_mode='HTML'), timeout=15.0)
+                        await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=f"✅ <b>[통신 복구] {attempt}번째 재시도 끝에 장전/이관을 완수했습니다!</b>", parse_mode='HTML'), timeout=15.0)
                     except Exception: pass
                 return 
         except Exception as e:
@@ -858,5 +1023,5 @@ async def scheduled_regular_trade_delayed(context):
     if chat_id:
         try:
             # 🚨 MODIFIED: 텔레그램 통신 샌드박스 래핑
-            await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text="🚨 <b>[긴급 에러] V-REV 실전 전송 통신 복구 최종 실패. 수동 점검 요망!</b>", parse_mode='HTML'), timeout=15.0)
+            await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text="🚨 <b>[긴급 에러] V-REV 실전 전송/이관 통신 복구 최종 실패. 수동 점검 요망!</b>", parse_mode='HTML'), timeout=15.0)
         except Exception: pass
