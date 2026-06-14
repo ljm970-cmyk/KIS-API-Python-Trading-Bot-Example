@@ -4,7 +4,7 @@
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 MODIFIED: [Phase 3 암살자 선택권 복구] get_settlement_message 내 암살자 상태(is_avwap_hybrid) 동적 렌더링(ON/OFF) 및 토글 버튼 100% 수복 완료.
 # 🚨 MODIFIED: [UI 텍스트 맹독성 하드코딩 소각] 과거 암살자/스캘퍼 실전 매매 시절의 환영(Ghost Text) 및 복잡한 HA 휩소 상태 전이 텍스트 전면 파기.
-# 🚨 MODIFIED: [순수 리버전 팩트 롤오버] '세션 VWAP -3% 매수', '+2% 전량 익절', '15:59 강제 덤핑' 팩트를 시스템 UI 전역에 100% 동기화 교체.
+# 🚨 MODIFIED: [순수 리버전 팩트 롤오버] '세션 VWAP -2% 매수' 및 '가용 현금 100% 올인', '+2% 전량 익절', '15:59 강제 덤핑' 팩트를 시스템 UI 전역에 100% 동기화 교체 완료.
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
 # 🚨 MODIFIED: [Python 딕셔너리 평가 맹독성 수술] dict.get(key, default)에서 값이 None일 때 default가 무시되고 None이 반환되어 _safe_float(None) -> 0.0 으로 오염되는 치명적 버그를 `or default` 단락 평가로 완벽 교정.
 # 🚨 MODIFIED: [마크다운 리스트 붕괴 방어] 텍스트 내 숫자 리스트(1., 2.)를 이모지(1️⃣, 2️⃣)로 100% 치환하여 텔레그램 파서 안전성 극대화.
@@ -230,13 +230,14 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
+    # 🚨 MODIFIED: [타점 롤오버] 암살자 -3% 타점을 -2% 팩트로 교정 완료
     def get_avwap_warning_menu(self, ticker):
         safe_t = html.escape(str(ticker))
         msg = f"👁️ <b>[{safe_t} 순수 리버전 데이 트레이딩 관제탑 가동 승인]</b>\n\n"
         msg += "⚠️ <b>[ 수동 제어 및 팻핑거 뇌관 100% 소각 완료 ]</b>\n"
         msg += "과거의 복잡했던 휩소 방어(HA 컨펌) 및 수동 목표가/수익률 설정 로직은 시스템 전역에서 영구 소각되었습니다.\n\n"
         msg += "본 모드는 <b>수학적 팩트</b>에 기반한 <b>순수 리버전 (1-Shot 1-Kill)</b> 아키텍처로 자동 가동됩니다.\n\n"
-        msg += "▫️ <b>타점:</b> 각 세션별(프리장/정규장) 당일 순수 누적 VWAP <b>-3%</b> 하향 관통 시 즉시 예산 전액 지정가 진입\n"
+        msg += "▫️ <b>타점:</b> 각 세션별(프리장/정규장) 당일 순수 누적 VWAP <b>-2%</b> 하향 관통 시 즉시 예산 전액 지정가 진입\n"
         msg += "▫️ <b>익절:</b> 진입 평단가 기준 <b>+2%</b> 지정가 전량 매도망 100% 자동 장전\n"
         msg += "▫️ <b>방어:</b> 15:59 EST 도달 시 미체결 덫 취소 및 최유리 지정가(-5%) <b>강제 덤핑 (제로-오버나이트)</b>\n\n"
         msg += "포트폴리오 매니저의 관제탑 가동 승인을 대기합니다."
@@ -524,6 +525,7 @@ class TelegramView:
 
         return final_msg, InlineKeyboardMarkup(keyboard) if keyboard else None
 
+    # 🚨 MODIFIED: [타점 롤오버] 암살자 -3% 매수 및 85% 배정에서 -2% 팩트 매수 및 가용 예산 100% 올인으로 UI 동기화 완료
     def get_settlement_message(self, active_tickers, config, atr_data, tracking_cache=None):
         msg = ""
         keyboard = []
@@ -560,14 +562,14 @@ class TelegramView:
             msg += f"{icon} <b>{safe_t} ({ver_display} 모드)</b>\n"
             
             if ver == "V_REV":
-                # 🚨 MODIFIED: [Phase 3 암살자 선택권 복구] 암살자 ON/OFF 상태 동적 표출
-                avwap_status = "🟢 ON (85% 배정)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
+                # 🚨 MODIFIED: [Phase 3 암살자 1-Shot 1-Kill 스키마 UI 팩트 교정]
+                avwap_status = "🟢 ON (주문가능금액 100% 올인)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
                 
                 msg += f"▫️ 본진 예산: 총 시드의 15% (고정 할당)\n▫️ 본진 목표: [가상1층]+0.6% / [상위층]+0.5%\n▫️ 자동복리: {comp_rate}% | 수수료: <b>{fee_rate}%</b>\n▫️ 갭 스위칭: <b>🤖 자율주행 (상승장 자동 가동)</b>\n"
                 msg += f"▫️ 암살자 타격망: <b>{avwap_status}</b>\n"
                 
                 if is_avwap_hybrid:
-                    msg += f"▫️ 암살자 타점: <b>세션 VWAP -3% (1-Shot 1-Kill)</b>\n"
+                    msg += f"▫️ 암살자 타점: <b>세션 VWAP -2% (1-Shot 1-Kill)</b>\n"
                     msg += f"▫️ 암살자 익절: <b>+2% 지정가 전량 익절 (절대 락온)</b>\n"
                     msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 전량 최유리 지정가 덤핑</b>\n"
                 
