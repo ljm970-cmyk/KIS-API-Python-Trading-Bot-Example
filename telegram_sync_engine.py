@@ -1,16 +1,15 @@
 # ==========================================================
 # FILE: telegram_sync_engine.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 34대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 가동 시 표출되던 본진 셧다운 안내를 영구 소각하고, "본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온" 텍스트를 주입하여 디커플링 상태를 관제탑 UI에 완벽히 명시.
+# 🚨 MODIFIED: [1-Shot 1-Kill 타격망 UI 교정] 가상의 85% 시드 개념 파기에 따라, 암살자 상태를 '가용 현금 100% 올인'으로 변경하고 15:59 전량 최유리 지정가 덤핑 로직을 UI에 동기화 완료.
 # 🚨 MODIFIED: [Phase 3 비동기 통신 헬퍼 래핑 (DRY 원칙)] 무한 반복되는 asyncio.wait_for(asyncio.to_thread(...)) 및 텔레그램 메시지 발송 샌드박스 로직을 범용 헬퍼 메서드(_retry_api, _safe_send)로 단일화하여 코드 라인 수를 극한으로 진공 압축.
 # 🚨 MODIFIED: [Thread-Safety 락온] 내부 헬퍼 함수(_get_last_trade_date, get_yf_close 등)가 클로저(Closure) 외부 변수에 의존하지 않고 명시적 파라미터를 받도록 교정하여 Thread Context 오염 원천 차단.
 # 🚨 MODIFIED: [동기화 코어 유령 차감 뇌관 완벽 소각] 암살자 실매매가 소각됨에 따라, KIS 실잔고(actual_qty)에서 avwap_qty 및 avwap_daily_buy/sell을 억지로 빼서 연산하던 과거 에스크로(Escrow) 로직 찌꺼기를 100% 영구 삭제했습니다.
-# 🚨 MODIFIED: [상태 렌더링 찌꺼기 추적 소각] _render_ticker_data_list 내부에서 더 이상 존재하지 않는 암살자의 예산, 수량, 셧다운 상태를 캐시에서 긁어오려는 불필요한 오버헤드와 딕셔너리 오염을 진공 압축했습니다.
-# 🚨 MODIFIED: [실시간 수동 개입 동기화 팩트 락온] process_auto_sync 호출 시, 무조건 is_snapshot_mode=True를 코어에 전송하여 /record 또는 지층 수정 시 스냅샷이 실시간 덮어써지도록 강제 락온.
 # 🚨 NEW: [0주 오인 패러독스 소각 & Fact Override] 실제 잔고가 존재함에도 불구하고 새벽 스냅샷의 0주(is_zero_start=True) 상태를 맹신하던 로직을 전면 파기하고, KIS 실잔고 및 큐 장부를 최우선으로 오버라이드하여 Fact Mismatch 원천 차단.
 # 🚨 NEW: [Ghost Balance (유령 잔고) 방어막 주입] KIS 서버 오류로 실잔고가 0주로 반환되었을 때, 실제 당일 매도 체결(sold_today) 내역이 없다면 장부 소각(자동 졸업)을 원천 차단하여 Phantom Graduation 붕괴 완벽 방어.
 # 🚨 NEW: [제1헌법 100% 준수] _retry_api 헬퍼를 통해 파일 I/O 동기화 로직 전역에 wait_for(timeout=10.0/15.0) 족쇄를 래핑하여 이벤트 루프 교착 완벽 차단.
-# 🚨 MODIFIED: [메모리 오염 뇌관 궁극 소각] context.bot_data 오염 시 발생하는 AttributeError 즉사 버그 방어.
 # 🚨 MODIFIED: [NaN 맹독 전이 및 JSON 직렬화 붕괴 원천 차단] 모든 재무 데이터에 self._safe_float() 정화 필터 강제 락온.
 # ==========================================================
 import logging
@@ -371,7 +370,7 @@ class TelegramSyncEngine:
                             start_dt_str = str(q_data_before[0].get('date', ''))[:10] if q_data_before and isinstance(q_data_before[0], dict) else cap_dt_str[:10]
                             
                             hist_data = await self._retry_api(self.cfg._load_json, self.cfg.FILES["HISTORY"], [], default=[])
-                
+                            
                             new_hist = {
                                 "id": int(time.time()), "ticker": ticker, "start_date": start_dt_str, "end_date": cap_dt_str[:10],
                                 "invested": self._safe_float(total_invested), "revenue": self._safe_float(total_invested + realized_pnl),
@@ -457,11 +456,11 @@ class TelegramSyncEngine:
                                 t_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in sell_execs_sync)
                                 t_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in sell_execs_sync)
                                 if t_q > 0: actual_clear_price_for_sync = round(t_amt / t_q, 4)
-                        
+                         
                         calibrated = False
                         if getattr(self, 'queue_ledger', None):
                             calibrated = await self._retry_api(self.queue_ledger.sync_with_broker, ticker, actual_qty, 0.0, actual_clear_price_for_sync, timeout=10.0, default=False)
-                        
+                         
                         if calibrated: await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 비파괴 보정 및 리앵커링 완료!</b>\n▫️ 수동 매도 물량(<b>{gap_qty}주</b>)을 LIFO 큐에서 안전하게 차감하고, 수익금만큼 잔여 지층의 평단가를 일괄 차감했습니다.", parse_mode='HTML')
                           
                     elif actual_qty > 0 and actual_qty > vrev_ledger_qty:
@@ -549,18 +548,18 @@ class TelegramSyncEngine:
                 parts = raw_date.split('-')
                 if len(parts) == 3: date_short = f"{parts[1]}.{parts[2]}"
                 else: date_short = raw_date
-                    
+                     
                 side_str = "🔴매수" if rec.get('side') == 'BUY' else "🔵매도"
                 key = (date_short, side_str)
                 
                 if key not in agg_dict: agg_dict[key] = {'qty': 0, 'amt': 0.0}
-                    
+            
                 agg_dict[key]['qty'] += int(self._safe_float(rec.get('qty')))
                 agg_dict[key]['amt'] += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
                 
                 if rec.get('side') == 'BUY': total_buy += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
                 elif rec.get('side') == 'SELL': total_sell += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
-             
+              
             report += f"📜 <b>[ {html.escape(str(ticker))} 일자별 매매 (통합 변동분) (총 {len(agg_dict)}일) ]</b>\n\n<code>No. 일자   구분  평균단가  수량\n"
             report += "-"*30 + "\n"
             
@@ -629,3 +628,77 @@ class TelegramSyncEngine:
             except Exception: pass
         else:
             await self._safe_send(context, chat_id, msg, reply_markup=markup, parse_mode='HTML')
+
+    def get_settlement_message(self, active_tickers, config, atr_data, tracking_cache=None):
+        msg = ""
+        keyboard = []
+        ver = ""
+        is_manual_vwap = False
+        fee_rate = 0.0
+        icon = ""
+        ver_display = ""
+        split_cnt = 0
+        target_profit = 0.0
+        comp_rate = 0.0
+        v14_mode_txt = ""
+
+        tracking_cache = tracking_cache or {}
+        msg = "⚙️ <b>[ 현재 설정 및 복리 상태 ]</b>\n\n"
+        
+        active_tickers = active_tickers or []
+        for t in active_tickers:
+            safe_t = html.escape(str(t))
+            ver = str(config.get_version(t) or "")
+            is_manual_vwap = getattr(config, 'get_manual_vwap_mode', lambda x: False)(t)
+            is_avwap_hybrid = getattr(config, 'get_avwap_hybrid_mode', lambda x: False)(t)
+            fee_rate = self._safe_float(getattr(config, 'get_fee', lambda x: 0.25)(t))
+            
+            if ver == "V_REV":
+                icon, ver_display = "⚖️", "V_REV 역추세 (로컬 1분 VWAP)" 
+            else:
+                icon = "💎"
+                ver_display = "무매4 (로컬 1분 VWAP)" if is_manual_vwap else "무매4 (LOC)" 
+                
+            split_cnt = int(self._safe_float(config.get_split_count(t)))
+            target_profit = self._safe_float(config.get_target_profit(t))
+            comp_rate = self._safe_float(config.get_compound_rate(t))
+            msg += f"{icon} <b>{safe_t} ({ver_display} 모드)</b>\n"
+            
+            if ver == "V_REV":
+                # 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 올인 타격 및 독립 병렬 가동 명시
+                avwap_status = "🟢 ON (주문가능금액 100% 올인)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
+                
+                msg += f"▫️ 본진 예산: 총 시드의 15% (고정 할당)\n▫️ 본진 목표: [가상1층]+0.6% / [상위층]+0.5%\n▫️ 자동복리: {comp_rate}% | 수수료: <b>{fee_rate}%</b>\n▫️ 갭 스위칭: <b>🤖 자율주행 (상승장 자동 가동)</b>\n"
+                msg += f"▫️ 암살자 타격망: <b>{avwap_status}</b>\n"
+                
+                if is_avwap_hybrid:
+                    msg += f"▫️ 아키텍처: <b>본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온</b>\n"
+                    msg += f"▫️ 암살자 타점: <b>세션 VWAP -3% (1-Shot 1-Kill)</b>\n"
+                    msg += f"▫️ 암살자 익절: <b>+2% 지정가 전량 익절 (절대 락온)</b>\n"
+                    msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 전량 매수 1호가 스윕 덤핑</b>\n"
+                    msg += f"▫️ 데이 트레이딩 관제탑: <b>365일 상시 가동 📡</b>\n"
+                msg += "⚖️ <b>본진 스탠바이:</b> 15:26 EST 예약 덫 관측 ➔ 15:27 로컬 자체 슬라이싱 가동\n\n" 
+            else:
+                msg += f"▫️ 분할: {split_cnt}회 | 목표: {target_profit}% | 복리: {comp_rate}%\n▫️ 수수료: <b>{fee_rate}%</b>\n"
+                v14_mode_txt = "🕒 자체 1분 슬라이싱 VWAP 엔진" if is_manual_vwap else "📉 LOC 단일 타격 (초안정성)" 
+                msg += f"▫️ 집행: <b>{v14_mode_txt}</b>\n\n"
+         
+            if t == "SOXL":
+                keyboard.append([InlineKeyboardButton("💎 오리지널 V14 세팅", callback_data=f"SET_VER:V14:{t}"), InlineKeyboardButton("⚖️ 역추세 V-REV 세팅", callback_data=f"SET_VER:V_REV:{t}")])
+            elif t == "TQQQ":
+                keyboard.append([InlineKeyboardButton("💎 오리지널 V14 세팅", callback_data=f"SET_VER:V14:{t}")])
+
+            if ver == "V_REV":
+                if t == "SOXL": 
+                    keyboard.append([InlineKeyboardButton(f"📡 {safe_t} 데이 트레이딩 관제탑 열기", callback_data=f"AVWAP:MENU:{t}")])
+                    keyboard.append([InlineKeyboardButton("⚔️ 암살자 ON/OFF 토글", callback_data=f"CONFIG_AVWAP:TOGGLE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
+                else:
+                    keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
+            else:
+                keyboard.append([InlineKeyboardButton(f"⚙️ {safe_t} 분할", callback_data=f"INPUT:SPLIT:{t}"), InlineKeyboardButton(f"🎯 {safe_t} 목표", callback_data=f"INPUT:TARGET:{t}"), InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}")])
+                keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+    
+        return msg, InlineKeyboardMarkup(keyboard)

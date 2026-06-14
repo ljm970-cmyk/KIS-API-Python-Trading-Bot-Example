@@ -2,7 +2,9 @@
 # FILE: scheduler_regular.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [시나리오 1~3 절대 통제망 이식] 15:27 EST 기상 시, 암살자가 이미 진입하여 교전 중(qty > 0)이거나 +2% 익절로 당일 임무를 완수(shutdown=True)했을 경우 본진(15% 예산)의 V-REV 1분 슬라이싱 엔진 가동을 전면 취소(Bypass)하는 뮤텍스 락온.
+# 🚨 MODIFIED: [병렬 가동 아키텍처 궁극 수복] 암살자 교전/당일완수(shutdown) 시 본진 15% 1분 슬라이싱 엔진을 강제로 셧다운(Bypass)하던 "시나리오 1~3 절대 통제망" 데드코드를 전면 영구 소각 완료. 본진은 365일 무중단 가동됩니다.
+# 🚨 MODIFIED: [불필요한 I/O 오버헤드 진공 압축] 본진 셧다운이 파기됨에 따라 더 이상 필요 없어진 `is_avwap_hybrid` 상태 조회 및 `avwap_trade_state` 파일 스캔 로직을 100% 제거하여 런타임 성능 극대화.
+# 🚨 MODIFIED: [유령 마비(Phantom Paralysis) 궁극 수술] V-REV 본진 병렬 가동 시, 예산(Cash)과 현재가가 0.0으로 주입되어 매매가 마비되던 치명적 맹점을 스캔하고 실시간 KIS 잔고/단가 추출 파이프라인 100% 복원 완료.
 # 🚨 MODIFIED: [State Mismatch 붕괴 방어] 1분 슬라이싱 섀도우 엔진(scheduler_vwap)과의 파일명 및 JSON 데이터 구조(Dict) 100% 팩트 일치화 수술 완료.
 # 🚨 MODIFIED: [Jitter 타임라인 역전 붕괴 수술] 15:27 슬라이싱 엔진 가동 전 무조건 파일 I/O 인계를 마치도록 V-REV 본진 지터 상한을 180초에서 45초로 진공 압축 락온.
 # 🚨 MODIFIED: [V-REV 자체 VWAP 1분 슬라이싱 엔진 이식] 기존 KIS 증권사 알고리즘 위임 로직을 시스템 전역에서 영구 소각하고, 로컬 스케줄러 기반 자체 슬라이싱 엔진으로 인계하는 원자적 쓰기 파이프라인 100% 팩트 락온.
@@ -11,8 +13,6 @@
 # 🚨 MODIFIED: [Case 14 절대 헌법 준수] is_market_open 비동기 호출 타임아웃 10.0초 하드코딩 완료.
 # 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식 및 math 붕괴 원천 봉쇄.
 # 🚨 MODIFIED: [Case 19 부분 실패 이중 장전 패러독스 방어] 기장전된 덫은 API 통신 전면 바이패스 및 캐시 락온 결속.
-# 🚨 VERIFIED: [논리 패러독스(Phantom Execution) 영구 소각] 장전(전송) 성공 시점에 T값을 미리 스케일링하던 치명적 오류를 시스템 전역에서 파기하여 Double-Spending 원천 차단.
-# 🚨 MODIFIED: [Case 11 절대 락온] 암살자 스캔 샌드박스 로직에 `t == "SOXL"`을 강제 결속하여 타 종목 오염 원천 차단.
 # 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
 # ==========================================================
 import logging
@@ -299,7 +299,7 @@ async def scheduled_early_regular_trade(context):
                                 
                                 if is_success:
                                     successful_orders_cache.add(order_key)
-                                    # 🚨 VERIFIED: [논리 패러독스 소각] 장전(전송) 시점에 T값을 미리 스케일링하던 데드코드를 완전히 파기했습니다. (Double-Spending 원천 차단)
+                                # 🚨 VERIFIED: [논리 패러독스 소각] 장전(전송) 시점에 T값을 미리 스케일링하던 데드코드를 완전히 파기했습니다. (Double-Spending 원천 차단)
                                 else: 
                                     all_success_map[t] = False
                                     loop_fully_successful = False
@@ -540,7 +540,25 @@ async def scheduled_regular_trade_delayed(context):
 
     async def _do_delayed_trade():
         async with tx_lock:
-            # 🚨 MODIFIED: [최후의 맹점 수술] 외부 모듈 반환값 결측치(None) 붕괴 완벽 차단
+            # 🚨 MODIFIED: [Phantom Paralysis (유령 마비) 붕괴 전면 수술] 실제 KIS 잔고 및 단가를 추출하여 예산(Cash) 0.0 주입 버그 원천 봉쇄
+            cash, holdings = 0.0, None
+            for attempt in range(3):
+                try:
+                    await asyncio.sleep(0.06)
+                    res = await asyncio.wait_for(asyncio.to_thread(broker.get_account_balance), timeout=15.0)
+                    cash = _safe_float(res[0]) if isinstance(res, (list, tuple)) and len(res) > 0 else 0.0
+                    holdings = res[1] if isinstance(res, (list, tuple)) and len(res) > 1 else {}
+                    break
+                except Exception as e:
+                    if attempt == 2: return False, f"잔고 조회 오류: {html.escape(str(e))}"
+                    else: await asyncio.sleep(1.0 * (2 ** attempt))
+            
+            if holdings is None:
+                return False, "❌ 계좌 정보를 불러오지 못했습니다."
+            
+            safe_holdings = holdings if isinstance(holdings, dict) else {}
+            
+            # 🚨 MODIFIED: 외부 모듈 반환값 결측치(None) 붕괴 완벽 차단
             active_tickers_list = (await asyncio.to_thread(cfg.get_active_tickers)) or []
             
             # 🚨 NEW: [String Iteration 붕괴 방어] 문자열 오염 시 글자 단위 파쇄 즉사 버그 원천 봉쇄
@@ -550,9 +568,18 @@ async def scheduled_regular_trade_delayed(context):
             if not active_tickers_list:
                 return False, "❌ 활성 종목 리스트 결측치(None) 반환. 스케줄 보호 중단."
                 
+            # 🚨 MODIFIED: Double-Spending 방어를 위한 가용 현금 팩트 분배
+            alloc_res = await asyncio.to_thread(get_budget_allocation, cash, active_tickers_list, cfg)
+            if not alloc_res or len(alloc_res) != 2:
+                return False, "❌ 예산 할당 로직 결측치 반환."
+            
+            sorted_tickers, allocated_cash = alloc_res
+            sorted_tickers = sorted_tickers or []
+            allocated_cash = allocated_cash or {}
+            
             plans = {}
-            msgs = {t: "" for t in active_tickers_list}
-            all_success_map = {t: True for t in active_tickers_list}
+            msgs = {t: "" for t in sorted_tickers}
+            all_success_map = {t: True for t in sorted_tickers}
             
             loop_fully_successful = True
             loop_fail_reason = ""
@@ -563,18 +590,12 @@ async def scheduled_regular_trade_delayed(context):
             
             is_market_active_now = True # 15:26 EST is REGULAR session
 
-            for t in active_tickers_list:
+            for t in sorted_tickers:
                 try:
                     await asyncio.sleep(0.06)
                     
                     version = await asyncio.to_thread(cfg.get_version, t)
                     
-                    # 🚨 NEW: [Phantom Paralysis (유령 마비) 영구 소각] 암살자 모드 활성화 여부 확인 팩트 주입
-                    try:
-                        is_avwap_hybrid = await asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
-                    except Exception:
-                        is_avwap_hybrid = False
-
                     if version == "V14":
                         continue 
                         
@@ -582,32 +603,38 @@ async def scheduled_regular_trade_delayed(context):
                     if is_locked:
                         continue
                         
-                    # 🚨 MODIFIED: [시나리오 1~3 절대 통제망 팩트] 암살자 교전/당일완수 스캔 및 본진 셧다운 (디커플링 샌드박스 주입)
-                    # 🚨 MODIFIED: [Case 11 절대 락온] 타 종목 오염 방어용 SOXL 종목 통제망 락온
-                    if version == "V_REV" and is_avwap_hybrid and t == "SOXL":
-                        avwap_state_file = f"data/avwap_trade_state_{t}.json"
-                        avwap_state = {}
+                    # 🚨 MODIFIED: [병렬 가동 팩트 수복] 본진 셧다운 우회망(암살자 상태 체크 로직) 100% 영구 소각 완료
+                    # 본진은 암살자 상태를 검열하지 않으며, 무조건 독립 병렬(Parallel)로 자신의 예산을 팩트 타격합니다.
+
+                    h = safe_holdings.get(t) or {}
+                    safe_avg = _safe_float(h.get('avg'))
+                    safe_qty = int(_safe_float(h.get('qty')))
+                    safe_alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
+
+                    curr_p, prev_c = 0.0, 0.0
+                    for _api_retry in range(3):
                         try:
-                            def _read_avwap():
-                                with open(avwap_state_file, 'r', encoding='utf-8') as f:
-                                    return json.load(f)
-                            avwap_state = await asyncio.wait_for(asyncio.to_thread(_read_avwap), timeout=5.0)
+                            curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=15.0)
+                            curr_p = _safe_float(curr_p_val)
+                            prev_c_val = await asyncio.wait_for(asyncio.to_thread(broker.get_previous_close, t), timeout=15.0)
+                            prev_c = _safe_float(prev_c_val)
+                            if curr_p > 0 and prev_c > 0: break
                         except Exception:
                             pass
-                        
-                        if isinstance(avwap_state, dict):
-                            avwap_qty = int(_safe_float(avwap_state.get('qty', 0)))
-                            is_shutdown = bool(avwap_state.get('shutdown', False))
-                            
-                            # 🚨 암살자가 교전 중이거나 당일 임무 완수(+2% 익절) 상태일 때 본진 셧다운 (시나리오 2, 3)
-                            if avwap_qty > 0 or is_shutdown:
-                                logging.info(f"🛑 [{t}] 암살자 교전/당일완수 팩트 감지. 15:26 EST 본진 플랜 생성 및 덫 장전을 전면 바이패스(Bypass)합니다.")
-                                msgs[t] += f"🛑 <b>[{html.escape(str(t))}] 본진 스탠바이 영구 취소 (디커플링 팩트)</b>\n▫️ 암살자(aVWAP) 교전 상태(보유) 또는 당일 임무 완수로 인해 본진 매매망을 셧다운(Bypass)합니다.\n"
-                                all_success_map[t] = True
-                                continue
+                        await asyncio.sleep(1.0 * (2**_api_retry))
+
+                    ma_5day = 0.0
+                    for attempt in range(3):
+                        try:
+                            ma_5day_val = await asyncio.wait_for(asyncio.to_thread(broker.get_5day_ma, t), timeout=15.0)
+                            ma_5day = _safe_float(ma_5day_val)
+                            break
+                        except Exception: 
+                            if attempt == 2: ma_5day = 0.0
+                            else: await asyncio.sleep(1.0 * (2**attempt))
                     
                     plan = await asyncio.to_thread(
-                        strategy.get_plan, t, 0.0, 0.0, 0, 0.0, ma_5day=0.0, market_type="REG", available_cash=0.0, is_snapshot_mode=False
+                        strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=safe_alloc_cash, is_snapshot_mode=True
                     )
                     
                     if not isinstance(plan, dict):
@@ -627,7 +654,7 @@ async def scheduled_regular_trade_delayed(context):
                     logging.error(f"🚨 [{t}] delayed_trade 플랜 조회 오류: {e}")
                     msgs[t] += f"🚨 <b>[{t}] 플랜 조회 중 에러 발생</b>\n"
 
-            for t in active_tickers_list:
+            for t in sorted_tickers:
                 try:
                     # 🚨 NEW: [UI 렌더링 증발 맹점 소각] 바이패스(Bypass)된 종목이라도 텔레그램 셧다운 통보는 무조건 전송하도록 분리 배선 락온
                     if t not in plans:

@@ -2,16 +2,16 @@
 # FILE: scheduler_vwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [Phase 3 암살자 디커플링 통제] 15:26/15:27 EST 기상 시, 암살자가 교전 중(qty > 0)이거나 당일 임무 완수(shutdown=True) 상태를 스캔하여 본진(15% 예산) 슬라이싱을 100% 전면 취소(Bypass)하는 뮤텍스망 이식.
-# 🚨 MODIFIED: [하프-바이패스 영구 소각] 암살자 손절 시 매수(BUY)만 차단하던 하프-바이패스 찌꺼기를 영구 소각하고, 1-Shot 1-Kill 전략에 맞춰 모 아니면 도(전체 실행 OR 전체 셧다운) 구조로 진공 압축.
-# 🚨 MODIFIED: [V-REV 엔진 독립(Decoupling) 락온] AVWAP_BOUGHT 등 레거시 상태 의존성을 100% 삭제하고 순수 상태 파일(avwap_trade_state) 연동으로 교체.
+# 🚨 MODIFIED: [병렬 가동 아키텍처 궁극 수복] 암살자(aVWAP) 교전 중이거나 당일 임무 완수 상태일 때 본진 슬라이싱 엔진을 강제로 셧다운(Bypass)시키던 구시대적 뇌관 블록을 전면 영구 소각 완료. 본진은 암살자를 무시하고 365일 독립 타격합니다.
+# 🚨 MODIFIED: [불필요한 I/O 오버헤드 진공 압축] 본진 셧다운 파기로 인해 더 이상 필요 없어진 `avwap_trade_state_SOXL.json` 동기화 로드 및 검열 데드코드를 전면 삭제하여 1분 슬라이싱 엔진의 런타임 성능을 극대화.
+# 🚨 MODIFIED: [하프-바이패스 영구 소각] 암살자 손절 시 매수(BUY)만 차단하던 하프-바이패스 찌꺼기를 영구 소각.
+# 🚨 MODIFIED: [V-REV 엔진 독립(Decoupling) 락온] AVWAP_BOUGHT 등 레거시 상태 의존성을 100% 삭제.
 # 🚨 MODIFIED: [제1헌법 절대 준수] 로컬 상태 파일 I/O 및 달력 API, Config 조회, 큐 장부 연산 전역에 asyncio.wait_for 타임아웃 족쇄를 강제하여 Deadlock 원천 차단.
 # 🚨 MODIFIED: [Case 32 & 33 절대 규칙] Gap Hijack 및 1분 슬라이싱 덫 조회/취소/전송 전역에 3단 지수 백오프와 TPS 캡핑(0.06s) 100% 샌드위치 락온.
 # 🚨 NEW: [무덤핑 정밀 요격 사수] 목표가 미충족 시 1주도 사지 않는 관망세 유지 및 15:57 클린업 페이즈 시 강제 덤핑(Dumping) 로직 전면 소각.
 # 🚨 NEW: [V-REV 일시불 요격 패러독스 방어] 0주 새출발 매수처럼 목표가가 현재가 대비 +2%를 초과하여 터무니없이 높을 경우, 전량 스윕(Sweep)을 강제 해제하고 정상적인 1분 슬라이싱 궤도로 복구 락온.
 # 🚨 NEW: [Ghost-Dumping 붕괴 방어] 1분 슬라이싱 매도(SELL) 타격 직전에 KIS 실잔고를 스캔하여 매도 수량을 정밀 캡핑(`min(qty, rt_qty)`). 주문가능수량 초과 리젝 원천 차단.
 # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] 갭 하이재킹 판별을 위한 기초지수 VWAP 연산 시, ffill/bfill 래핑을 강제하여 NaN 전이(Math Collapse) 원천 차단.
-# 🚨 MODIFIED: [SOXL 절대 락온] 타 종목(TQQQ 등)이 암살자 통제망에 오염되어 억울하게 셧다운되는 현상을 막기 위해, 암살자 스캔 로직에 `t == "SOXL"` 강제 결속 완료.
 # 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
 # 🚨 NEW: [Time Paradox 팩트 교정] KIS 원장 조회를 위한 KST 팩트 주입. EST 기준으로 체결 내역 조회 시 발생하던 무한 대기 버그 원천 소각.
 # ==========================================================
@@ -171,31 +171,10 @@ async def scheduled_vwap_init_and_cancel(context):
                     
                     version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                     is_manual_vwap = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_manual_vwap_mode', lambda x: False), t), timeout=5.0)
-                    is_avwap_hybrid = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
                     
                     if version == "V_REV" or (version == "V14" and is_manual_vwap):
-                        # 🚨 MODIFIED: [SOXL 절대 락온] 타 종목(TQQQ 등) 오염 원천 차단
-                        if version == "V_REV" and is_avwap_hybrid and t == "SOXL":
-                            avwap_state = await asyncio.wait_for(asyncio.to_thread(_read_json_sync, f"data/avwap_trade_state_{t}.json"), timeout=5.0)
-                            avwap_qty = int(_safe_float(avwap_state.get('qty', 0)))
-                            avwap_shutdown = bool(avwap_state.get('shutdown', False))
-                            
-                            # 🚨 [시나리오 1~3 절대 통제망] 암살자 교전/당일완수 시 본진 100% 셧다운
-                            if avwap_qty > 0 or avwap_shutdown:
-                                if not vwap_cache.get(f"REV_{t}_avwap_init_nuked"):
-                                    msg = f"🛑 <b>[{html.escape(str(t))}] 본진 스탠바이 영구 취소 (디커플링 팩트)</b>\n"
-                                    msg += f"▫️ 암살자(aVWAP)가 이미 진입하여 교전 중이거나 당일 임무를 완수했습니다.\n"
-                                    msg += f"▫️ 자금 충돌 방지를 위해 본진의 V-REV 1분 슬라이싱 가동을 전면 취소(Shutdown)합니다."
-                                    vwap_cache[f"REV_{t}_avwap_init_nuked"] = True
-                                    if chat_id:
-                                        # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신 샌드박스 래핑
-                                        try:
-                                            await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML', disable_notification=True), timeout=15.0)
-                                            await asyncio.sleep(1.0)
-                                        except Exception as e:
-                                            logging.error(f"🚨 디커플링 취소 알림 실패: {e}")
-                                continue
-
+                        # 🚨 MODIFIED: [병렬 가동 아키텍처 수복] 암살자 교전 상태 검사 및 본진 강제 셧다운 뇌관 100% 영구 소각 완료
+                        
                         if not vwap_cache.get(f"REV_{t}_nuked"):
                             msg = f"🌅 <b>[{html.escape(str(t))}] 자체 1분 슬라이싱 VWAP 엔진 / Gap Hijack 섀도우 관측망 기상</b>\n"
                             msg += f"▫️ KIS 예약 덫 관망 및 장 마감 34분 전 로컬 펄스 타격 엔진의 가동 대기를 확인했습니다.\n"
@@ -352,29 +331,12 @@ async def scheduled_vwap_trade(context):
                     
                     version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                     is_manual_vwap = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_manual_vwap_mode', lambda x: False), t), timeout=5.0)
-                    is_avwap_hybrid = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
 
                     if version == "V_REV" or (version == "V14" and is_manual_vwap):
                         slice_file = f"data/vrev_slice_state_{t}.json"
                         
-                        # 🚨 Phase 3 암살자 디커플링 통제망 락온
-                        # 🚨 MODIFIED: [SOXL 절대 락온] 타 종목(TQQQ 등) 오염 원천 차단
-                        if version == "V_REV" and is_avwap_hybrid and t == "SOXL":
-                            avwap_state = await asyncio.wait_for(asyncio.to_thread(_read_json_sync, f"data/avwap_trade_state_{t}.json"), timeout=5.0)
-                            avwap_qty = int(_safe_float(avwap_state.get('qty', 0)))
-                            avwap_shutdown = bool(avwap_state.get('shutdown', False))
-                            
-                            # 🚨 [시나리오 1~3 절대 통제망] 암살자 교전/당일완수 시 본진 100% 셧다운 (Half-Bypass 소각)
-                            if avwap_qty > 0 or avwap_shutdown:
-                                if not vwap_cache.get(f"REV_{t}_avwap_shutdown_notified"):
-                                    logging.info(f"🛑 [{t}] 암살자 교전/당일완수 팩트 확인. 본진 1분 슬라이싱 엔진 전면 셧다운(Bypass).")
-                                    if chat_id:
-                                        # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신 샌드박스 래핑
-                                        try:
-                                            await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=f"🛑 <b>[{html.escape(t)}] 본진 셧다운 (디커플링 통제)</b>\n▫️ 암살자가 교전 중이거나 당일 임무를 완수했습니다.\n▫️ 타임라인 교차 패러독스 방지를 위해 본진의 1분 슬라이싱 엔진을 전면 취소(Shutdown)합니다.", parse_mode='HTML'), timeout=15.0)
-                                        except Exception: pass
-                                    vwap_cache[f"REV_{t}_avwap_shutdown_notified"] = True
-                                continue
+                        # 🚨 MODIFIED: [병렬 가동 아키텍처 수복] 암살자 교전 상태 스캔 및 본진 강제 셧다운 데드코드를 전면 소각 완료.
+                        # 본진 슬라이싱 루프는 암살자를 무시하고 15% 독립 예산으로 독자 가동됩니다.
 
                         # ======================================================
                         # [ 1. Gap Hijack (갭 하이재킹) 모니터링 ]
@@ -403,203 +365,203 @@ async def scheduled_vwap_trade(context):
                                         if 'time_est' in df_b.columns:
                                             df_b = df_b[(df_b['time_est'] >= '093000') & (df_b['time_est'] <= '155900')]
                                             
-                                            if not df_b.empty:
-                                                # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] ffill 강제 락온
-                                                df_b['high'] = df_b['high'].ffill().bfill()
-                                                df_b['low'] = df_b['low'].ffill().bfill()
-                                                df_b['close'] = df_b['close'].ffill().bfill()
-                                                df_b['volume'] = df_b['volume'].ffill().bfill().fillna(0)
+                                        if not df_b.empty:
+                                            # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] ffill 강제 락온
+                                            df_b['high'] = df_b['high'].ffill().bfill()
+                                            df_b['low'] = df_b['low'].ffill().bfill()
+                                            df_b['close'] = df_b['close'].ffill().bfill()
+                                            df_b['volume'] = df_b['volume'].ffill().bfill().fillna(0)
 
-                                                df_b['tp'] = (df_b['high'].astype(float) + df_b['low'].astype(float) + df_b['close'].astype(float)) / 3.0
-                                                df_b['vol'] = df_b['volume'].astype(float)
-                                                df_b['vol_tp'] = df_b['tp'] * df_b['vol']
+                                            df_b['tp'] = (df_b['high'].astype(float) + df_b['low'].astype(float) + df_b['close'].astype(float)) / 3.0
+                                            df_b['vol'] = df_b['volume'].astype(float)
+                                            df_b['vol_tp'] = df_b['tp'] * df_b['vol']
+                                            
+                                            c_vol = df_b['vol'].sum()
+                                            base_vwap = df_b['vol_tp'].sum() / c_vol if c_vol > 0 else base_curr_p
+                                            
+                                            gap_pct = ((base_curr_p - base_vwap) / base_vwap * 100.0) if base_vwap > 0 else 0.0
+                                            gap_thresh = _safe_float(await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_vrev_gap_threshold', lambda x: -0.67), t), timeout=5.0))
+                                            
+                                            if gap_pct <= gap_thresh:
+                                                logging.info(f"⚡ [{t}] Gap Hijack Triggered! gap: {gap_pct:.2f}%, thresh: {gap_thresh}%")
+                                                nuked_count = 0
                                                 
-                                                c_vol = df_b['vol'].sum()
-                                                base_vwap = df_b['vol_tp'].sum() / c_vol if c_vol > 0 else base_curr_p
-                                                
-                                                gap_pct = ((base_curr_p - base_vwap) / base_vwap * 100.0) if base_vwap > 0 else 0.0
-                                                gap_thresh = _safe_float(await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_vrev_gap_threshold', lambda x: -0.67), t), timeout=5.0))
-                                                
-                                                if gap_pct <= gap_thresh:
-                                                    logging.info(f"⚡ [{t}] Gap Hijack Triggered! gap: {gap_pct:.2f}%, thresh: {gap_thresh}%")
-                                                    nuked_count = 0
-                                                   
-                                                    try:
-                                                        est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
-                                                        d_str = est_now.strftime('%Y%m%d')
+                                                try:
+                                                    est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
+                                                    d_str = est_now.strftime('%Y%m%d')
+                                                    
+                                                    resv_orders = []
+                                                    for r_attempt in range(3):
+                                                        try:
+                                                            await asyncio.sleep(0.06)
+                                                            resv_orders = await asyncio.wait_for(asyncio.to_thread(broker.get_reservation_orders, t, d_str, d_str), timeout=15.0)
+                                                            break
+                                                        except Exception as e:
+                                                            if r_attempt == 2: logging.error(f"🚨 [{t}] 예약 덫 조회 에러: {e}")
+                                                            else: await asyncio.sleep(1.0 * (2 ** r_attempt))
+                                                    
+                                                    safe_resv_orders = resv_orders if isinstance(resv_orders, list) else []
+                                                    for req in safe_resv_orders:
+                                                        if not isinstance(req, dict): continue
                                                         
-                                                        resv_orders = []
-                                                        for r_attempt in range(3):
-                                                            try:
-                                                                await asyncio.sleep(0.06)
-                                                                resv_orders = await asyncio.wait_for(asyncio.to_thread(broker.get_reservation_orders, t, d_str, d_str), timeout=15.0)
-                                                                break
-                                                            except Exception as e:
-                                                                if r_attempt == 2: logging.error(f"🚨 [{t}] 예약 덫 조회 에러: {e}")
-                                                                else: await asyncio.sleep(1.0 * (2 ** r_attempt))
+                                                        # 🚨 MODIFIED: [맹점 3 수술] SELL 구출망 생존 락온 (예약 주문)
+                                                        side_cd = str(req.get('sll_buy_dvsn_cd') or req.get('sll_buy_dvsn') or '')
+                                                        if side_cd == '01': 
+                                                            continue 
                                                         
-                                                        safe_resv_orders = resv_orders if isinstance(resv_orders, list) else []
-                                                        for req in safe_resv_orders:
-                                                            if not isinstance(req, dict): continue
-                                                            
-                                                            # 🚨 MODIFIED: [맹점 3 수술] SELL 구출망 생존 락온 (예약 주문)
-                                                            side_cd = str(req.get('sll_buy_dvsn_cd') or req.get('sll_buy_dvsn') or '')
-                                                            if side_cd == '01': 
-                                                                continue 
+                                                        odno = str(req.get('ovrs_rsvn_odno') or req.get('odno') or '')
+                                                        ord_dt = str(req.get('rsvn_ord_rcit_dt') or req.get('ord_dt') or d_str)
+                                                        if odno:
+                                                            for c_attempt in range(3):
+                                                                try:
+                                                                    await asyncio.sleep(0.06)
+                                                                    await asyncio.wait_for(asyncio.to_thread(broker.cancel_reservation_order, ord_dt, odno), timeout=10.0)
+                                                                    nuked_count += 1
+                                                                    await asyncio.sleep(0.2)
+                                                                    break
+                                                                except Exception as e:
+                                                                    if c_attempt == 2: logging.error(f"🚨 [{t}] 예약 덫 취소 실패: {e}")
+                                                                    else: await asyncio.sleep(1.0 * (2 ** c_attempt))
                                                                 
-                                                            odno = str(req.get('ovrs_rsvn_odno') or req.get('odno') or '')
-                                                            ord_dt = str(req.get('rsvn_ord_rcit_dt') or req.get('ord_dt') or d_str)
-                                                            if odno:
+                                                    unfilled = []
+                                                    for u_attempt in range(3):
+                                                        try:
+                                                            await asyncio.sleep(0.06)
+                                                            unfilled = await asyncio.wait_for(asyncio.to_thread(broker.get_unfilled_orders_detail, t), timeout=15.0)
+                                                            break
+                                                        except Exception as e:
+                                                            if u_attempt == 2: logging.error(f"🚨 [{t}] 일반 덫 조회 에러: {e}")
+                                                            else: await asyncio.sleep(1.0 * (2 ** u_attempt))
+                                                            
+                                                    safe_unfilled = unfilled if isinstance(unfilled, list) else []
+                                                    for uo in safe_unfilled:
+                                                        if not isinstance(uo, dict): continue
+                                                        
+                                                        # 🚨 MODIFIED: [맹점 3 수술] SELL 구출망 생존 락온 (일반 미체결 주문)
+                                                        side_cd = str(uo.get('sll_buy_dvsn_cd') or uo.get('sll_buy_dvsn') or '')
+                                                        if side_cd == '01': 
+                                                            continue
+                                                        
+                                                        dvsn = str(uo.get('ord_dvsn_cd') or uo.get('ord_dvsn') or '').strip().zfill(2)
+                                                        if dvsn in ['36', '00']:
+                                                            u_odno = str(uo.get('odno') or '')
+                                                            if u_odno:
                                                                 for c_attempt in range(3):
                                                                     try:
                                                                         await asyncio.sleep(0.06)
-                                                                        await asyncio.wait_for(asyncio.to_thread(broker.cancel_reservation_order, ord_dt, odno), timeout=10.0)
+                                                                        await asyncio.wait_for(asyncio.to_thread(broker.cancel_order, t, u_odno), timeout=10.0)
                                                                         nuked_count += 1
                                                                         await asyncio.sleep(0.2)
                                                                         break
                                                                     except Exception as e:
-                                                                        if c_attempt == 2: logging.error(f"🚨 [{t}] 예약 덫 취소 실패: {e}")
+                                                                        if c_attempt == 2: logging.error(f"🚨 [{t}] 일반 덫(VWAP/LOC) 취소 실패: {e}")
                                                                         else: await asyncio.sleep(1.0 * (2 ** c_attempt))
-                                                                    
-                                                        unfilled = []
-                                                        for u_attempt in range(3):
-                                                            try:
-                                                                await asyncio.sleep(0.06)
-                                                                unfilled = await asyncio.wait_for(asyncio.to_thread(broker.get_unfilled_orders_detail, t), timeout=15.0)
-                                                                break
-                                                            except Exception as e:
-                                                                if u_attempt == 2: logging.error(f"🚨 [{t}] 일반 덫 조회 에러: {e}")
-                                                                else: await asyncio.sleep(1.0 * (2 ** u_attempt))
-                                                                
-                                                        safe_unfilled = unfilled if isinstance(unfilled, list) else []
-                                                        for uo in safe_unfilled:
-                                                            if not isinstance(uo, dict): continue
-                                                            
-                                                            # 🚨 MODIFIED: [맹점 3 수술] SELL 구출망 생존 락온 (일반 미체결 주문)
-                                                            side_cd = str(uo.get('sll_buy_dvsn_cd') or uo.get('sll_buy_dvsn') or '')
-                                                            if side_cd == '01': 
-                                                                continue
-                                                            
-                                                            dvsn = str(uo.get('ord_dvsn_cd') or uo.get('ord_dvsn') or '').strip().zfill(2)
-                                                            if dvsn in ['36', '00']:
-                                                                u_odno = str(uo.get('odno') or '')
-                                                                if u_odno:
-                                                                    for c_attempt in range(3):
-                                                                        try:
-                                                                            await asyncio.sleep(0.06)
-                                                                            await asyncio.wait_for(asyncio.to_thread(broker.cancel_order, t, u_odno), timeout=10.0)
-                                                                            nuked_count += 1
-                                                                            await asyncio.sleep(0.2)
-                                                                            break
-                                                                        except Exception as e:
-                                                                            if c_attempt == 2: logging.error(f"🚨 [{t}] 일반 덫(VWAP/LOC) 취소 실패: {e}")
-                                                                            else: await asyncio.sleep(1.0 * (2 ** c_attempt))
-                                                        
-                                                        logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 매수(BUY) 덫 {nuked_count}건 팩트 파기 완료 (SELL 구출망 보존).")
-                                                    except Exception as e:
-                                                        logging.error(f"🚨 [{t}] KIS 실원장 덫 스캔 에러: {e}")
+                                                    
+                                                    logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 매수(BUY) 덫 {nuked_count}건 팩트 파기 완료 (SELL 구출망 보존).")
+                                                except Exception as e:
+                                                    logging.error(f"🚨 [{t}] KIS 실원장 덫 스캔 에러: {e}")
 
-                                                    try:
-                                                        s_state = await asyncio.wait_for(asyncio.to_thread(_read_json_sync, slice_file), timeout=5.0)
-                                                        s_state['hijacked'] = True
-                                                        await asyncio.wait_for(asyncio.to_thread(_atomic_write_json_sync, slice_file, s_state), timeout=5.0)
-                                                        logging.info(f"⚡ [{t}] 로컬 1분 슬라이싱 엔진 무효화 (hijacked) 마킹 완료.")
-                                                    except Exception as e:
-                                                        logging.error(f"🚨 [{t}] 로컬 슬라이스 무효화 처리 에러: {e}")
+                                                try:
+                                                    s_state = await asyncio.wait_for(asyncio.to_thread(_read_json_sync, slice_file), timeout=5.0)
+                                                    s_state['hijacked'] = True
+                                                    await asyncio.wait_for(asyncio.to_thread(_atomic_write_json_sync, slice_file, s_state), timeout=5.0)
+                                                    logging.info(f"⚡ [{t}] 로컬 1분 슬라이싱 엔진 무효화 (hijacked) 마킹 완료.")
+                                                except Exception as e:
+                                                    logging.error(f"🚨 [{t}] 로컬 슬라이스 무효화 처리 에러: {e}")
 
-                                                    await asyncio.sleep(2.0)
+                                                await asyncio.sleep(2.0)
     
-                                                    seed = await asyncio.wait_for(asyncio.to_thread(cfg.get_seed, t), timeout=5.0)
-                                                    daily_limit = _safe_float(seed) * 0.15
-                                                    alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
-                                                    safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
-                                                    
-                                                    total_spent = 0.0
-                                                    if hasattr(strategy, 'v_rev_plugin'):
-                                                        spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
-                                                        safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
-                                                        total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
-                                                    
-                                                    rem_budget = max(0.0, safe_alloc_cash - total_spent)
+                                                seed = await asyncio.wait_for(asyncio.to_thread(cfg.get_seed, t), timeout=5.0)
+                                                daily_limit = _safe_float(seed) * 0.15
+                                                alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
+                                                safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
+                                                
+                                                total_spent = 0.0
+                                                if hasattr(strategy, 'v_rev_plugin'):
+                                                    spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
+                                                    safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                                    total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                                                
+                                                rem_budget = max(0.0, safe_alloc_cash - total_spent)
 
-                                                    for retry_ask in range(3):
-                                                        try:
-                                                            await asyncio.sleep(0.06)
-                                                            ask_price_val = await asyncio.wait_for(asyncio.to_thread(broker.get_ask_price, t), timeout=10.0)
-                                                            ask_price = _safe_float(ask_price_val)
-                                                            break
-                                                        except Exception:
-                                                            if retry_ask == 2: ask_price = 0.0
-                                                            else: await asyncio.sleep(1.0 * (2 ** retry_ask))
-                                                 
-                                                    for retry_curr in range(3):
-                                                        try:
-                                                            await asyncio.sleep(0.06)
-                                                            curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=10.0)
-                                                            curr_p = _safe_float(curr_p_val)
-                                                            break
-                                                        except Exception:
-                                                            if retry_curr == 2: curr_p = 0.0
-                                                            else: await asyncio.sleep(1.0 * (2 ** retry_curr))
-                                                            
-                                                    exec_price = ask_price if ask_price > 0 else curr_p
-                                                    buy_qty = int(math.floor(rem_budget / exec_price)) if exec_price > 0 else 0
-                                                    
-                                                    if buy_qty > 0:
-                                                        res = None
-                                                        for s_attempt in range(3):
-                                                            try:
-                                                                await asyncio.sleep(0.06)
-                                                                res = await asyncio.wait_for(
-                                                                    asyncio.to_thread(broker.send_order, t, "BUY", buy_qty, exec_price, "LIMIT"),
-                                                                    timeout=15.0
-                                                                )
-                                                                break
-                                                            except Exception as e:
-                                                                if s_attempt == 2:
-                                                                    logging.error(f"🚨 [{t}] V-REV 갭 하이재킹 KIS 통신 에러: {e}")
-                                                                    res = None
-                                                                else:
-                                                                    await asyncio.sleep(1.0 * (2 ** s_attempt))
-                                                    
-                                                        safe_res = res if isinstance(res, dict) else {}
-                                                        odno = str(safe_res.get('odno') or '')
+                                                for retry_ask in range(3):
+                                                    try:
+                                                        await asyncio.sleep(0.06)
+                                                        ask_price_val = await asyncio.wait_for(asyncio.to_thread(broker.get_ask_price, t), timeout=10.0)
+                                                        ask_price = _safe_float(ask_price_val)
+                                                        break
+                                                    except Exception:
+                                                        if retry_ask == 2: ask_price = 0.0
+                                                        else: await asyncio.sleep(1.0 * (2 ** retry_ask))
+                                                
+                                                for retry_curr in range(3):
+                                                    try:
+                                                        await asyncio.sleep(0.06)
+                                                        curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=10.0)
+                                                        curr_p = _safe_float(curr_p_val)
+                                                        break
+                                                    except Exception:
+                                                        if retry_curr == 2: curr_p = 0.0
+                                                        else: await asyncio.sleep(1.0 * (2 ** retry_curr))
                                                         
-                                                        if safe_res.get('rt_cd') == '0' and odno:
-                                                            vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
-                                                            is_hijacked_now = True
-                                                            
-                                                            msg = f"⚡ <b>[{html.escape(str(t))}] 🤖 모멘텀 자율주행 (Gap Hijack) 섀도우 오버라이드 격발!</b>\n"
-                                                            msg += f"▫️ 기초자산({html.escape(str(base_tkr))}) VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
-                                                            msg += f"▫️ KIS 예약/미체결 매수 덫({nuked_count}건) 파기 및 로컬 엔진 스톱 후, 잔여 예산 100%를 매도 1호가로 일괄 스윕(Sweep) 타격했습니다!\n"
-                                                            msg += f"▫️ 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
-                                                            if chat_id:
-                                                                # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신 샌드박스 래핑
-                                                                try:
-                                                                    await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML'), timeout=15.0)
-                                                                except Exception: pass
-                                                            
-                                                            if hasattr(strategy, 'v_rev_plugin'):
-                                                                await asyncio.wait_for(asyncio.to_thread(strategy.v_rev_plugin.record_execution, t, "BUY", buy_qty, exec_price), timeout=5.0)
-                                                            if queue_ledger:
-                                                                await asyncio.wait_for(asyncio.to_thread(queue_ledger.add_lot, t, buy_qty, exec_price, "GAP_HIJACK_BUY"), timeout=5.0)
-                                                        else:
-                                                            err_msg = html.escape(str(safe_res.get('msg1') or '응답 없음/통신 장애'))
-                                                            logging.error(f"🚨 [{t}] V-REV 갭 하이재킹 KIS 서버 거절: {err_msg}")
-                                                            reject_msg = (
-                                                                f"🚨 <b>[{html.escape(str(t))}] V-REV 갭 하이재킹 스윕(Sweep) 서버 거절 (Reject)!</b>\n"
-                                                                f"▫️ 사유: <code>{err_msg}</code>\n"
-                                                                f"▫️ 조치: 다음 스캔 시 재시도합니다."
+                                                exec_price = ask_price if ask_price > 0 else curr_p
+                                                buy_qty = int(math.floor(rem_budget / exec_price)) if exec_price > 0 else 0
+                                                
+                                                if buy_qty > 0:
+                                                    res = None
+                                                    for s_attempt in range(3):
+                                                        try:
+                                                            await asyncio.sleep(0.06)
+                                                            res = await asyncio.wait_for(
+                                                                asyncio.to_thread(broker.send_order, t, "BUY", buy_qty, exec_price, "LIMIT"),
+                                                                timeout=15.0
                                                             )
-                                                            if chat_id:
-                                                                # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신 샌드박스 래핑
-                                                                try:
-                                                                    await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=reject_msg, parse_mode='HTML'), timeout=15.0)
-                                                                except Exception: pass
-                                                    else:
+                                                            break
+                                                        except Exception as e:
+                                                            if s_attempt == 2:
+                                                                logging.error(f"🚨 [{t}] V-REV 갭 하이재킹 KIS 통신 에러: {e}")
+                                                                res = None
+                                                            else:
+                                                                await asyncio.sleep(1.0 * (2 ** s_attempt))
+                                                
+                                                    safe_res = res if isinstance(res, dict) else {}
+                                                    odno = str(safe_res.get('odno') or '')
+                                                    
+                                                    if safe_res.get('rt_cd') == '0' and odno:
                                                         vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                                         is_hijacked_now = True
-                                                        logging.info(f"⚡ [{t}] Gap Hijack 격발 조건을 만족했으나 잉여 예산 소진으로 스윕 매수 생략 (플래그 락온 완료).")
+                                                        
+                                                        msg = f"⚡ <b>[{html.escape(str(t))}] 🤖 모멘텀 자율주행 (Gap Hijack) 섀도우 오버라이드 격발!</b>\n"
+                                                        msg += f"▫️ 기초자산({html.escape(str(base_tkr))}) VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
+                                                        msg += f"▫️ KIS 예약/미체결 매수 덫({nuked_count}건) 파기 및 로컬 엔진 스톱 후, 잔여 예산 100%를 매도 1호가로 일괄 스윕(Sweep) 타격했습니다!\n"
+                                                        msg += f"▫️ 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
+                                                        if chat_id:
+                                                            # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신 샌드박스 래핑
+                                                            try:
+                                                                await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML'), timeout=15.0)
+                                                            except Exception: pass
+                                                        
+                                                        if hasattr(strategy, 'v_rev_plugin'):
+                                                            await asyncio.wait_for(asyncio.to_thread(strategy.v_rev_plugin.record_execution, t, "BUY", buy_qty, exec_price), timeout=5.0)
+                                                        if queue_ledger:
+                                                            await asyncio.wait_for(asyncio.to_thread(queue_ledger.add_lot, t, buy_qty, exec_price, "GAP_HIJACK_BUY"), timeout=5.0)
+                                                    else:
+                                                        err_msg = html.escape(str(safe_res.get('msg1') or '응답 없음/통신 장애'))
+                                                        logging.error(f"🚨 [{t}] V-REV 갭 하이재킹 KIS 서버 거절: {err_msg}")
+                                                        reject_msg = (
+                                                            f"🚨 <b>[{html.escape(str(t))}] V-REV 갭 하이재킹 스윕(Sweep) 서버 거절 (Reject)!</b>\n"
+                                                            f"▫️ 사유: <code>{err_msg}</code>\n"
+                                                            f"▫️ 조치: 다음 스캔 시 재시도합니다."
+                                                        )
+                                                        if chat_id:
+                                                            # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신 샌드박스 래핑
+                                                            try:
+                                                                await asyncio.wait_for(context.bot.send_message(chat_id=chat_id, text=reject_msg, parse_mode='HTML'), timeout=15.0)
+                                                            except Exception: pass
+                                                else:
+                                                    vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
+                                                    is_hijacked_now = True
+                                                    logging.info(f"⚡ [{t}] Gap Hijack 격발 조건을 만족했으나 잉여 예산 소진으로 스윕 매수 생략 (플래그 락온 완료).")
                                         break
                                 except Exception as e:
                                     if attempt == 2: logging.error(f"🚨 갭 스위칭 스캔 에러: {e}")
@@ -782,7 +744,7 @@ async def scheduled_vwap_trade(context):
                                         except Exception:
                                             if attempt == 2: exec_price = 0.0
                                             else: await asyncio.sleep(1.0 * (2 ** attempt))
-                                         
+                                            
                                 # 🚨 NEW: [무덤핑 정밀 요격 사수] 목표 타점 충족 시에만 100% 즉시 타격 (미충족 시 철저한 관망세)
                                 if target_price > 0.0:
                                     is_target_hit = False

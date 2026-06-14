@@ -2,15 +2,13 @@
 # FILE: telegram_avwap_console.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
+# 🚨 MODIFIED: [본진 무중단 병렬 가동 UI 수복 (타겟 5)] 15:59 강제 청산(MOC 덤핑) 시 본진 물량에 영향을 미칠 수 있다는 낡은 뉘앙스를 파기하고, "암살자 물량만 매수 1호가 스윕 덤핑 (결측시 -5% 폴백 / 본진 100% 격리)" 팩트를 UI에 강제 락온 완료.
 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 VWAP이 0.0으로 즉사하는 맹점을 차단하고, TWAP(시간가중평균단가)으로 즉각 폴백(Fallback)하는 수리적 방어망 결속.
 # 🚨 MODIFIED: [렌더링 팩트 조건 확장] 거래량이 없더라도 가격 틱(High)만 존재하면 관제탑 시야가 밝혀지도록 렌더링 조건을 `if pre_vwap > 0 or pre_high > 0:`으로 전면 상향 락온.
 # 🚨 MODIFIED: [제2헌법 준수] 사용되지 않는 유령 임포트(os, yfinance)를 정적 분석기의 관점에서 영구 소각하여 파일 응집도 극대화.
-# 🚨 MODIFIED: [AttributeError 궁극 수술] config.py에서 영구 삭제된 암살자 수동 타겟팅(KRW/PCT) 설정 호출 데드코드를 전면 소각하여 렌더링 즉사(모든 지표 0.0 표출) 버그 완벽 차단.
 # 🚨 MODIFIED: [순수 리버전 +2% 익절 팩트 락온] 과거의 복잡한 환율 및 수수료 역산 스키마를 소각하고, 코어 엔진과 100% 동일한 진입가(+2%) 기반 하드코딩 익절 타점 명시.
-# 🚨 MODIFIED: [Phase 2 관제탑 인텔리전스 동적 렌더링 팩트 교정] 암살자 ON/OFF(is_avwap_hybrid) 상태에 따라 관제탑 텍스트가 동적으로 변환되도록 UI 렌더링 로직을 전면 수술.
 # 🚨 MODIFIED: [UX 패러독스 원천 소각] 암살자가 OFF일 때 -3% 타점이 '진입 덫'으로 표출되던 오해를 막기 위해, OFF 시 "하방 이격(-3%) 감시선"으로 명칭을 강제 전환하는 동적 분기망 결속.
 # 🚨 MODIFIED: [암살자 셧다운 팩트 브리핑] 암살자가 OFF 상태일 경우, 하단 교전망 상태에 "⚠️ [ 암살자 타격망 OFF (단순 관측 모드) ]"를 명시하여 보조 타격망이 대기 상태임을 직관적으로 렌더링.
-# 🚨 MODIFIED: [UI 텍스트 맹독성 하드코딩 궁극 소각] 과거 휩소 방어(HA 컨펌), 다중 페이즈(Phase), 듀얼 섀도우 컷오프, 수수료(fee_rate) 역산 등 낡은 텍스트 및 변수 렌더링 로직을 100% 영구 삭제.
 # 🚨 MODIFIED: [Case 17 순수 리버전 관제탑 롤오버] '데이 트레이딩 리버전' 통제소로 UI를 리빌딩하고 세션별 VWAP, -3% 타점, +2% 익절가, 15:59 강제 청산 팩트만 직관적으로 렌더링.
 # 🚨 MODIFIED: [타 종목 오염 원천 차단] aVWAP 암살자 모듈의 SOXL 전용 가동 원칙에 따라 TQQQ 등 타 종목 유입 시 '관측망 오프라인' 처리 락온.
 # 🚨 MODIFIED: [Quant Logic 교정] 1분봉 데이터를 1세션(04:00~09:29) 및 2세션(09:30~16:00)으로 완벽히 분할 슬라이싱하여 독립된 VWAP(순수 거래대금/거래량 기반) 동적 산출 이식.
@@ -18,7 +16,7 @@
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴(Silent Death) 방어를 위한 html.escape 쉴드 전역 강제 주입.
 # 🚨 MODIFIED: [Case 24 결측치 방어] 정규장/프리장 1분봉 데이터(df_pre, df_reg) 부재 시 ValueError를 막기 위해 단락 평가(if not empty) 강제.
 # 🚨 NEW: [올인 타격 렌더링 팩트] '85% 예산 교전망' ➔ '주문가능금액 100% 올인 교전망'으로 직관적 팩트 렌더링 교정.
-# 🚨 NEW: [MOC 덤핑 렌더링 팩트] '강제 덤핑 대기 중' ➔ '매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백)'으로 내부 아키텍처와 100% 동기화된 렌더링 팩트 교체.
+# 🚨 NEW: [런타임 호환성 팩트 결속] _get_with_retry 헬퍼 내부에 functools.partial을 주입하여 구버전 파이썬의 to_thread kwargs TypeError 붕괴 원천 차단.
 # ==========================================================
 import logging
 import datetime
@@ -27,6 +25,7 @@ import math
 import asyncio
 import time
 import json
+import functools
 import pandas as pd
 import pandas_market_calendars as mcal  
 import html  
@@ -142,12 +141,13 @@ class AvwapConsolePlugin:
         msg = f"📡 <b>[ 순수 리버전 데이트레이딩 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
-        # 🚨 [Case 31, 32] 고성능 클라우드 TPS 방어 및 지수 백오프 비동기 헬퍼
-        async def _get_with_retry(func, *args):
+        # 🚨 [Case 31, 32] 고성능 클라우드 TPS 방어 및 지수 백오프 비동기 헬퍼 (functools.partial 런타임 호환성 사수)
+        async def _get_with_retry(func, *args, **kwargs):
             for attempt in range(3):
                 try:
-                    await asyncio.sleep(0.06) 
-                    return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=15.0)
+                    await asyncio.sleep(0.06)
+                    p_func = functools.partial(func, *args, **kwargs)
+                    return await asyncio.wait_for(asyncio.to_thread(p_func), timeout=15.0)
                 except Exception:
                     if attempt == 2: return None
                     await asyncio.sleep(1.0 * (2 ** attempt))
@@ -315,12 +315,12 @@ class AvwapConsolePlugin:
             msg += f"⚠️ <b>[ 암살자 타격망 OFF (단순 관측 모드) ]</b>\n"
 
         if is_assassin_active:
-            # 🚨 MODIFIED: [UI 텍스트 맹독성 하드코딩 궁극 소각] 1-Shot 1-Kill 아키텍처에 맞춘 진공 압축 렌더링 팩트 교정
+            # 🚨 MODIFIED: [1-Shot 1-Kill 아키텍처에 맞춘 진공 압축 렌더링 팩트 교정]
             msg += f"▫️ 교전 상태: <b>ON (-3% 타점 관통 및 진입 완료)</b>\n"
             msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
             msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (+2% 지정가 락온)\n"
-            # 🚨 MODIFIED: [렌더링 팩트 교정] 강제 덤핑 ➔ 매수 1호가 스윕 덤핑 (결측시 -5% 폴백)
-            msg += f"▫️ 자본 잠김 방어: <b>15:59 EST 도달 시 전량 매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백)</b>\n"
+            # 🚨 NEW: [타겟 5 작전 지시 팩트 락온] 본진 격리 및 암살자 전용 덤핑 명시 (결측시 -5% 폴백 포함)
+            msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 암살자 물량만 매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백 / 본진 100% 격리)</b>\n"
         else:
             if is_avwap_hybrid:
                 msg += f"▫️ 교전 상태: <b>ON (세션 VWAP -3% 타점 관통 대기 중)</b>\n"
