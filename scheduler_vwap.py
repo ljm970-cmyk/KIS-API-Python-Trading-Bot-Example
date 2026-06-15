@@ -2,6 +2,7 @@
 # FILE: scheduler_vwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 40대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 NEW: [Case 39 & 40 타임라인 역전 패러독스 붕괴 방어] 15:59 암살자 강제 덤핑으로 예수금이 복구되더라도, 16:01 애프터장으로 지연 이관이 확정된 본진 플랜이 존재한다면 16:00 정규장 마감 직전의 Gap Hijack 및 슬라이싱 루프를 전면 바이패스(Bypass)하여 Double Spending 충돌 원천 차단.
 # 🚨 NEW: [Case 39 & 40 자본 잠김 패러독스 방어] 16:01 EST에 가동되는 `scheduled_aftermarket_vrev_trade` 엔진을 신규 이식. 암살자의 15:59 MOC 덤핑으로 복구된 자본(예수금)을 3단 지수 백오프로 정밀 확인한 뒤, 지연 이관된 V-REV 본진 플랜을 1분 슬라이싱 없이 100% 일괄 지정가(LIMIT)로 병합 타격합니다.
 # 🚨 MODIFIED: [병렬 가동 아키텍처 궁극 수복] 암살자(aVWAP) 교전 중이거나 당일 임무 완수 상태일 때 본진 슬라이싱 엔진을 강제로 셧다운(Bypass)시키던 구시대적 뇌관 블록을 전면 영구 소각 완료. 본진은 암살자를 무시하고 365일 독립 타격합니다.
 # 🚨 MODIFIED: [불필요한 I/O 오버헤드 진공 압축] 본진 셧다운 파기로 인해 더 이상 필요 없어진 `avwap_trade_state_SOXL.json` 동기화 로드 및 검열 데드코드를 전면 삭제하여 1분 슬라이싱 엔진의 런타임 성능을 극대화.
@@ -15,7 +16,7 @@
 # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] 갭 하이재킹 판별을 위한 기초지수 VWAP 연산 시, ffill/bfill 래핑을 강제하여 NaN 전이(Math Collapse) 원천 차단.
 # 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
 # 🚨 NEW: [Time Paradox 팩트 교정] KIS 원장 조회를 위한 KST 팩트 주입. EST 기준으로 체결 내역 조회 시 발생하던 무한 대기 버그 원천 소각.
-# 🚨 MODIFIED: [Gap Hijack 타겟 변경 및 임계치 교정] SOXX 기초자산 렌즈를 파기하고 운용종목(SOXL) 실데이터 비교로 타점 팩트 롤오버 (-2.0% 임계치 락온).
+# 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] SOXX 기초자산 렌즈를 파기하고 운용종목(SOXL) 실데이터 비교로 타점 팩트 롤오버 (-2.0% 임계치 락온).
 # ==========================================================
 import logging
 import datetime
@@ -200,6 +201,8 @@ async def scheduled_vwap_init_and_cancel(context):
         await asyncio.wait_for(_do_init(), timeout=45.0)
     except Exception as e:
         logging.error(f"🚨 Fail-Safe 타임아웃 에러: {e}", exc_info=True)
+
+
 async def scheduled_vwap_trade(context):
     # 🚨 MODIFIED: [AttributeError 원천 차단] job 팩트 단락 평가
     job = getattr(context, 'job', None)
@@ -336,7 +339,19 @@ async def scheduled_vwap_trade(context):
                     if version == "V_REV" or (version == "V14" and is_manual_vwap):
                         slice_file = f"data/vrev_slice_state_{t}.json"
                         
-                        # 🚨 MODIFIED: [병렬 가동 아키텍처 수복] 암살자 교전 상태 스캔 및 본진 강제 셧다운 데드코드를 전면 소각 완료.
+                        # 🚨 NEW: [Case 39 & 40 타임라인 역전 패러독스 차단] 애프터장 지연 이관 상태 교차 검증 (Timeline Inversion 방어)
+                        try:
+                            after_state_file = f"data/vrev_aftermarket_state_{t}.json"
+                            after_state = await asyncio.wait_for(asyncio.to_thread(_read_json_sync, after_state_file), timeout=5.0)
+                            if after_state.get('date') == today_hyphen:
+                                pending_aftermarket = any(isinstance(o, dict) and str(o.get('status')) == 'PENDING' for o in after_state.get('orders', []))
+                                if pending_aftermarket:
+                                    logging.info(f"⏳ [{t}] 애프터장(16:01) 이관 대기 중. 정규장 마감 직전(16:00)의 Gap Hijack 및 슬라이싱 엔진을 전면 바이패스합니다.")
+                                    continue
+                        except Exception as e:
+                            logging.error(f"🚨 [{t}] 애프터장 이관 상태 교차 검증 에러: {e}")
+
+                        # 🚨 MODIFIED: [병렬 가동 아키텍처 수복] 암살자 교전 상태 검사 및 본진 강제 셧다운 데드코드를 전면 소각 완료.
                         # 본진 슬라이싱 루프는 암살자를 무시하고 15% 독립 예산으로 독자 가동됩니다.
 
                         # ======================================================
@@ -435,7 +450,7 @@ async def scheduled_vwap_trade(context):
                                                         except Exception as e:
                                                             if u_attempt == 2: logging.error(f"🚨 [{t}] 일반 덫 조회 에러: {e}")
                                                             else: await asyncio.sleep(1.0 * (2 ** u_attempt))
-                                                            
+                                                    
                                                     safe_unfilled = unfilled if isinstance(unfilled, list) else []
                                                     for uo in safe_unfilled:
                                                         if not isinstance(uo, dict): continue
@@ -566,7 +581,7 @@ async def scheduled_vwap_trade(context):
                                                     vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                                     is_hijacked_now = True
                                                     logging.info(f"⚡ [{t}] Gap Hijack 격발 조건을 만족했으나 잉여 예산 소진으로 스윕 매수 생략 (플래그 락온 완료).")
-                                        break
+                                    break
                                 except Exception as e:
                                     if attempt == 2: logging.error(f"🚨 갭 스위칭 스캔 에러: {e}")
                                     else: await asyncio.sleep(1.0 * (2 ** attempt))
