@@ -11,6 +11,7 @@
 # 🚨 NEW: [Ghost Balance (유령 잔고) 방어막 주입] KIS 서버 오류로 실잔고가 0주로 반환되었을 때, 실제 당일 매도 체결(sold_today) 내역이 없다면 장부 소각(자동 졸업)을 원천 차단하여 Phantom Graduation 붕괴 완벽 방어.
 # 🚨 NEW: [제1헌법 100% 준수] _retry_api 헬퍼를 통해 파일 I/O 동기화 로직 전역에 wait_for(timeout=10.0/15.0) 족쇄를 래핑하여 이벤트 루프 교착 완벽 차단.
 # 🚨 MODIFIED: [NaN 맹독 전이 및 JSON 직렬화 붕괴 원천 차단] 모든 재무 데이터에 self._safe_float() 정화 필터 강제 락온.
+# 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] 관제탑 데이터 집계 도메인의 vrev_gap_thresh_val 및 avwap_gap_thresh_val 폴백 수치를 -0.67에서 -2.0으로 상향 팩트 교정 완료.
 # ==========================================================
 import logging
 import datetime
@@ -81,7 +82,7 @@ class TelegramSyncEngine:
     async def process_auto_sync(self, ticker, chat_id, context, silent_ledger=False):
         if ticker not in self.sync_locks:
             self.sync_locks[ticker] = asyncio.Lock()
-            
+             
         if self.sync_locks[ticker].locked(): return "LOCKED"
             
         async with self.sync_locks[ticker]:
@@ -310,7 +311,7 @@ class TelegramSyncEngine:
             
                         actual_clear_price = 0.0
                         tot_q = 0
-                        
+            
                         if target_execs:
                             sell_execs = [ex for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "01"]
                             if sell_execs:
@@ -364,7 +365,7 @@ class TelegramSyncEngine:
                                 added_seed = realized_pnl * compound_rate
                                 current_seed = self._safe_float(await self._retry_api(self.cfg.get_seed, ticker, default=6720.0))
                                 await self._retry_api(self.cfg.set_seed, ticker, current_seed + added_seed, timeout=10.0)
-                                
+                            
                             cap_dt = snapshot.get('captured_at', now_est)
                             cap_dt_str = cap_dt if isinstance(cap_dt, str) else cap_dt.strftime('%Y-%m-%d')
                             start_dt_str = str(q_data_before[0].get('date', ''))[:10] if q_data_before and isinstance(q_data_before[0], dict) else cap_dt_str[:10]
@@ -411,8 +412,7 @@ class TelegramSyncEngine:
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
                             
                         return "SUCCESS"
-                 
-                    if actual_qty == vrev_ledger_qty:
+                     if actual_qty == vrev_ledger_qty:
                         pass
                     elif actual_qty > 0 and actual_qty < vrev_ledger_qty:
                         gap_qty = vrev_ledger_qty - actual_qty
@@ -494,7 +494,7 @@ class TelegramSyncEngine:
 
                         today_est_str = now_est.strftime('%Y-%m-%d')
                         prev_c = await self._retry_api(self.broker.get_previous_close, ticker, timeout=15.0, default=0.0)
-                 
+                        
                         grad_res = await self._retry_api(self.cfg.archive_graduation, ticker, today_est_str, prev_c, timeout=10.0, default=(None, 0.0))
                         new_hist, added_seed = grad_res if isinstance(grad_res, tuple) and len(grad_res) >= 2 else (None, 0.0)
 
@@ -612,7 +612,7 @@ class TelegramSyncEngine:
 
         active_tickers = await self._retry_api(self.cfg.get_active_tickers, default=[])
         keyboard = []
-        
+         
         if v_mode == "V_REV":
             keyboard.append([InlineKeyboardButton(f"🗄️ {html.escape(str(ticker))} V-REV 큐(Queue) 정밀 관리", callback_data=f"QUEUE:VIEW:{ticker}")])
              
@@ -673,9 +673,10 @@ class TelegramSyncEngine:
                 
                 if is_avwap_hybrid:
                     msg += f"▫️ 아키텍처: <b>본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온</b>\n"
-                    msg += f"▫️ 암살자 타점: <b>세션 VWAP -3% (1-Shot 1-Kill)</b>\n"
+                    # 🚨 MODIFIED: [타점 롤오버] 암살자 타점을 -2%로 팩트 교정 완료
+                    msg += f"▫️ 암살자 타점: <b>세션 VWAP -2% (1-Shot 1-Kill)</b>\n"
                     msg += f"▫️ 암살자 익절: <b>+2% 지정가 전량 익절 (절대 락온)</b>\n"
-                    msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 전량 매수 1호가 스윕 덤핑</b>\n"
+                    msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 전량 최유리 지정가 덤핑</b>\n"
                     msg += f"▫️ 데이 트레이딩 관제탑: <b>365일 상시 가동 📡</b>\n"
                 msg += "⚖️ <b>본진 스탠바이:</b> 15:26 EST 예약 덫 관측 ➔ 15:27 로컬 자체 슬라이싱 가동\n\n" 
             else:
@@ -702,3 +703,230 @@ class TelegramSyncEngine:
                 keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
     
         return msg, InlineKeyboardMarkup(keyboard)
+
+    def create_sync_report(self, status_text, dst_text, cash, rp_amount, ticker_data, is_trade_active, p_trade_data=None, exchange_rate=None):
+        ticker_data = ticker_data or []
+        
+        safe_status = html.escape(str(status_text))
+        safe_dst = html.escape(str(dst_text))
+        header_msg = f"📜 <b>[ 통합 지시서 ({safe_status}) ]</b>\n📅 <b>{safe_dst}</b>\n"
+        
+        header_msg += f"💵 주문가능금액: ${cash:,.2f}\n"
+        header_msg += f"🏛️ RP 투자권장: ${rp_amount:,.2f}\n"
+        header_msg += "----------------------------\n\n"
+        
+        keyboard = []
+        body_msg = ""
+        krw_profit = 0.0
+
+        for t_info in ticker_data:
+            if not isinstance(t_info, dict): continue
+            
+            t = html.escape(str(t_info.get('ticker') or 'UNK'))
+            v_mode = str(t_info.get('version') or 'V14')
+            is_manual_vwap = bool(t_info.get('is_manual_vwap'))
+            is_zero_start = bool(t_info.get('is_zero_start'))
+             
+            safe_seed = self._safe_float(t_info.get('seed') or 0.0)
+            safe_one_portion = self._safe_float(t_info.get('one_portion') or 0.0)
+            safe_curr = self._safe_float(t_info.get('curr') or 0.0)
+            safe_avg = self._safe_float(t_info.get('avg') or 0.0)
+            fact_qty = int(self._safe_float(t_info.get('qty') or 0))
+            safe_profit_amt = self._safe_float(t_info.get('profit_amt') or 0.0)
+            safe_profit_pct = self._safe_float(t_info.get('profit_pct') or 0.0)
+            safe_split = self._safe_float(t_info.get('split') or 40.0)
+            safe_t_val = self._safe_float(t_info.get('t_val') or 0.0)
+            
+            v_mode_display = ""
+            main_icon = ""
+            bdg_txt = ""
+            is_rev_logic = bool(t_info.get('is_reverse'))
+            
+            plan_dict = t_info.get('plan') or {}
+            proc_status = html.escape(str(plan_dict.get('process_status') or ''))
+            tracking_info = t_info.get('tracking_info') or {}
+            
+            snap_tag = " <code>[📸락온]</code>" if t_info.get('has_snapshot') else ""
+            day_high = self._safe_float(t_info.get('day_high') or 0.0)
+            day_low = self._safe_float(t_info.get('day_low') or 0.0)
+            prev_close = self._safe_float(t_info.get('prev_close') or 0.0)
+            sniper_status_txt = html.escape(str(t_info.get('upward_sniper') or 'OFF'))
+
+            if fact_qty == 0 and not is_zero_start:
+                is_zero_start = True
+                plan_dict['orders'] = []
+                 
+                if v_mode == "V_REV":
+                    half_budget = (safe_seed * 0.15) * 0.5
+                    if prev_close > 0:
+                        p1_trigger_fact = round(prev_close * 1.15, 2)
+                        p2_trigger_fact = round(prev_close * 0.999, 2)
+                        q1 = math.floor(half_budget / p1_trigger_fact) if p1_trigger_fact > 0 else 0
+                        q2 = math.floor(half_budget / p2_trigger_fact) if p2_trigger_fact > 0 else 0
+                        if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p1_trigger_fact, "type": "LOC", "desc": "가상 매수(Buy1)"})
+                        if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p2_trigger_fact, "type": "LOC", "desc": "가상 매수(Buy2)"})
+            
+                else:
+                    half_budget = safe_one_portion * 0.5
+                    if prev_close > 0:
+                        p_buy = max(0.01, round(math.ceil(prev_close * 1.15 * 100) / 100.0 - 0.01, 2))
+                        q1 = math.floor(half_budget / p_buy) if p_buy > 0 else 0
+                        q2 = math.floor((safe_one_portion - half_budget) / p_buy) if p_buy > 0 else 0
+                        
+                        if q1 == 0 and q2 == 0 and safe_one_portion >= p_buy > 0: q1 = int(math.floor(safe_one_portion / p_buy))
+                        if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy1)"})
+                        if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy2)"})
+             
+            if safe_split > 0 and safe_t_val > (safe_split * 1.1):
+                body_msg += "⚠️ <b>[🚨 시스템 긴급 경고: 비정상 T값 폭주 감지!]</b>\n"
+                body_msg += f"🔎 현재 T값(<b>{safe_t_val:.4f}T</b>)이 설정된 분할수(<b>{int(safe_split)}분할</b>) 초과했습니다!\n"
+                body_msg += "🛡️ <b>가동 조치:</b> 마이너스 호가 차단용 절대 하한선($0.01) 방어막 가동 중!\n\n"
+
+            if v_mode == "V_REV":
+                v_mode_display = "V_REV 역추세 (로컬 1분 VWAP)" 
+                main_icon = "⚖️"
+                bdg_txt = f"1회(1배수) 예산: ${safe_one_portion:,.0f}"
+            else:
+                v_mode_display = "무매4 (로컬 1분 VWAP)" if is_manual_vwap else "무매4 (LOC)" 
+                main_icon = "💎"
+                bdg_txt = f"당일 예산: ${safe_one_portion:,.0f}"
+
+            if v_mode == "V_REV":
+                body_msg += f"{main_icon} <b>[{t}] {v_mode_display}</b>{snap_tag}\n"
+                v_rev_q_lots_safe = int(self._safe_float(t_info.get('v_rev_q_lots') or 0))
+                v_rev_q_qty_safe = int(self._safe_float(t_info.get('v_rev_q_qty') or 0))
+                body_msg += f"📈 큐(Queue): <b>{v_rev_q_lots_safe}개 지층 대기 중 (총 {v_rev_q_qty_safe}주)</b>\n"
+            elif is_rev_logic:
+                icon = "🩸" if "리버스(긴급수혈)" in proc_status else "🔄"
+                bdg_txt = f"리버스 잔금쿼터: ${safe_one_portion:,.0f}"
+                body_msg += f"{icon} <b>[{t}] {v_mode_display} 리버스</b>{snap_tag}\n"
+                body_msg += f"📈 진행: <b>{safe_t_val:.4f}T / {int(safe_split)}분할</b>\n"
+            else:
+                body_msg += f"{main_icon} <b>[{t}] {v_mode_display}</b>{snap_tag}\n"
+                body_msg += f"📈 진행: <b>{safe_t_val:.4f}T / {int(safe_split)}분할</b>\n"
+            
+            body_msg += f"💵 총 시드: ${safe_seed:,.0f}\n🛒 <b>{bdg_txt}</b>\n"
+            body_msg += f"💰 현재 ${safe_curr:,.2f} / 평단 ${safe_avg:,.2f} ({fact_qty}주)\n"
+            
+            if prev_close > 0 and day_high > 0 and day_low > 0:
+                high_pct = (day_high - prev_close) / prev_close * 100
+                low_pct = (day_low - prev_close) / prev_close * 100
+                body_msg += f"📈 금일 고가: ${day_high:.2f} ({'+' if high_pct > 0 else ''}{high_pct:.2f}%)\n"
+                body_msg += f"📉 금일 저가: ${day_low:.2f} ({'+' if low_pct > 0 else ''}{low_pct:.2f}%)\n"
+
+            sign = "+" if safe_profit_amt >= 0 else "-"
+            icon = "🔺" if safe_profit_amt >= 0 else "🔻"
+            if exchange_rate and self._safe_float(exchange_rate) > 0:
+                krw_profit = abs(safe_profit_amt) * self._safe_float(exchange_rate)
+                body_msg += f"{icon} 수익: {sign}{abs(safe_profit_pct):.2f}% ({sign}${abs(safe_profit_amt):,.2f} | {sign}₩{int(krw_profit):,})\n\n"
+            else:
+                body_msg += f"{icon} 수익: {sign}{abs(safe_profit_pct):.2f}% ({sign}${abs(safe_profit_amt):,.2f})\n\n"
+            
+            if is_zero_start and sniper_status_txt == "ON": sniper_status_txt = "OFF (0주 락온)"
+            
+            if v_mode != "V_REV":
+                safe_target = self._safe_float(t_info.get('target') or 10.0)
+                safe_star_pct = self._safe_float(t_info.get('star_pct') or 0.0)
+                safe_star_price = self._safe_float(t_info.get('star_price') or 0.0)
+
+                if is_rev_logic:
+                    body_msg += f"⚙️ 🌟 5일선 별지점: ${safe_star_price:.2f} | 🎯감시: {sniper_status_txt}\n"
+                else:
+                    if fact_qty > 0 and safe_avg > 0:
+                        target_price = safe_avg * (1 + safe_target / 100.0)
+                        body_msg += f"⚙️ 🎯 익절 목표가: <b>${target_price:.2f}</b> (+{safe_target}%)\n"
+                    body_msg += f"⚙️ ⭐ 별지점: {safe_star_pct}% | 🎯감시: {sniper_status_txt}\n"
+                
+                if sniper_status_txt == "ON":
+                    if not is_trade_active:
+                        body_msg += "🎯 상방 스나이퍼: 감시 종료 (장마감)\n"
+                    elif tracking_info.get('is_trailing', False):
+                        trigger_price = self._safe_float(tracking_info.get('trigger_price') or 0.0)
+                        peak_price = self._safe_float(tracking_info.get('peak_price') or 0.0)
+                        body_msg += f"🎯 상방 추적(${trigger_price:.2f}) 중 (고가: ${peak_price:.2f})\n"
+                    else:
+                        sn_target = safe_star_price if is_rev_logic else max(safe_star_price, math.ceil(safe_avg * 1.005 * 100) / 100.0)
+                        if sn_target > 0: body_msg += f"🎯 상방 스나이퍼: ${sn_target:.2f} 이상 대기\n"
+            else:
+                body_msg += "⚖️ <b>역추세 LIFO 큐(Queue) 엔진 스탠바이</b>\n"
+                body_msg += "⏱️ <b>스케줄:</b> 15:26 EST 로컬 엔진 스탠바이 ➔ 15:27 슬라이싱 타격 (자전거래 차단)\n" 
+            
+            if v_mode == "V_REV":
+                body_msg += "📋 <b>[주문 가이던스 - ⚖️다중 LIFO 제어]</b>\n"
+                # 🚨 MODIFIED: [Gap Hijack 타겟 팩트 롤오버 동기화] 브리핑 텍스트 운용종목으로 교정
+                body_msg += f"⚡ <b>[Gap Hijack 🤖자율주행]</b> 운용종목 갭 이탈 감지 시 잔여예산 스윕 대기\n"
+                raw_guidance = str(t_info.get('v_rev_guidance') or " (가이던스 대기 중)")
+                if is_zero_start:
+                    raw_guidance = '\n'.join([line for line in raw_guidance.split('\n') if "잭팟" not in line and "상위층" not in line])
+                
+                v_rev_q_lots_val = self._safe_float(t_info.get('v_rev_q_lots') or 0.0)
+                if not is_zero_start and fact_qty > 0 and v_rev_q_lots_val > 0:
+                    try:
+                        b1_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy1' in str(o.get('desc', ''))), None)
+                        b2_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy2' in str(o.get('desc', ''))), None)
+                        
+                        if b1_order or b2_order:
+                            lines = raw_guidance.split('\n')
+                            for i, line in enumerate(lines):
+                                if "매수1(Buy1)" in line and b1_order:
+                                    b1_price = self._safe_float(b1_order.get('price'))
+                                    b1_qty = int(self._safe_float(b1_order.get('qty')))
+                                    lines[i] = f" 🔴 매수1(Buy1) ${b1_price:.2f} <b>{b1_qty}주</b>"
+                                elif "매수2(Buy2)" in line and b2_order:
+                                    b2_price = self._safe_float(b2_order.get('price'))
+                                    b2_qty = int(self._safe_float(b2_order.get('qty')))
+                                    lines[i] = f" 🔴 매수2(Buy2) ${b2_price:.2f} <b>{b2_qty}주</b>"
+                        raw_guidance = '\n'.join(lines)
+                    except Exception: pass
+
+                body_msg += raw_guidance.replace(" (LOC)", "").replace(" (VWAP)", "").replace("[가상격리] ", "").replace("[가상 ", "[").replace("가상 ", "") + "\n"
+            else:
+                if is_manual_vwap and not is_rev_logic:
+                    body_msg += "⏱️ <b>스케줄:</b> 17:05 KST 선제 덫 장전 ➔ 로컬 1분 VWAP 슬라이싱\n" 
+                body_msg += f"📋 <b>[주문 계획 - {proc_status}]</b>\n"
+                
+                plan_orders = plan_dict.get('orders') or []
+                if plan_orders:
+                    plan_orders_sorted = sorted(plan_orders, key=lambda x: 1 if str(x.get('side', '')) == 'SELL' else 0)
+                    jubjub_orders = [o for o in plan_orders_sorted if isinstance(o, dict) and "🧲줍줍" in str(o.get('desc', ''))]
+                    rendered_jubjub = False
+
+                    for o in plan_orders_sorted:
+                        if not isinstance(o, dict): continue
+                        if "🧲줍줍" in str(o.get('desc', '')):
+                            if not rendered_jubjub:
+                                if jubjub_orders:
+                                    min_price = min(self._safe_float(x.get('price')) for x in jubjub_orders)
+                                    max_price = max(self._safe_float(x.get('price')) for x in jubjub_orders)
+                                    total_jub_shares = sum(int(self._safe_float(x.get('qty'))) for x in jubjub_orders)
+                                    
+                                    if min_price == max_price:
+                                        price_str = f"${min_price:.2f}"
+                                    else:
+                                        price_str = f"(${min_price:.2f}~${max_price:.2f})"
+                                      
+                                    body_msg += f" 🔴 🧲줍줍: <b>{price_str} x {total_jub_shares}주</b> (LOC)\n"
+                                rendered_jubjub = True
+                            continue
+                        
+                        ico = "🔴" if str(o.get('side', '')) == 'BUY' else "🔵"
+                        safe_desc = html.escape(str(o.get('desc', ''))).replace("🩸", "")
+                        if "수혈" in str(o.get('desc', '')): ico = "🩸"
+                        type_str = f"({html.escape(str(o.get('type', '')))})" if str(o.get('type', '')) != 'LIMIT' else ""
+                        body_msg += f" {ico} {safe_desc}: <b>${self._safe_float(o.get('price')):.2f} x {int(self._safe_float(o.get('qty')))}주</b> {type_str}\n"
+                else:
+                    body_msg += "  💤 주문 없음 (관망/예산소진)\n"
+
+            if is_trade_active:
+                if t_info.get('is_locked', False):
+                    body_msg += " (✅ 금일 주문 완료/잠금)\n"
+             
+        final_msg = header_msg + body_msg.strip()
+        
+        if not is_trade_active:
+            final_msg += "\n\n⛔ 장마감/애프터마켓: 주문 불가"
+            
+        if any(str(t_info.get('version', '')) == 'V_REV' for t_info in ticker_data if isinstance(t_info, dict)):
+            final_msg += "\n\n▶️ /avwap : 🔫 데이 트레이딩 레이더 관제탑"
+
+        return final_msg, InlineKeyboardMarkup(keyboard) if keyboard else None

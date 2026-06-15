@@ -13,6 +13,7 @@
 # 🚨 MODIFIED: [Case 16] tempfile 스코프 전진 배치로 UnboundLocalError 붕괴 차단.
 # 🚨 NEW: [명예의 전당 소각] delete_history 메서드 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
 # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
+# 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] get_vrev_gap_threshold 및 get_avwap_gap_threshold의 디폴트 반환값을 -0.67에서 -2.0으로 100% 상향 팩트 교정 완료.
 # ==========================================================
 
 import json
@@ -202,7 +203,7 @@ class ConfigManager:
                 os.makedirs(dir_name, exist_ok=True)
             except OSError:
                 pass
-                
+          
             fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 fd = None
@@ -221,8 +222,9 @@ class ConfigManager:
                 try: os.remove(temp_path)
                 except OSError: pass
 
+    # 🚨 MODIFIED: [Gap Hijack 임계치 팩트 교정] -0.67 ➔ -2.0
     def get_vrev_gap_threshold(self, ticker):
-        return self._safe_float(self._load_json(self.FILES["VREV_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
+        return self._safe_float(self._load_json(self.FILES["VREV_GAP_THRESH_CFG"], {}).get(ticker, -2.0))
 
     def set_vrev_gap_threshold(self, ticker, v):
         with self._io_lock:
@@ -239,8 +241,9 @@ class ConfigManager:
             d[ticker] = bool(v)
             self._save_json(self.FILES["VREV_GAP_SWITCH_CFG"], d)
       
+    # 🚨 MODIFIED: [Gap Hijack 임계치 팩트 교정] -0.67 ➔ -2.0
     def get_avwap_gap_threshold(self, ticker):
-        return self._safe_float(self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {}).get(ticker, -0.67))
+        return self._safe_float(self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {}).get(ticker, -2.0))
 
     def set_avwap_gap_threshold(self, ticker, v):
         with self._io_lock:
@@ -450,7 +453,7 @@ class ConfigManager:
                 elif side_cd == "01": 
                     sell_qty += qty
                     sell_amt += (qty * price)
-             
+            
         actual_buy_price = round(buy_amt / buy_qty, 4) if buy_qty > 0 else 0.0
         actual_sell_price = round(sell_amt / sell_qty, 4) if sell_qty > 0 else 0.0
         

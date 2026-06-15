@@ -15,6 +15,7 @@
 # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] 갭 하이재킹 판별을 위한 기초지수 VWAP 연산 시, ffill/bfill 래핑을 강제하여 NaN 전이(Math Collapse) 원천 차단.
 # 🚨 NEW: [Event Loop Deadlock 궁극 방어] 파일 내 모든 `context.bot.send_message` 호출에 `asyncio.wait_for(timeout=15.0)` 족쇄를 100% 래핑하여 텔레그램 통신 지연으로 인한 스케줄러 교착 원천 봉쇄.
 # 🚨 NEW: [Time Paradox 팩트 교정] KIS 원장 조회를 위한 KST 팩트 주입. EST 기준으로 체결 내역 조회 시 발생하던 무한 대기 버그 원천 소각.
+# 🚨 MODIFIED: [Gap Hijack 타겟 변경 및 임계치 교정] SOXX 기초자산 렌즈를 파기하고 운용종목(SOXL) 실데이터 비교로 타점 팩트 롤오버 (-2.0% 임계치 락온).
 # ==========================================================
 import logging
 import datetime
@@ -80,6 +81,7 @@ def _atomic_write_json_sync(filepath, data):
             try: os.remove(tmp_path)
             except OSError: pass
         raise e
+
 
 async def scheduled_vwap_init_and_cancel(context):
     # 🚨 MODIFIED: [AttributeError 원천 차단] job 팩트 단락 평가
@@ -179,7 +181,7 @@ async def scheduled_vwap_init_and_cancel(context):
                         if not vwap_cache.get(f"REV_{t}_nuked"):
                             msg = f"🌅 <b>[{html.escape(str(t))}] 자체 1분 슬라이싱 VWAP 엔진 / Gap Hijack 섀도우 관측망 기상</b>\n"
                             msg += f"▫️ KIS 예약 덫 관망 및 장 마감 34분 전 로컬 펄스 타격 엔진의 가동 대기를 확인했습니다.\n"
-                            msg += f"▫️ 기초자산 갭 이탈 감지 시 즉각 개입(Gap Hijack)하는 섀도우 모드가 함께 가동됩니다. ⚔️"
+                            msg += f"▫️ 운용종목 갭 이탈 감지 시 즉각 개입(Gap Hijack)하는 섀도우 모드가 함께 가동됩니다. ⚔️"
                             
                             vwap_cache[f"REV_{t}_nuked"] = True
                             
@@ -198,8 +200,6 @@ async def scheduled_vwap_init_and_cancel(context):
         await asyncio.wait_for(_do_init(), timeout=45.0)
     except Exception as e:
         logging.error(f"🚨 Fail-Safe 타임아웃 에러: {e}", exc_info=True)
-
-
 async def scheduled_vwap_trade(context):
     # 🚨 MODIFIED: [AttributeError 원천 차단] job 팩트 단락 평가
     job = getattr(context, 'job', None)
@@ -317,7 +317,7 @@ async def scheduled_vwap_trade(context):
             except Exception as e:
                 logging.error(f"🚨 예산 할당 연산 에러 (안전 폴백 맵핑): {e}")
             
-            base_curr_p = 0.0
+            t_curr_p = 0.0
             ask_price = 0.0
             exec_price = 0.0
             buy_qty = 0
@@ -345,43 +345,45 @@ async def scheduled_vwap_trade(context):
                         is_hijacked_now = vwap_cache.get(f"REV_{t}_gap_hijack_fired", False)
                         
                         if version == "V_REV" and not is_hijacked_now:
-                            base_tkr = base_map.get(t, 'SOXX')
-                            
+                            # 🚨 MODIFIED: [Phase 2] 기초자산(base_tkr) 대신 본종목(t) 100% 팩트 타격 롤오버
                             for attempt in range(3):
                                 try:
                                     await asyncio.sleep(0.06)
-                                    base_curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, base_tkr), timeout=15.0)
-                                    base_curr_p = _safe_float(base_curr_p_val)
+                                    t_curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=15.0)
+                                    t_curr_p = _safe_float(t_curr_p_val)
                                     break
                                 except Exception:
-                                    if attempt == 2: base_curr_p = 0.0
+                                    if attempt == 2: t_curr_p = 0.0
                                     else: await asyncio.sleep(1.0 * (2 ** attempt))
                                     
                             for attempt in range(3):
                                 try:
                                     await asyncio.sleep(0.06)
-                                    df_1min_base = await asyncio.wait_for(asyncio.to_thread(broker.get_1min_candles_df, base_tkr), timeout=15.0)
-                                    if df_1min_base is not None and not df_1min_base.empty:
-                                        df_b = df_1min_base.copy()
-                                        if 'time_est' in df_b.columns:
-                                            df_b = df_b[(df_b['time_est'] >= '093000') & (df_b['time_est'] <= '155900')]
+                                    df_1min_t = await asyncio.wait_for(asyncio.to_thread(broker.get_1min_candles_df, t), timeout=15.0)
+                                    if df_1min_t is not None and not df_1min_t.empty:
+                                        df_t = df_1min_t.copy()
+                                        if 'time_est' in df_t.columns:
+                                            df_t = df_t[(df_t['time_est'] >= '093000') & (df_t['time_est'] <= '155900')]
                                             
-                                        if not df_b.empty:
+                                        if not df_t.empty:
                                             # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] ffill 강제 락온
-                                            df_b['high'] = df_b['high'].ffill().bfill()
-                                            df_b['low'] = df_b['low'].ffill().bfill()
-                                            df_b['close'] = df_b['close'].ffill().bfill()
-                                            df_b['volume'] = df_b['volume'].ffill().bfill().fillna(0)
+                                            df_t['high'] = df_t['high'].ffill().bfill()
+                                            df_t['low'] = df_t['low'].ffill().bfill()
+                                            df_t['close'] = df_t['close'].ffill().bfill()
+                                            df_t['volume'] = df_t['volume'].ffill().bfill().fillna(0)
 
-                                            df_b['tp'] = (df_b['high'].astype(float) + df_b['low'].astype(float) + df_b['close'].astype(float)) / 3.0
-                                            df_b['vol'] = df_b['volume'].astype(float)
-                                            df_b['vol_tp'] = df_b['tp'] * df_b['vol']
+                                            df_t['tp'] = (df_t['high'].astype(float) + df_t['low'].astype(float) + df_t['close'].astype(float)) / 3.0
+                                            df_t['vol'] = df_t['volume'].astype(float)
+                                            df_t['vol_tp'] = df_t['tp'] * df_t['vol']
                                             
-                                            c_vol = df_b['vol'].sum()
-                                            base_vwap = df_b['vol_tp'].sum() / c_vol if c_vol > 0 else base_curr_p
+                                            c_vol = df_t['vol'].sum()
+                                            t_vwap = df_t['vol_tp'].sum() / c_vol if c_vol > 0 else t_curr_p
                                             
-                                            gap_pct = ((base_curr_p - base_vwap) / base_vwap * 100.0) if base_vwap > 0 else 0.0
-                                            gap_thresh = _safe_float(await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_vrev_gap_threshold', lambda x: -0.67), t), timeout=5.0))
+                                            gap_pct = ((t_curr_p - t_vwap) / t_vwap * 100.0) if t_vwap > 0 else 0.0
+                                            
+                                            # 🚨 MODIFIED: 임계치 -2.0% 팩트 교정
+                                            gap_thresh = _safe_float(await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_vrev_gap_threshold', lambda x: -2.0), t), timeout=5.0))
+                                            if gap_thresh == -0.67: gap_thresh = -2.0
                                             
                                             if gap_pct <= gap_thresh:
                                                 logging.info(f"⚡ [{t}] Gap Hijack Triggered! gap: {gap_pct:.2f}%, thresh: {gap_thresh}%")
@@ -409,7 +411,7 @@ async def scheduled_vwap_trade(context):
                                                         side_cd = str(req.get('sll_buy_dvsn_cd') or req.get('sll_buy_dvsn') or '')
                                                         if side_cd == '01': 
                                                             continue 
-                                                        
+                                                            
                                                         odno = str(req.get('ovrs_rsvn_odno') or req.get('odno') or '')
                                                         ord_dt = str(req.get('rsvn_ord_rcit_dt') or req.get('ord_dt') or d_str)
                                                         if odno:
@@ -423,7 +425,7 @@ async def scheduled_vwap_trade(context):
                                                                 except Exception as e:
                                                                     if c_attempt == 2: logging.error(f"🚨 [{t}] 예약 덫 취소 실패: {e}")
                                                                     else: await asyncio.sleep(1.0 * (2 ** c_attempt))
-                                                                
+                                                
                                                     unfilled = []
                                                     for u_attempt in range(3):
                                                         try:
@@ -532,8 +534,9 @@ async def scheduled_vwap_trade(context):
                                                         vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                                         is_hijacked_now = True
                                                         
+                                                        # 🚨 MODIFIED: 렌더링 메시지 본종목으로 팩트 교정
                                                         msg = f"⚡ <b>[{html.escape(str(t))}] 🤖 모멘텀 자율주행 (Gap Hijack) 섀도우 오버라이드 격발!</b>\n"
-                                                        msg += f"▫️ 기초자산({html.escape(str(base_tkr))}) VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
+                                                        msg += f"▫️ 운용종목({html.escape(str(t))}) 당일 누적 VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
                                                         msg += f"▫️ KIS 예약/미체결 매수 덫({nuked_count}건) 파기 및 로컬 엔진 스톱 후, 잔여 예산 100%를 매도 1호가로 일괄 스윕(Sweep) 타격했습니다!\n"
                                                         msg += f"▫️ 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
                                                         if chat_id:
@@ -652,7 +655,7 @@ async def scheduled_vwap_trade(context):
                                             except Exception:
                                                 if u_attempt == 2: is_still_open = True
                                                 else: await asyncio.sleep(1.0 * (2 ** u_attempt))
-                                                
+                                    
                                     if is_still_open:
                                         logging.warning(f"🚨 [{t}] 취소 실패 및 미체결 잔존 확인 (Double Spending 방어). 다음 분으로 이연합니다.")
                                         continue
@@ -948,7 +951,7 @@ async def scheduled_aftermarket_vrev_trade(context):
                                 except Exception:
                                     if p_attempt == 2: exec_price = 0.0
                                     else: await asyncio.sleep(1.0 * (2 ** p_attempt))
-                                    
+                                     
                         is_target_hit = False
                         if target_price > 0.0 and exec_price > 0.0:
                             if side == "BUY" and exec_price <= target_price: is_target_hit = True
@@ -1014,7 +1017,7 @@ async def scheduled_aftermarket_vrev_trade(context):
                                     else: queue_ledger.pop_lots(t, total_qty, target_price)
                                 if hasattr(strategy, 'v_rev_plugin'):
                                     strategy.v_rev_plugin.record_execution(t, side, total_qty, target_price)
-                            
+                             
                             try: await asyncio.wait_for(asyncio.to_thread(_sync_aftermarket_ledger), timeout=10.0)
                             except Exception as e: logging.error(f"🚨 [{t}] 애프터장 타격 장부 동기화 실패: {e}")
                         else:
