@@ -18,6 +18,8 @@ TARGET_FILES = [
     "queue_ledger.py",
     "scheduler_core.py",
     "scheduler_regular.py",
+    "order_executor.py",
+    "state_io_manager.py",
     "scheduler_sniper.py",
     "scheduler_vwap.py",
     "strategy.py",
