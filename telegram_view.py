@@ -11,6 +11,7 @@
 # 🚨 MODIFIED: [Case 16 위반 교정] 이미지 렌더링(create_profit_image) 시 원자적 쓰기 실패에 따른 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 최상단 전진 배치.
 # 🚨 NEW: [명예의 전당 소각] 졸업 기록 상세 뷰포트에 영구 소각 버튼 추가 및 재확인(Confirm) 뷰 렌더링 메서드 신설.
 # 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] get_vrev_mode_selection_menu 안내 텍스트를 "기초자산"에서 "본종목"으로 팩트 교정하여 UI 무결성 사수.
+# 🚨 NEW: [도메인 롤백 결속] telegram_sync_engine.py 에 잔존하던 get_settlement_message 및 create_sync_report를 본연의 뷰 도메인으로 100% 회수 이식.
 # ==========================================================
 import os
 import math
@@ -240,7 +241,7 @@ class TelegramView:
         msg += "본 모드는 <b>수학적 팩트</b>에 기반한 <b>순수 리버전 (1-Shot 1-Kill)</b> 아키텍처로 자동 가동됩니다.\n\n"
         msg += "▫️ <b>타점:</b> 각 세션별(프리장/정규장) 당일 순수 누적 VWAP <b>-2%</b> 하향 관통 시 즉시 예산 전액 지정가 진입\n"
         msg += "▫️ <b>익절:</b> 진입 평단가 기준 <b>+2%</b> 지정가 전량 매도망 100% 자동 장전\n"
-        msg += "▫️ <b>방어:</b> 15:59 EST 도달 시 미체결 덫 취소 및 최유리 지정가(-5%) <b>강제 덤핑 (제로-오버나이트)</b>\n\n"
+        msg += "▫️ <b>방어:</b> 15:59 EST 도달 시 미체결 덫 취소 및 매수 1호가 스윕 <b>강제 덤핑 (제로-오버나이트)</b>\n\n"
         msg += "포트폴리오 매니저의 관제탑 가동 승인을 대기합니다."
         keyboard = [
             [InlineKeyboardButton("👁️ 관제탑 락온(Lock-on) 가동 승인", callback_data=f"MODE:AVWAP_ON:{ticker}")],
@@ -300,6 +301,82 @@ class TelegramView:
         
         return msg, InlineKeyboardMarkup(keyboard)
 
+    # 🚨 NEW: [도메인 롤백 이식] telegram_sync_engine.py 에서 본연의 뷰 도메인으로 100% 회수 이식
+    def get_settlement_message(self, active_tickers, config, atr_data, tracking_cache=None):
+        msg = ""
+        keyboard = []
+        ver = ""
+        is_manual_vwap = False
+        fee_rate = 0.0
+        icon = ""
+        ver_display = ""
+        split_cnt = 0
+        target_profit = 0.0
+        comp_rate = 0.0
+        v14_mode_txt = ""
+
+        tracking_cache = tracking_cache or {}
+        msg = "⚙️ <b>[ 현재 설정 및 복리 상태 ]</b>\n\n"
+        
+        active_tickers = active_tickers or []
+        for t in active_tickers:
+            safe_t = html.escape(str(t))
+            ver = str(config.get_version(t) or "")
+            is_manual_vwap = getattr(config, 'get_manual_vwap_mode', lambda x: False)(t)
+            is_avwap_hybrid = getattr(config, 'get_avwap_hybrid_mode', lambda x: False)(t)
+            fee_rate = self._safe_float(getattr(config, 'get_fee', lambda x: 0.25)(t))
+            
+            if ver == "V_REV":
+                icon, ver_display = "⚖️", "V_REV 역추세 (로컬 1분 VWAP)" 
+            else:
+                icon = "💎"
+                ver_display = "무매4 (로컬 1분 VWAP)" if is_manual_vwap else "무매4 (LOC)" 
+                
+            split_cnt = int(self._safe_float(config.get_split_count(t)))
+            target_profit = self._safe_float(config.get_target_profit(t))
+            comp_rate = self._safe_float(config.get_compound_rate(t))
+            msg += f"{icon} <b>{safe_t} ({ver_display} 모드)</b>\n"
+            
+            if ver == "V_REV":
+                # 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 올인 타격 및 독립 병렬 가동 명시
+                avwap_status = "🟢 ON (주문가능금액 100% 올인)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
+                
+                msg += f"▫️ 본진 예산: 총 시드의 15% (고정 할당)\n▫️ 본진 목표: [가상1층]+0.6% / [상위층]+0.5%\n▫️ 자동복리: {comp_rate}% | 수수료: <b>{fee_rate}%</b>\n▫️ 갭 스위칭: <b>🤖 자율주행 (상승장 자동 가동)</b>\n"
+                msg += f"▫️ 암살자 타격망: <b>{avwap_status}</b>\n"
+                
+                if is_avwap_hybrid:
+                    msg += f"▫️ 아키텍처: <b>본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온</b>\n"
+                    msg += f"▫️ 암살자 타점: <b>세션 VWAP -2% (1-Shot 1-Kill)</b>\n"
+                    msg += f"▫️ 암살자 익절: <b>+2% 지정가 전량 익절 (절대 락온)</b>\n"
+                    msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 전량 최유리 지정가 덤핑</b>\n"
+                    msg += f"▫️ 데이 트레이딩 관제탑: <b>365일 상시 가동 📡</b>\n"
+                msg += "⚖️ <b>본진 스탠바이:</b> 15:26 EST 예약 덫 관측 ➔ 15:27 로컬 자체 슬라이싱 가동\n\n" 
+            else:
+                msg += f"▫️ 분할: {split_cnt}회 | 목표: {target_profit}% | 복리: {comp_rate}%\n▫️ 수수료: <b>{fee_rate}%</b>\n"
+                v14_mode_txt = "🕒 자체 1분 슬라이싱 VWAP 엔진" if is_manual_vwap else "📉 LOC 단일 타격 (초안정성)" 
+                msg += f"▫️ 집행: <b>{v14_mode_txt}</b>\n\n"
+         
+            if t == "SOXL":
+                keyboard.append([InlineKeyboardButton("💎 오리지널 V14 세팅", callback_data=f"SET_VER:V14:{t}"), InlineKeyboardButton("⚖️ 역추세 V-REV 세팅", callback_data=f"SET_VER:V_REV:{t}")])
+            elif t == "TQQQ":
+                keyboard.append([InlineKeyboardButton("💎 오리지널 V14 세팅", callback_data=f"SET_VER:V14:{t}")])
+
+            if ver == "V_REV":
+                if t == "SOXL": 
+                    keyboard.append([InlineKeyboardButton(f"📡 {safe_t} 데이 트레이딩 관제탑 열기", callback_data=f"AVWAP:MENU:{t}")])
+                    keyboard.append([InlineKeyboardButton("⚔️ 암살자 ON/OFF 토글", callback_data=f"CONFIG_AVWAP:TOGGLE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
+                else:
+                    keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+                    keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
+            else:
+                keyboard.append([InlineKeyboardButton(f"⚙️ {safe_t} 분할", callback_data=f"INPUT:SPLIT:{t}"), InlineKeyboardButton(f"🎯 {safe_t} 목표", callback_data=f"INPUT:TARGET:{t}"), InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}")])
+                keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
+    
+        return msg, InlineKeyboardMarkup(keyboard)
+
+    # 🚨 NEW: [도메인 롤백 이식] telegram_sync_engine.py 에서 본연의 뷰 도메인으로 100% 회수 이식
     def create_sync_report(self, status_text, dst_text, cash, rp_amount, ticker_data, is_trade_active, p_trade_data=None, exchange_rate=None):
         ticker_data = ticker_data or []
         
@@ -449,7 +526,7 @@ class TelegramView:
             
             if v_mode == "V_REV":
                 body_msg += "📋 <b>[주문 가이던스 - ⚖️다중 LIFO 제어]</b>\n"
-                body_msg += f"⚡ <b>[Gap Hijack 🤖자율주행]</b> 상승장 판별 시 잔여예산 스윕 대기\n"
+                body_msg += f"⚡ <b>[Gap Hijack 🤖자율주행]</b> 운용종목 갭 이탈 감지 시 잔여예산 스윕 대기\n"
                 raw_guidance = str(t_info.get('v_rev_guidance') or " (가이던스 대기 중)")
                 if is_zero_start:
                     raw_guidance = '\n'.join([line for line in raw_guidance.split('\n') if "잭팟" not in line and "상위층" not in line])
