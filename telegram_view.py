@@ -88,7 +88,7 @@ class TelegramView:
         msg += f"🕒 <b>[ 운영 스케줄 ({dst_state}) ]</b>\n"
         msg += f"🔹 04:00: 🌅 프리장 VWAP 스캔 개시\n"
         msg += f"🔹 09:30: 🔥 정규장 VWAP 초기화 및 스캔\n"
-        msg += f"🔹 15:27: ⚖️ V-REV 본진 1분 슬라이싱 타격\n"
+        msg += f"🔹 15:27: ⚖️ V-REV 1분 슬라이싱 타격\n"
         msg += f"🔹 15:59: 🛑 암살자 오버나이트 강제 덤핑\n"
         msg += f"🔹 16:05: 📝 정산 스캔 & 당일 사이클 졸업\n\n"
         
