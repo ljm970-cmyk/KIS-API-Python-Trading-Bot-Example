@@ -2,6 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [Indentation 붕괴 수술] process_auto_sync 내 V-REV 큐 관리 블록의 21칸 들여쓰기 오차를 20칸 표준으로 정밀 교정하여 SyntaxError 즉사 버그 완벽 차단.
 # 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 가동 시 표출되던 본진 셧다운 안내를 영구 소각하고, "본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온" 텍스트를 주입하여 디커플링 상태를 관제탑 UI에 완벽히 명시.
 # 🚨 MODIFIED: [1-Shot 1-Kill 타격망 UI 교정] 가상의 85% 시드 개념 파기에 따라, 암살자 상태를 '가용 현금 100% 올인'으로 변경하고 15:59 전량 최유리 지정가 덤핑 로직을 UI에 동기화 완료.
 # 🚨 MODIFIED: [Phase 3 비동기 통신 헬퍼 래핑 (DRY 원칙)] 무한 반복되는 asyncio.wait_for(asyncio.to_thread(...)) 및 텔레그램 메시지 발송 샌드박스 로직을 범용 헬퍼 메서드(_retry_api, _safe_send)로 단일화하여 코드 라인 수를 극한으로 진공 압축.
@@ -412,7 +413,8 @@ class TelegramSyncEngine:
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
                             
                         return "SUCCESS"
-                     if actual_qty == vrev_ledger_qty:
+                 
+                    if actual_qty == vrev_ledger_qty:
                         pass
                     elif actual_qty > 0 and actual_qty < vrev_ledger_qty:
                         gap_qty = vrev_ledger_qty - actual_qty
@@ -482,7 +484,6 @@ class TelegramSyncEngine:
                         q_data.append({"date": now_est.strftime('%Y-%m-%d %H:%M:%S'), "qty": gap_qty, "price": real_buy_price, "exec_id": f"MANUAL_BUY_{int(time.time())}"})
                         await self._retry_api(self.queue_ledger.overwrite_queue, ticker, q_data, timeout=10.0)
                         await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 수동 매수 편입 완료!</b>\n▫️ KIS 실잔고에 맞춰 신규 지층(<b>{gap_qty}주</b>, 추정단가 ${real_buy_price})을 정밀 추가했습니다.", parse_mode='HTML')
-
                 if not is_rev:
                     sold_today_v14 = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "01") if target_execs else 0
                     
