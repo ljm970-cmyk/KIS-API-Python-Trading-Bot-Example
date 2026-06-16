@@ -2,20 +2,14 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
-# 🚨 MODIFIED: [종가 오염 팩트 수복] KIS API 롤오버 지연으로 과거 종가가 유입되는 맹점을 차단하고, YF 정규장 1분봉(prepost=False)을 스캔하여 완벽한 prev_close 팩트 강제 락온.
-# 🚨 MODIFIED: [0주 타점 팩트 롤백] 갭상승 타점 오염을 막기 위해 0주 새출발 UI 가이던스 역시 오직 '전일 종가(prev_c)'만을 절대 베이스로 추종하도록 100% 팩트 교정 완료.
+# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
+# 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
+# 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 관제탑(create_sync_report) 0주 새출발 UI 렌더링 시, 낡은 prev_close * 1.15 동적 역산 수식을 전면 소각하고 오직 스냅샷 딕셔너리에 박제된 타점(price)만을 100% 그대로 화면에 복사 락온.
 # 🚨 MODIFIED: [가상 잔고 역산 영구 소각] 주문가능금액을 임의로 역산(Reverse Calculate)하려는 낡은 로직을 전면 파기하고 KIS 실데이터 100% 추종 유지.
 # 🚨 MODIFIED: [Indentation 붕괴 수술] process_auto_sync 내 V-REV 큐 관리 블록의 21칸 들여쓰기 오차를 20칸 표준으로 정밀 교정하여 SyntaxError 즉사 버그 완벽 차단.
 # 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 가동 시 표출되던 본진 셧다운 안내를 영구 소각하고, "본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온" 텍스트를 주입하여 디커플링 상태를 관제탑 UI에 완벽히 명시.
-# 🚨 MODIFIED: [1-Shot 1-Kill 타격망 UI 교정] 가상의 85% 시드 개념 파기에 따라, 암살자 상태를 '가용 현금 100% 올인'으로 변경하고 15:59 전량 최유리 지정가 덤핑 로직을 UI에 동기화 완료.
 # 🚨 MODIFIED: [Phase 3 비동기 통신 헬퍼 래핑 (DRY 원칙)] 무한 반복되는 asyncio.wait_for(asyncio.to_thread(...)) 및 텔레그램 메시지 발송 샌드박스 로직을 범용 헬퍼 메서드(_retry_api, _safe_send)로 단일화하여 코드 라인 수를 극한으로 진공 압축.
-# 🚨 MODIFIED: [Thread-Safety 락온] 내부 헬퍼 함수(_get_last_trade_date, get_yf_close 등)가 클로저(Closure) 외부 변수에 의존하지 않고 명시적 파라미터를 받도록 교정하여 Thread Context 오염 원천 차단.
 # 🚨 NEW: [0주 오인 패러독스 소각 & Fact Override] 실제 잔고가 존재함에도 불구하고 새벽 스냅샷의 0주(is_zero_start=True) 상태를 맹신하던 로직을 전면 파기하고, KIS 실잔고 및 큐 장부를 최우선으로 오버라이드하여 Fact Mismatch 원천 차단.
-# 🚨 NEW: [Ghost Balance (유령 잔고) 방어막 주입] KIS 서버 오류로 실잔고가 0주로 반환되었을 때, 실제 당일 매도 체결(sold_today) 내역이 없다면 장부 소각(자동 졸업)을 원천 차단하여 Phantom Graduation 붕괴 완벽 방어.
-# 🚨 NEW: [제1헌법 100% 준수] _retry_api 헬퍼를 통해 파일 I/O 동기화 로직 전역에 wait_for(timeout=10.0/15.0) 족쇄를 래핑하여 이벤트 루프 교착 완벽 차단.
-# 🚨 MODIFIED: [NaN 맹독 전이 및 JSON 직렬화 붕괴 원천 차단] 모든 재무 데이터에 self._safe_float() 정화 필터 강제 락온.
-# 🚨 MODIFIED: [Gap Hijack 양방향 팩트 교정] 관제탑 데이터 집계 도메인 V-REV 렌더링 텍스트를 "하락 시 스윕 매수 / +2% 슈팅 시 전량 익절" 양방향 하이재킹으로 오버라이드 100% 완료.
-# 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] 관제탑 데이터 집계 도메인의 vrev_gap_thresh_val 및 avwap_gap_thresh_val 폴백 수치를 -0.67에서 -2.0으로 상향 팩트 교정 완료.
 # ==========================================================
 import logging
 import datetime
@@ -303,7 +297,6 @@ class TelegramSyncEngine:
                     vrev_ledger_qty = sum(int(self._safe_float(item.get("qty"))) for item in q_data_before if isinstance(item, dict))
                     sold_today_vrev = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "01") if target_execs else 0
                     
-                    # 🚨 [Case 35: Ghost Balance - Phantom Graduation 방어막]
                     if actual_qty == 0 and (vrev_ledger_qty > 0 or sold_today_vrev > 0):
                         if sold_today_vrev == 0 and vrev_ledger_qty > 0:
                             await self._safe_send(context, chat_id, f"🚨 <b>[{html.escape(str(ticker))} 유령 잔고 방어 가동]</b>\nKIS 실잔고가 0주로 조회되었으나, 당일 매도 체결 내역이 0건입니다. 통신 오류(Ghost Balance)일 가능성이 매우 높아 장부 강제 소각(자동 졸업)을 차단합니다.\n▫️ HTS 등을 통해 수동으로 100% 전량 매도한 상태라면 <code>/reset</code> 명령어를 사용하여 봇을 초기화하십시오.", parse_mode='HTML')
@@ -490,7 +483,6 @@ class TelegramSyncEngine:
                 if not is_rev:
                     sold_today_v14 = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "01") if target_execs else 0
                     
-                    # 🚨 [Case 35: Ghost Balance - Phantom Graduation 방어막]
                     if actual_qty == 0 and (ledger_qty > 0 or sold_today_v14 > 0):
                         if sold_today_v14 == 0 and ledger_qty > 0:
                             await self._safe_send(context, chat_id, f"🚨 <b>[{html.escape(str(ticker))} 유령 잔고 방어 가동]</b>\nKIS 실잔고가 0주로 조회되었으나, 당일 매도 체결 내역이 0건입니다. 통신 오류(Ghost Balance)일 가능성이 매우 높아 장부 강제 소각(자동 졸업)을 차단합니다.\n▫️ HTS 등을 통해 수동으로 100% 전량 매도한 상태라면 <code>/reset</code> 명령어를 사용하여 봇을 초기화하십시오.", parse_mode='HTML')
@@ -684,29 +676,7 @@ class TelegramSyncEngine:
             if fact_qty == 0 and not is_zero_start:
                 is_zero_start = True
                 plan_dict['orders'] = []
-                 
-                if v_mode == "V_REV":
-                    half_budget = (safe_seed * 0.15) * 0.5
-                    if prev_close > 0:
-                        # 🚨 MODIFIED: [0주 타점 팩트 롤백] YF 일봉(prev_close)을 최우선으로 사용하여 오염되지 않은 타점 강제.
-                        p1_trigger_fact = round(prev_close * 1.15, 2)
-                        p2_trigger_fact = round(prev_close * 0.999, 2)
-                        q1 = math.floor(half_budget / p1_trigger_fact) if p1_trigger_fact > 0 else 0
-                        q2 = math.floor(half_budget / p2_trigger_fact) if p2_trigger_fact > 0 else 0
-                        if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p1_trigger_fact, "type": "LOC", "desc": "가상 매수(Buy1)"})
-                        if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p2_trigger_fact, "type": "LOC", "desc": "가상 매수(Buy2)"})
             
-                else:
-                    half_budget = safe_one_portion * 0.5
-                    if prev_close > 0:
-                        p_buy = max(0.01, round(math.ceil(prev_close * 1.15 * 100) / 100.0 - 0.01, 2))
-                        q1 = math.floor(half_budget / p_buy) if p_buy > 0 else 0
-                        q2 = math.floor((safe_one_portion - half_budget) / p_buy) if p_buy > 0 else 0
-                        
-                        if q1 == 0 and q2 == 0 and safe_one_portion >= p_buy > 0: q1 = int(math.floor(safe_one_portion / p_buy))
-                        if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy1)"})
-                        if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy2)"})
-             
             if safe_split > 0 and safe_t_val > (safe_split * 1.1):
                 body_msg += "⚠️ <b>[🚨 시스템 긴급 경고: 비정상 T값 폭주 감지!]</b>\n"
                 body_msg += f"🔎 현재 T값(<b>{safe_t_val:.4f}T</b>)이 설정된 분할수(<b>{int(safe_split)}분할</b>) 초과했습니다!\n"
@@ -790,24 +760,24 @@ class TelegramSyncEngine:
                 
                 v_rev_q_lots_val = self._safe_float(t_info.get('v_rev_q_lots') or 0.0)
                 
-                # 🚨 MODIFIED: [0주 팩트 롤백] 0주 새출발일 경우 prev_close를, 기보유 상태일 경우 safe_anchor(최상단 매물)를 앵커로 분리 락온.
+                # 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 0주 새출발 UI 렌더링 시, 낡은 prev_close * 1.15 동적 역산 수식을 전면 소각하고 
+                # 오직 스냅샷 딕셔너리(plan_dict)에 박제된 단가(price)만을 100% 그대로 화면에 복사 락온.
                 if is_zero_start:
-                    if prev_close > 0:
-                        b1_price = round(prev_close * 1.15, 2)
-                        b2_price = round(prev_close * 0.999, 2)
-                        b1_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy1' in str(o.get('desc', ''))), None)
-                        b2_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy2' in str(o.get('desc', ''))), None)
-                        
-                        if b1_order or b2_order:
-                            lines = raw_guidance.split('\n')
-                            for i, line in enumerate(lines):
-                                if "매수1(Buy1)" in line and b1_order:
-                                    b1_qty = int(self._safe_float(b1_order.get('qty')))
-                                    lines[i] = f" 🔴 매수1(Buy1) ${b1_price:.2f} <b>{b1_qty}주</b>"
-                                elif "매수2(Buy2)" in line and b2_order:
-                                    b2_qty = int(self._safe_float(b2_order.get('qty')))
-                                    lines[i] = f" 🔴 매수2(Buy2) ${b2_price:.2f} <b>{b2_qty}주</b>"
-                            raw_guidance = '\n'.join(lines)
+                    b1_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy1' in str(o.get('desc', ''))), None)
+                    b2_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy2' in str(o.get('desc', ''))), None)
+                    
+                    if b1_order or b2_order:
+                        lines = raw_guidance.split('\n')
+                        for i, line in enumerate(lines):
+                            if "매수1(Buy1)" in line and b1_order:
+                                b1_price = self._safe_float(b1_order.get('price'))
+                                b1_qty = int(self._safe_float(b1_order.get('qty')))
+                                lines[i] = f" 🔴 매수1(Buy1) ${b1_price:.2f} <b>{b1_qty}주</b>"
+                            elif "매수2(Buy2)" in line and b2_order:
+                                b2_price = self._safe_float(b2_order.get('price'))
+                                b2_qty = int(self._safe_float(b2_order.get('qty')))
+                                lines[i] = f" 🔴 매수2(Buy2) ${b2_price:.2f} <b>{b2_qty}주</b>"
+                        raw_guidance = '\n'.join(lines)
                 
                 elif fact_qty > 0 and v_rev_q_lots_val > 0:
                     try:

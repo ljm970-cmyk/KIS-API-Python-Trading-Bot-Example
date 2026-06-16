@@ -2,6 +2,8 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감(16:00 EST) 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단(Cut-off)하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
+# 🚨 MODIFIED: [스냅샷 절대주의 사수] cmd_sync 및 EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
 # 🚨 MODIFIED: [Phase 1 명령어 도메인 독립] 기존 telegram_bot.py 의 God Object 안티패턴을 뜯어내어 명령어 제어 로직을 전담하는 순수 도메인 클래스 분리 락온.
@@ -223,13 +225,27 @@ class TelegramCommands:
             safe_prev_close = prev_close
             
             if status_code in ["AFTER", "CLOSE", "PRE"]:
-                # 🚨 MODIFIED: [종가 팩트 스캔망] 정규장 마감 이후 KIS 서버의 전일 종가(base)가 롤오버되지 않는 맹점을 YF 정규장 1분봉(prepost=False)으로 오버라이드하여 완벽한 prev_close 팩트 구축
+                # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 호출 시 라이브 캔들을 절단하고 공식 MOC 종가만 추출.
                 def get_exact_prev_close(ticker_name):
                     time.sleep(0.06)
                     df = yf.Ticker(ticker_name).history(period="5d", interval="1d", timeout=5)
-                    if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
-                        val = float(df['Close'].iloc[-1])
-                        return val if not math.isnan(val) else None
+                    if not df.empty and 'Close' in df.columns:
+                        tz_est = ZoneInfo('America/New_York')
+                        tz_now = datetime.datetime.now(tz_est)
+                        cutoff_date = tz_now.date()
+                        # 정규장 마감 이전이면 당일 캔들을 배제
+                        if tz_now.time() <= datetime.time(16, 0, 30):
+                            cutoff_date -= datetime.timedelta(days=1)
+                        
+                        if df.index.tzinfo is None:
+                            df.index = df.index.tz_localize('UTC').tz_convert(tz_est)
+                        else:
+                            df.index = df.index.tz_convert(tz_est)
+                            
+                        past_df = df[df.index.date <= cutoff_date]
+                        if not past_df.empty:
+                            val = float(past_df['Close'].iloc[-1])
+                            return val if not math.isnan(val) else None
                     return None
                     
                 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
@@ -292,10 +308,11 @@ class TelegramCommands:
             job_data = jobs[0].data if jobs and len(jobs) > 0 and jobs[0].data is not None else {}
             regime_data = job_data.get('regime_data') if isinstance(job_data, dict) else None
 
+            # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함.
             plan = await self._retry_api(
                 self.strategy.get_plan, t, curr, actual_avg, logic_qty, safe_prev_close, ma_5day=ma_5day,
                 market_type="REG", available_cash=allocated_cash.get(t, 0.0),
-                is_simulation=True, regime_data=regime_data, is_snapshot_mode=True
+                is_simulation=True, regime_data=regime_data, is_snapshot_mode=False
             ) or {}
               
             split = await self._retry_api(self.cfg.get_split_count, t, default=40.0)
