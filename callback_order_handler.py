@@ -2,7 +2,9 @@
 # FILE: callback_order_handler.py
 # ==========================================================
 # 🚨 MODIFIED: [주문 통신 전담 도메인] KIS API 수동 주문, 수동 취소, 비상 수혈 로직 100% 분리 락온
-# 🚨 MODIFIED: [종가 오염 팩트 수복] KIS API 롤오버 지연으로 과거 종가가 유입되는 맹점을 차단하고, YF 정규장 1분봉(prepost=False)을 스캔하여 완벽한 prev_close 팩트 강제 락온.
+# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감(16:00 EST) 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단(Cut-off)하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
+# 🚨 MODIFIED: [스냅샷 절대주의 사수] EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
+# 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
 # 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프, TPS 캡핑, wait_for(10.0) 래핑, yfinance 타임아웃(timeout=5) 방어막 유지
 # 🚨 MODIFIED: [Insight 26] KIS 서버 타입 불일치(Reject) 원천 차단을 위한 수량(int), 가격(float) 강제 캐스팅 유지
@@ -208,19 +210,33 @@ class CallbackOrderHandler:
             status_code, _ = await controller._get_market_status()
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 try:
-                    def get_yf_close():
+                    # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 호출 시 라이브 캔들을 절단하고 공식 MOC 종가만 추출.
+                    def get_exact_prev_close(ticker_name):
                         time.sleep(0.06)
-                        # 🚨 NEW: 좀비 스레드 누수 방어용 timeout=5 락온
-                        df = yf.Ticker(t).history(period="5d", interval="1d", timeout=5)
-                        if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
-                            val = float(df['Close'].iloc[-1])
-                            return val if not math.isnan(val) else None
+                        df = yf.Ticker(ticker_name).history(period="5d", interval="1d", timeout=5)
+                        if not df.empty and 'Close' in df.columns:
+                            tz_est = ZoneInfo('America/New_York')
+                            tz_now = datetime.datetime.now(tz_est)
+                            cutoff_date = tz_now.date()
+                            # 정규장 마감 이전이면 당일 캔들을 배제
+                            if tz_now.time() <= datetime.time(16, 0, 30):
+                                cutoff_date -= datetime.timedelta(days=1)
+                            
+                            if df.index.tzinfo is None:
+                                df.index = df.index.tz_localize('UTC').tz_convert(tz_est)
+                            else:
+                                df.index = df.index.tz_convert(tz_est)
+                                
+                            past_df = df[df.index.date <= cutoff_date]
+                            if not past_df.empty:
+                                val = float(past_df['Close'].iloc[-1])
+                                return val if not math.isnan(val) else None
                         return None
                     
                     yf_close = None
                     for attempt in range(3):
                         try:
-                            yf_close = await asyncio.wait_for(asyncio.to_thread(get_yf_close), timeout=10.0)
+                            yf_close = await asyncio.wait_for(asyncio.to_thread(get_exact_prev_close, t), timeout=10.0)
                             break
                         except Exception:
                             if attempt == 2: pass
@@ -251,6 +267,8 @@ class CallbackOrderHandler:
                     
             is_manual_vwap = await asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t)
             
+            # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함. (단, EXEC 모드이므로 새로 생성해야 함)
+            # EXEC 모드는 "수동 강제 전송"이므로 스냅샷을 덮어쓰는 is_snapshot_mode=True 가 유지되어야 합니다.
             plan = await asyncio.to_thread(self.strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=allocated_budget, is_simulation=True, is_snapshot_mode=True)
             
             if not isinstance(plan, dict):
