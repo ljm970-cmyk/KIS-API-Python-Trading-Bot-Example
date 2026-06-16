@@ -207,11 +207,8 @@ class TelegramCommands:
 
         for t in sorted_tickers:
             is_avwap_active = False
-            avwap_budget, avwap_qty, avwap_avg, avwap_strikes = 0.0, 0, 0.0, 0
             avwap_status_txt = "OFF"
-            avwap_base_ticker, avwap_base_price, avwap_base_vwap = "N/A", 0.0, 0.0
-            avwap_prev_vwap, avwap_rolling_tp, avwap_gap_pct = 0.0, 0.0, 0.0
-
+            
             h = holdings.get(t) if isinstance(holdings.get(t), dict) else {'qty':0, 'avg':0}
             
             curr = self._safe_float(await self._retry_api(self.broker.get_current_price, t, is_market_closed=(status_code == "CLOSE")))
@@ -363,10 +360,7 @@ class TelegramCommands:
 
             upward_sniper_mode_on = await self._retry_api(self.cfg.get_upward_sniper_mode, t, default=False)
             target_val = await self._retry_api(self.cfg.get_target_profit, t, default=10.0)
-            avwap_gap_thresh_val = await self._retry_api(getattr(self.cfg, 'get_avwap_gap_threshold', lambda x: -0.67), t, default=-0.67) if is_avwap_active else -0.67
-            vrev_gap_switch_val = await self._retry_api(getattr(self.cfg, 'get_vrev_gap_switching_mode', lambda x: False), t, default=False)
-            vrev_gap_thresh_val = await self._retry_api(getattr(self.cfg, 'get_vrev_gap_threshold', lambda x: -0.67), t, default=-0.67)
-
+            
             ticker_data_list.append({
                 'ticker': t, 'version': ver, 't_val': t_val, 'split': split, 'curr': curr, 'avg': actual_avg, 'qty': actual_qty,
                 'profit_amt': (curr - actual_avg) * actual_qty if actual_qty > 0 else 0, 
@@ -388,22 +382,6 @@ class TelegramCommands:
                 'vol_status': vol_status,
                 'v_rev_q_lots': v_rev_q_lots,
                 'v_rev_q_qty': v_rev_q_qty,
-                'v_rev_guidance': "", # 🚨 MODIFIED: UI 렌더링 도메인으로 100% 위임 (데드코드 소각)
-                'avwap_active': is_avwap_active,
-                'avwap_budget': 0.0,
-                'avwap_qty': 0,
-                'avwap_avg': 0.0,
-                'avwap_status': avwap_status_txt,
-                'avwap_strikes': 0,
-                'avwap_base_ticker': 'SOXX' if t == 'SOXL' else 'QQQ',
-                'avwap_base_price': 0.0,
-                'avwap_base_vwap': 0.0,
-                'avwap_prev_vwap': 0.0,
-                'avwap_rolling_tp': 0.0,
-                'avwap_gap_pct': 0.0,
-                'avwap_gap_thresh': avwap_gap_thresh_val,
-                'vrev_gap_switch': vrev_gap_switch_val,
-                'vrev_gap_thresh': vrev_gap_thresh_val,
                 'is_manual_vwap': is_manual_vwap,
                 'is_zero_start': is_zero_start_fact,
                 'has_snapshot': bool(cached_snap)
@@ -418,7 +396,6 @@ class TelegramCommands:
         surplus = cash - total_buy_needed
         rp_amount = surplus * 0.95 if surplus > 0 else 0
         
-        # 🚨 MODIFIED: [Thread-Safety 락온] 외부 스코프 의존성 제거
         def get_exchange_rate():
             time.sleep(0.06)
             df = yf.Ticker("KRW=X").history(period="1d", timeout=5.0)
@@ -439,7 +416,6 @@ class TelegramCommands:
     async def cmd_record(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링(In-place Edit) 분기 락온
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
         
@@ -492,7 +468,6 @@ class TelegramCommands:
             
         keyboard.append([InlineKeyboardButton("❌ 닫기", callback_data="RESET:CANCEL")])
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         if is_callback:
             await self._safe_edit(update.effective_message, msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
         else:
@@ -502,7 +477,6 @@ class TelegramCommands:
         active_tickers = await self._retry_api(self.cfg.get_active_tickers, default=[])
         if not isinstance(active_tickers, list): active_tickers = []
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링(In-place Edit) 분기 락온
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
         
@@ -532,7 +506,6 @@ class TelegramCommands:
                 InlineKeyboardButton(f"🔢 {html.escape(str(t))} 고정", callback_data=f"SEED:SET:{html.escape(str(t))}")
             ])
             
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         if is_callback:
             await self._safe_edit(update.effective_message, msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
@@ -544,7 +517,6 @@ class TelegramCommands:
         if not isinstance(active_tickers, list): active_tickers = []
         msg, markup = self.view.get_ticker_menu(active_tickers)
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         if is_callback:
             await self._safe_edit(update.effective_message, msg, reply_markup=markup, parse_mode='HTML')
@@ -563,7 +535,6 @@ class TelegramCommands:
         report += "🟥 <code>25.00 이상 </code> : 패닉 셀링 (ON)\n\n"
         
         for t in active_tickers:
-            # 🚨 MODIFIED: [런타임 호환성 확보] idx_ticker 위치 인자 강제 패싱 락온
             idx_ticker = "SOXX" if t == "SOXL" else "QQQ"
             dynamic_pct_obj = await self._retry_api(self.broker.get_dynamic_sniper_target, idx_ticker)
             
@@ -584,7 +555,6 @@ class TelegramCommands:
             report += f"▫️ {html.escape(str(t))} 현재 상태 : {status_txt}\n"
             keyboard.append([InlineKeyboardButton(f"{html.escape(str(t))} ⚪ OFF", callback_data=f"MODE:OFF:{html.escape(str(t))}"), InlineKeyboardButton(f"{html.escape(str(t))} 🎯 ON", callback_data=f"MODE:ON:{html.escape(str(t))}")])
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         if is_callback:
             await self._safe_edit(update.effective_message, report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
@@ -595,7 +565,6 @@ class TelegramCommands:
         history_data = await self._retry_api(self.cfg.get_full_version_history, default=[])
         msg, markup = self.view.get_version_message(history_data, page_index=None)
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         if is_callback:
             await self._safe_edit(update.effective_message, msg, parse_mode='HTML', reply_markup=markup)
@@ -616,7 +585,6 @@ class TelegramCommands:
         q_data = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
         msg, reply_markup = self.view.get_queue_management_menu(ticker, q_data if isinstance(q_data, list) else [])
         
-        # 이 커맨드는 인자(args)를 필요로 하므로 통상 콜백에서 직접 호출되지 않음.
         await self._safe_reply(update.effective_message, msg, reply_markup=reply_markup, parse_mode='HTML')
 
     async def cmd_add_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -687,7 +655,6 @@ class TelegramCommands:
             await self._safe_reply(update.effective_message, f"🛑 <b>[작전 중 업데이트 거부]</b>\n\n{fail_msg}", parse_mode='HTML')
             return
             
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
         
@@ -703,7 +670,6 @@ class TelegramCommands:
             await self._safe_edit(status_msg, f"❌ <b>[동기화 실패]</b>\n▫️ 사유: {safe_msg}", parse_mode='HTML')
 
     async def cmd_avwap(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 1줄짜리 로딩 메시지를 소각하여 Height Collapse 방어
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
         
@@ -727,7 +693,6 @@ class TelegramCommands:
             await self._safe_edit(status_msg, "❌ <b>[네트워크 지연 발생]</b>\n야후 파이낸스 또는 증권사 서버 응답이 지연되어 스캔을 강제 종료했습니다.", parse_mode='HTML')
 
     async def cmd_log(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
         
@@ -760,7 +725,6 @@ class TelegramCommands:
         if not isinstance(active_tickers, list): active_tickers = []
         msg, markup = self.view.get_reset_menu(active_tickers)
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 제자리 렌더링
         is_callback = update.callback_query is not None
         if is_callback:
             await self._safe_edit(update.effective_message, msg, reply_markup=markup, parse_mode='HTML')
@@ -768,7 +732,6 @@ class TelegramCommands:
             await self._safe_reply(update.effective_message, msg, reply_markup=markup, parse_mode='HTML')
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE, controller):
-        # 🚨 [100% 위임 헬퍼 (TelegramCommands를 직접 호출할 때를 위한 래퍼)]
         text = update.effective_message.text.strip() if update.effective_message and update.effective_message.text else ""
         
         if "통합 지시서" in text or "지시서 조회" in text: return await self.cmd_sync(update, context)

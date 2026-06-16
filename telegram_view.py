@@ -2,7 +2,8 @@
 # FILE: telegram_view.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해킹 로직을 전면 소각하고 스냅샷 팩트 그대로 출력.
+# 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해킹 로직과 뷰어 내부에서 타점을 재계산하던 오염된 뇌관을 전면 소각하고, 스냅샷 팩트 그대로 출력하도록 진공 압축.
+# 🚨 MODIFIED: [관망 텍스트 증발 버그 수술] 0주일 때 매도 대기 물량 텍스트가 사라지는 논리적 오류(`if not is_zero_start:`)를 파기하고 무조건 관망 텍스트를 출력하도록 락온.
 # 🚨 MODIFIED: [Phase 3 암살자 선택권 복구] get_settlement_message 내 암살자 상태(is_avwap_hybrid) 동적 렌더링(ON/OFF) 및 토글 버튼 100% 수복 완료.
 # 🚨 MODIFIED: [순수 리버전 팩트 롤오버] '세션 VWAP -2% 매수' 및 '가용 현금 100% 올인', '+2% 전량 익절', '15:59 강제 덤핑' 팩트를 시스템 UI 전역에 100% 동기화 교체 완료.
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
@@ -368,7 +369,7 @@ class TelegramView:
     
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 MODIFIED: [스냅샷 절대주의 렌더링 락온] 동적 역산 뇌관을 전면 소각하고 오직 팩트 지시서(plan_dict['orders'])만 직접 핀셋 추출하여 렌더링합니다.
+    # 🚨 MODIFIED: [스냅샷 절대주의 렌더링 락온] 동적 역산 뇌관과 텍스트 조작 로직을 전면 소각하고 오직 팩트 지시서(plan_dict['orders'])만 직접 핀셋 추출하여 렌더링합니다.
     def create_sync_report(self, status_text, dst_text, cash, rp_amount, ticker_data, is_trade_active, p_trade_data=None, exchange_rate=None):
         ticker_data = ticker_data or []
         
@@ -390,6 +391,9 @@ class TelegramView:
             t = html.escape(str(t_info.get('ticker') or 'UNK'))
             v_mode = str(t_info.get('version') or 'V14')
             is_manual_vwap = bool(t_info.get('is_manual_vwap'))
+            
+            # 🚨 MODIFIED: [is_zero_start 팩트 추종] 
+            # 뷰어 도메인은 연산하지 않습니다. 코어 엔진이 판단한 is_zero_start 팩트를 100% 맹신합니다.
             is_zero_start = bool(t_info.get('is_zero_start'))
              
             safe_seed = self._safe_float(t_info.get('seed') or 0.0)
@@ -416,9 +420,6 @@ class TelegramView:
             day_low = self._safe_float(t_info.get('day_low') or 0.0)
             prev_close = self._safe_float(t_info.get('prev_close') or 0.0)
             sniper_status_txt = html.escape(str(t_info.get('upward_sniper') or 'OFF'))
-
-            if fact_qty == 0 and not is_zero_start:
-                is_zero_start = True
              
             if safe_split > 0 and safe_t_val > (safe_split * 1.1):
                 body_msg += "⚠️ <b>[🚨 시스템 긴급 경고: 비정상 T값 폭주 감지!]</b>\n"
@@ -498,7 +499,8 @@ class TelegramView:
                 body_msg += "📋 <b>[주문 가이던스 - ⚖️다중 LIFO 제어]</b>\n"
                 body_msg += f"⚡ <b>[Gap Hijack 🤖자율주행]</b> 운용종목 갭 이탈 감지 시 잔여예산 스윕 대기\n"
                 
-                # 🚨 MODIFIED: [동적 역산 및 치환 뇌관 전면 소각] 스냅샷 팩트 데이터(plan_dict['orders'])만 100% 직접 핀셋 추출하여 렌더링.
+                # 🚨 MODIFIED: [UI 렌더링 동적 역산 및 조작 뇌관 영구 소각]
+                # 오직 스냅샷 객체에 박제된 팩트 데이터(plan_dict['orders'])만 100% 핀셋 추출하여 직관적으로 렌더링합니다.
                 raw_guidance = ""
                 plan_orders = plan_dict.get('orders') or []
                 
@@ -510,8 +512,8 @@ class TelegramView:
                         desc = str(o.get('desc', '매도')).split('(')[0]
                         raw_guidance += f" 🔵 {html.escape(desc)} ${self._safe_float(o.get('price')):.2f} <b>{int(self._safe_float(o.get('qty')))}주</b>\n"
                 else:
-                    if not is_zero_start:
-                        raw_guidance += " 🔵 매도: 대기 물량 없음 (관망)\n"
+                    # 🚨 MODIFIED: [관망 텍스트 증발 버그 수술] `if not is_zero_start:` 제약을 파기하고 무조건 관망 텍스트를 출력하도록 락온.
+                    raw_guidance += " 🔵 매도: 대기 물량 없음 (관망)\n"
                         
                 if buy_orders:
                     for o in buy_orders:
