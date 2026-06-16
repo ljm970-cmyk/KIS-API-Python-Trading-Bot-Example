@@ -5,6 +5,7 @@
 # 🚨 MODIFIED: [P-매매 오리지널 비율 롤백] 기보유 상태의 매수 타점을 P-매매 오리지널 비율(0.998, 0.993)로 팩트 교정 락온.
 # 🚨 MODIFIED: [제2헌법 준수] 사용되지 않는 유령 변수(residual) 데드코드 100% 영구 소각 및 파일 I/O 에러 로깅 강제 결속.
 # 🚨 NEW: [Fact Override 락온] 수동 개입(/record, /add_q)으로 인해 실잔고 또는 큐에 수량이 편입되었을 경우, 새벽 스냅샷의 0주(is_zero_start=True) 맹신을 파기하고 실시간 팩트(False)로 오버라이드하여 매수 타점 역전 패러독스를 원천 차단.
+# 🚨 MODIFIED: [0주 타점 팩트 롤백] 갭상승 타점 오염을 막기 위해 0주 새출발은 오직 '전일 종가(prev_c)'만을 절대 베이스로 추종하도록 100% 팩트 교정 완료.
 import math
 import os
 import json
@@ -242,6 +243,7 @@ class ReversionStrategy:
         if is_zero_start_session and (actual_qty > 0 or total_q > 0):
             is_zero_start_session = False
 
+        # 🚨 MODIFIED: [0주 타점 팩트 롤백] 갭상승에 오염되지 않도록 0주 새출발은 오직 prev_c 만을 100% 절대 앵커로 사용합니다.
         if is_zero_start_session:
             p1_trigger = round(prev_c * 1.15, 2)
             p2_trigger = round(prev_c * 0.999, 2)
