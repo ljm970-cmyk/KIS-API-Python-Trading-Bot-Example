@@ -2,6 +2,7 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [침묵의 마비(Silent Death) 원천 봉쇄] cmd_record 내부에 locked_tickers 및 error_tickers 추적망을 신설하여, 백그라운드 락 점유 시 무한 로딩에 빠지지 않고 즉각 피드백하도록 팩트 교정 완료.
 # 🚨 MODIFIED: [다중 종목 렌더링 누락 수술] cmd_record 내부 단일 종목 렌더링 맹점을 소각하고, 모든 가동 종목이 출력되도록 순회 루프(enumerate) 및 분할 타전망 팩트 락온.
 # 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] 전일 종가가 0.0일 때 실시간 현재가로 덮어씌워 타점 연산을 오염시키던 맹독성 조건문을 시스템 전역에서 100% 삭제 완료.
 # 🚨 MODIFIED: [UI 렌더링 텍스트 조합 뇌관 영구 소각] cmd_sync 내부에서 현재가(curr)를 참조해 타점을 역산하던 맹독성 `v_rev_guidance` 생성 로직을 100% 삭제. UI 렌더링은 오직 뷰어 도메인으로 전면 위임.
@@ -345,7 +346,7 @@ class TelegramCommands:
              
                 v_rev_q_lots = len(q_list)
                 v_rev_q_qty = sum(int(self._safe_float(item.get('qty', 0))) for item in q_list if isinstance(item, dict))
-                
+            
                 one_portion_cash = safe_seed * 0.15
                 plan['one_portion'] = one_portion_cash
 
@@ -372,7 +373,7 @@ class TelegramCommands:
                             amp5=self._safe_float(getattr(dynamic_pct_obj, 'base_amp', 0.0)) if hasattr(dynamic_pct_obj, 'base_amp') else 0.0,
                             prev_close=safe_prev_close, ma_5day=ma_5day, sortie_mode="SINGLE"
                         ) or {}
-                        
+                    
                         if decision:
                             avwap_status_txt = f"👁️ 관측 중: {decision.get('reason', '타점 계산중')}"
 
@@ -440,7 +441,11 @@ class TelegramCommands:
         if not is_callback:
             status_msg = await self._safe_send(context, chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML')
         
+        # 🚨 MODIFIED: [침묵의 마비 수술] 락 상태 및 에러 상태 팩트 트래킹 배열 주입
         success_tickers = []
+        locked_tickers = []
+        error_tickers = []
+        
         active_tickers = await self._retry_api(self.cfg.get_active_tickers, default=[])
         if not isinstance(active_tickers, list): active_tickers = []
         
@@ -449,8 +454,11 @@ class TelegramCommands:
                 await asyncio.sleep(0.06)
                 res = await self.sync_engine.process_auto_sync(t, chat_id, context, silent_ledger=True)
                 if res == "SUCCESS": success_tickers.append(t)
+                elif res == "LOCKED": locked_tickers.append(t)
+                else: error_tickers.append(t)
             except Exception as e:
                 logging.error(f"🚨 [{t}] 개별 종목 장부 동기화 중 에러 (격리): {e}")
+                error_tickers.append(t)
         
         if success_tickers: 
             async with self.tx_lock:
@@ -463,8 +471,21 @@ class TelegramCommands:
                     await self.sync_engine._display_ledger(t, chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
                 else:
                     await self.sync_engine._display_ledger(t, chat_id, context, message_obj=None, pre_fetched_holdings=holdings)
+                    
+            if locked_tickers:
+                await self._safe_send(context, chat_id, f"⚠️ <b>[동기화 지연]</b> {', '.join(locked_tickers)} 종목은 현재 백그라운드 스케줄러가 장부를 점유 중입니다. 잠시 후 다시 시도해주세요.", parse_mode='HTML')
+            
+            if error_tickers:
+                await self._safe_send(context, chat_id, f"❌ <b>[동기화 에러]</b> {', '.join(error_tickers)} 종목의 무결성 검증 중 통신 오류가 발생했습니다.", parse_mode='HTML')
+                
         else:
-            await self._safe_edit(status_msg, "✅ <b>동기화 완료</b> (표시할 진행 중인 장부가 없거나 에러 대기 중입니다)", parse_mode='HTML')
+            err_msg = "✅ <b>동기화 완료</b> (진행 중인 장부가 없습니다.)"
+            if locked_tickers:
+                err_msg = f"⚠️ <b>[동기화 지연]</b> 백그라운드 작업이 장부를 점유 중입니다. 잠시 후 다시 시도해주세요."
+            elif error_tickers:
+                err_msg = f"❌ <b>[동기화 에러]</b> KIS 서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+                
+            await self._safe_edit(status_msg, err_msg, parse_mode='HTML')
 
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_callback = update.callback_query is not None
@@ -570,7 +591,7 @@ class TelegramCommands:
             elif real_val <= 25.0: diag_text = "변동성 확대 장세 (계좌 방어를 위해 스나이퍼 ON)"; status_icon = "🟨"
             else: diag_text = "패닉 셀링 및 시스템 충격 (스나이퍼 필수 가동)"; status_icon = "🟥"
             report += f"💠 <b>[ {html.escape(str(t))} 국면 분석 ]</b>\n▫️ 당일 절대 지수({real_name}): {real_val:.2f}\n▫️ 진단 : {status_icon} {diag_text}\n\n"
-                
+                 
         report += "🎯 <b>[ 수동 상방 스나이퍼 독립 제어 ]</b>\n"
         keyboard = []
         for t in active_tickers:
@@ -588,7 +609,7 @@ class TelegramCommands:
     async def cmd_version(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         history_data = await self._retry_api(self.cfg.get_full_version_history, default=[])
         msg, markup = self.view.get_version_message(history_data, page_index=None)
-        
+         
         is_callback = update.callback_query is not None
         if is_callback:
             await self._safe_edit(update.effective_message, msg, parse_mode='HTML', reply_markup=markup)
@@ -665,7 +686,7 @@ class TelegramCommands:
         if not getattr(self, 'queue_ledger', None):
             from queue_ledger import QueueLedger
             self.queue_ledger = await asyncio.to_thread(QueueLedger)
-            
+             
         await self._retry_api(self.queue_ledger.clear_queue, ticker)
         chat_id = update.effective_chat.id
         if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
@@ -684,7 +705,7 @@ class TelegramCommands:
         
         if not is_callback:
              status_msg = await self._safe_reply(update.effective_message, "⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
-        
+         
         success, msg = await updater.pull_latest_code()
         safe_msg = html.escape(str(msg)) 
         if success:
@@ -754,16 +775,3 @@ class TelegramCommands:
             await self._safe_edit(update.effective_message, msg, reply_markup=markup, parse_mode='HTML')
         else:
             await self._safe_reply(update.effective_message, msg, reply_markup=markup, parse_mode='HTML')
-
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE, controller):
-        text = update.effective_message.text.strip() if update.effective_message and update.effective_message.text else ""
-        
-        if "통합 지시서" in text or "지시서 조회" in text: return await self.cmd_sync(update, context)
-        elif "장부 동기화" in text or "장부 조회" in text: return await self.cmd_record(update, context)
-        elif "시드 변경" in text: return await self.cmd_seed(update, context)
-        elif "모드 전환" in text: return await self.cmd_ticker(update, context)
-        elif "분할 변경" in text or "환경 설정" in text or "세팅" in text: return await self.cmd_settlement(update, context)
-        elif "스나이퍼" in text: return await self.cmd_mode(update, context)
-        elif "명예의 전당" in text or "졸업" in text: return await self.cmd_history(update, context)
-        elif "암살자" in text or "조기" in text or "avwap" in text.lower(): return await self.cmd_avwap(update, context)
-        elif "로그" in text or "에러" in text: return await self.cmd_log(update, context)
