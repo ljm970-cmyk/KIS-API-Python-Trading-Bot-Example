@@ -13,6 +13,7 @@
 # 🚨 MODIFIED: [제2헌법 준수] 리버스 모드 라우팅으로 인해 영구적으로 도달 불가능해진 대박 익절(is_jackpot_reached) 데드코드 전면 소각
 # 🚨 NEW: [스나이퍼 맹점 수술] save_daily_snapshot 및 get_plan 딕셔너리에 target_price, initial_qty, is_zero_start 스키마를 강제 병합하여 스나이퍼 모듈의 Silent Failure 완벽 봉쇄
 # 🚨 NEW: [0달러 덤핑 런타임 붕괴 방어] ma_5day(Rev_Star) 결측 시 LOC 매도 주문이 0달러로 KIS 서버에 전송되는 API Reject 버그를 prev_close 폴백으로 원천 차단
+# 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
 # ==========================================================
 import math
 import os
@@ -129,7 +130,7 @@ class V14Strategy:
                         continue 
                     if min_s > 0 and self._safe_float(new_o.get('price')) >= min_s:
                         new_o['price'] = round(min_s - 0.01, 2)
-                        if "🛡️" not in str(new_o.get('desc', '')): 
+                    if "🛡️" not in str(new_o.get('desc', '')): 
                             new_o['desc'] = f"🛡️교정_{str(new_o.get('desc', '')).replace('🧹', '')}"
                     new_o['price'] = max(0.01, self._safe_float(new_o.get('price')))
                 res.append(new_o)
@@ -196,7 +197,9 @@ class V14Strategy:
         star_ratio = target_ratio - (target_ratio * depreciation_factor * t_val)
         star_price = self._ceil(avg_price * (1 + star_ratio)) if avg_price > 0 else 0.0
             
-        base_price = current_price if current_price > 0 else prev_close
+        # 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
+        base_price = prev_close if prev_close > 0.0 else current_price
+
         if base_price <= 0.0: 
             plan_result = {"orders": [], "core_orders": [], "bonus_orders": [], "total_q": qty, "avg_price": avg_price, "t_val": t_val, "one_portion": one_portion_amt, "process_status": "⛔가격오류", "is_reverse": False, "star_price": star_price, "star_ratio": star_ratio, "target_price": target_price, "real_cash_used": real_available_cash, "tracking_info": {}, "initial_qty": qty, "is_zero_start": False}
             if is_snapshot_mode: self.save_daily_snapshot(ticker, plan_result)
@@ -314,7 +317,7 @@ class V14Strategy:
                     core_orders.append({"side": "SELL", "price": target_price, "qty": rem_qty, "type": "LIMIT", "desc": "🎯목표매도(잔여)"})
 
             if is_zero_start_fact and market_type != "AFTER":
-                core_orders = [o for o in core_orders if isinstance(o, dict) and o.get("side") != "SELL"]
+                 core_orders = [o for o in core_orders if isinstance(o, dict) and o.get("side") != "SELL"]
 
             # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍(Jubjub) 5단 폭포수 1줄 진공 압축 및 안정 정렬 팩트 이식
             q_base = sum(int(self._safe_float(o.get('qty'))) for o in core_orders if isinstance(o, dict) and o.get('side') == 'BUY')

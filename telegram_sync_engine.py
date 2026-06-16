@@ -2,6 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가(actual_avg)를 0.0으로 오염시키던 else 구문을 전면 삭제하여 KIS 팩트 평단가를 100% 보존 락온.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False를 강제 래핑하여 스냅샷을 절대 덮어쓰지 않고 팩트 그대로 불러오도록 락온.
 # 🚨 MODIFIED: [동적 역산 뇌관 소각] 현재가를 참조해 타점을 역산하던 낡은 폴백 로직을 시스템 전역에서 파기하고, 스냅샷의 팩트 지시서만을 100% 핀셋 추출하여 렌더링 매핑.
 # 🚨 MODIFIED: [제2헌법 단일 책임 수호] 뷰어 도메인(telegram_view.py)으로 완전히 이관된 `create_sync_report` 데드코드를 이 파일에서 100% 영구 삭제하여 프랑켄슈타인 덮어쓰기 사고를 차단.
@@ -133,8 +134,10 @@ class TelegramSyncEngine:
                     q_data_check = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
                     vrev_ledger_qty_for_check = sum(int(self._safe_float(item.get("qty"))) for item in q_data_check if isinstance(item, dict))
                     vrev_total_invested = sum(int(self._safe_float(item.get("qty"))) * self._safe_float(item.get("price")) for item in q_data_check if isinstance(item, dict))
-                    if vrev_ledger_qty_for_check > 0: actual_avg = round(vrev_total_invested / vrev_ledger_qty_for_check, 4)
-                    else: actual_avg = 0.0
+                    
+                    # 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐 장부가 비었을 때 actual_avg를 0.0으로 덮어쓰지 않고 KIS 팩트를 보존
+                    if vrev_ledger_qty_for_check > 0: 
+                        actual_avg = round(vrev_total_invested / vrev_ledger_qty_for_check, 4)
                  
                 max_check_qty = max(ledger_qty_for_check, vrev_ledger_qty_for_check)
 
@@ -391,7 +394,7 @@ class TelegramSyncEngine:
                                     except OSError: pass
                         else:
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
-                            
+                
                         return "SUCCESS"
                   
                     if actual_qty == vrev_ledger_qty:
@@ -444,7 +447,7 @@ class TelegramSyncEngine:
                             calibrated = await self._retry_api(self.queue_ledger.sync_with_broker, ticker, actual_qty, 0.0, actual_clear_price_for_sync, timeout=10.0, default=False)
                            
                         if calibrated: await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 비파괴 보정 및 리앵커링 완료!</b>\n▫️ 수동 매도 물량(<b>{gap_qty}주</b>)을 LIFO 큐에서 안전하게 차감하고, 수익금만큼 잔여 지층의 평단가를 일괄 차감했습니다.", parse_mode='HTML')
-                          
+                           
                     elif actual_qty > 0 and actual_qty > vrev_ledger_qty:
                         gap_qty = actual_qty - vrev_ledger_qty
                         real_buy_price = actual_avg
@@ -460,6 +463,7 @@ class TelegramSyncEngine:
                             last_price = self._safe_float(q_data_temp[-1].get('price')) if q_data_temp and isinstance(q_data_temp[-1], dict) else 0.0
                             real_buy_price = curr_p if curr_p > 0 else (last_price if last_price > 0 else 1.0)
               
+            
                         q_data = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
                         q_data.append({"date": now_est.strftime('%Y-%m-%d %H:%M:%S'), "qty": gap_qty, "price": real_buy_price, "exec_id": f"MANUAL_BUY_{int(time.time())}"})
                         await self._retry_api(self.queue_ledger.overwrite_queue, ticker, q_data, timeout=10.0)

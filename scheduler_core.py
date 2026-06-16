@@ -13,6 +13,7 @@
 # 🚨 MODIFIED: [이벤트 루프 교착 완벽 차단] 텔레그램 send_message 및 edit_text 통신 전역에 asyncio.wait_for(timeout=15.0) 족쇄 래핑 유지.
 # 🚨 MODIFIED: [Double-Spending 붕괴 방어] get_budget_allocation 연산 시 V14 다중 종목 잉여금 중복 할당 차단.
 # 🚨 MODIFIED: [AttributeError 궁극 수술] context.job 객체 파손/결측 시 발생하는 연쇄 속성 접근(get/data/chat_id) 즉사 버그를 스케줄러 전역(force_reset, auto_sync 등)에서 getattr 단락 평가로 완벽 교정 완료.
+# 🚨 NEW: [스냅샷 조기 락온 수술] scheduled_force_reset 내 새벽 4시 초기화 루프에서 is_snapshot_mode=True를 강제 래핑하여 그날의 팩트 지시서를 무조건 박제하도록 아키텍처 교정.
 # ==========================================================
 import logging
 import datetime
@@ -212,6 +213,7 @@ async def scheduled_force_reset(context):
         cfg = app_data.get('cfg')
         broker = app_data.get('broker')
         tx_lock = app_data.get('tx_lock')
+        strategy = app_data.get('strategy')
         chat_id = getattr(job, 'chat_id', None)
 
         if not is_open:
@@ -233,11 +235,13 @@ async def scheduled_force_reset(context):
         
         res = None
         holdings = {}
+        cash_val = 0.0
         async with tx_lock:
             for attempt in range(3):
                 try:
                     await asyncio.sleep(0.06)
                     res = await asyncio.wait_for(asyncio.to_thread(broker.get_account_balance), timeout=10.0)
+                    cash_val = _safe_float(res[0]) if isinstance(res, (list, tuple)) and len(res) > 0 else 0.0
                     raw_h = res[1] if isinstance(res, (list, tuple)) and len(res) > 1 else {}
                     holdings = raw_h if isinstance(raw_h, dict) else {}
                     break
@@ -252,7 +256,15 @@ async def scheduled_force_reset(context):
         except Exception:
             active_tickers = []
         if not isinstance(active_tickers, list): active_tickers = []
-        
+   
+        # 🚨 MODIFIED: [스냅샷 조기 락온 수술] 예산 할당을 루프 외부로 전진 배치
+        alloc_cash_dict = {}
+        try:
+            alloc_res = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash_val, active_tickers, cfg), timeout=10.0)
+            alloc_cash_dict = alloc_res[1] if isinstance(alloc_res, (list, tuple)) and len(alloc_res) > 1 else {}
+        except Exception as e:
+            logging.error(f"🚨 일일 초기화 예산 할당 에러: {e}")
+
         for t in active_tickers:
             try:
                 await asyncio.sleep(0.06)
@@ -267,21 +279,37 @@ async def scheduled_force_reset(context):
                     rev_state = rev_state_raw if isinstance(rev_state_raw, dict) else {}
                 except Exception: pass
                 
+                # 🚨 MODIFIED: [스냅샷 조기 락온 수술] 모든 종목에 대해 시세와 잔고를 불러오도록 전진 배치
+                safe_h_data = holdings.get(t) if isinstance(holdings.get(t), dict) else {}
+                actual_avg = _safe_float(safe_h_data.get('avg', 0.0))
+                actual_qty = int(_safe_float(safe_h_data.get('qty', 0)))
+                
+                curr_p, prev_c = 0.0, 0.0
+                for attempt in range(3):
+                    try:
+                        await asyncio.sleep(0.06)
+                        curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=10.0)
+                        curr_p = _safe_float(curr_p_val)
+                        await asyncio.sleep(0.06)
+                        prev_c_val = await asyncio.wait_for(asyncio.to_thread(broker.get_previous_close, t), timeout=10.0)
+                        prev_c = _safe_float(prev_c_val)
+                        break
+                    except Exception:
+                        if attempt == 2: pass
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
+
+                ma_5day = 0.0
+                for attempt in range(3):
+                    try:
+                        await asyncio.sleep(0.06)
+                        ma_5day_val = await asyncio.wait_for(asyncio.to_thread(broker.get_5day_ma, t), timeout=10.0)
+                        ma_5day = _safe_float(ma_5day_val)
+                        break
+                    except Exception:
+                        if attempt == 2: ma_5day = 0.0
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
+
                 if version == "V_REV":
-                    safe_h_data = holdings.get(t) if isinstance(holdings.get(t), dict) else {}
-                    actual_avg = _safe_float(safe_h_data.get('avg'))
-                    
-                    curr_p = 0.0
-                    for attempt in range(3):
-                        try:
-                            await asyncio.sleep(0.06)
-                            curr_p_val = await asyncio.wait_for(asyncio.to_thread(broker.get_current_price, t), timeout=10.0)
-                            curr_p = _safe_float(curr_p_val)
-                            break
-                        except Exception:
-                            if attempt == 2: curr_p = 0.0
-                            else: await asyncio.sleep(1.0 * (2 ** attempt))
-                    
                     if curr_p > 0 and actual_avg > 0:
                         curr_ret = (curr_p - actual_avg) / actual_avg * 100.0
                         exit_target = _safe_float(rev_state.get("exit_target", 0.0))
@@ -307,6 +335,19 @@ async def scheduled_force_reset(context):
                             await asyncio.wait_for(asyncio.to_thread(cfg.increment_reverse_day, t), timeout=5.0)
                 else:
                     await asyncio.wait_for(asyncio.to_thread(cfg.increment_reverse_day, t), timeout=5.0)
+
+                # 🚨 NEW: [스냅샷 조기 락온 수술] 새벽 4시 팩트 지시서 무조건 박제
+                if strategy:
+                    avail_cash = _safe_float(alloc_cash_dict.get(t, 0.0))
+                    try:
+                        await asyncio.wait_for(asyncio.to_thread(
+                            strategy.get_plan, t, curr_p, actual_avg, actual_qty, prev_c, ma_5day=ma_5day,
+                            market_type="REG", available_cash=avail_cash, is_simulation=True, is_snapshot_mode=True
+                        ), timeout=15.0)
+                        logging.info(f"📸 [{t}] 새벽 4시 스냅샷(is_snapshot_mode=True) 조기 락온 성공.")
+                    except Exception as e:
+                        logging.error(f"🚨 [{t}] 새벽 4시 스냅샷 조기 락온 에러: {e}")
+
             except Exception as e:
                 logging.error(f"🚨 [{t}] 일일 초기화 단일 종목 에러 (Cascade 방어): {e}")
 
@@ -318,7 +359,8 @@ async def scheduled_force_reset(context):
                     timeout=15.0
                 )
             except Exception: pass
-            
+    
+        
     try:
         await asyncio.wait_for(_do_force_reset(), timeout=180.0)
     except Exception as e:

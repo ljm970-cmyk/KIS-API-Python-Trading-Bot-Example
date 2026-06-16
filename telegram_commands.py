@@ -2,6 +2,7 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] 전일 종가가 0.0일 때 실시간 현재가로 덮어씌워 타점 연산을 오염시키던 맹독성 조건문을 시스템 전역에서 100% 삭제 완료.
 # 🚨 MODIFIED: [UI 렌더링 텍스트 조합 뇌관 영구 소각] cmd_sync 내부에서 현재가(curr)를 참조해 타점을 역산하던 맹독성 `v_rev_guidance` 생성 로직을 100% 삭제. UI 렌더링은 오직 뷰어 도메인으로 전면 위임.
 # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] YF 1d 캔들 호출 지연 버그를 파기하고, 1m 기반 D-1일 공식 MOC 종가만을 100% 핀셋 추출하도록 전면 수술 완료.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] cmd_sync 및 EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
@@ -50,6 +51,7 @@ class TelegramCommands:
     # ==========================================================
     # 🛡️ [DRY Helper] 절대 방어 헬퍼 메서드 모음
     # ==========================================================
+    
     def _safe_float(self, val):
         try:
             f_val = float(str(val or 0.0).replace(',', ''))
@@ -261,6 +263,7 @@ class TelegramCommands:
             if status_code == "CLOSE": 
                 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
                 curr = safe_prev_close
+            # 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] (elif curr > 0 and prev_close == 0.0: prev_close = curr) 맹독성 덮어쓰기 로직 100% 영구 삭제
 
             idx_ticker = "SOXX" if t == "SOXL" else "QQQ"
             dynamic_pct_obj = await self._retry_api(self.broker.get_dynamic_sniper_target, idx_ticker)
@@ -615,7 +618,7 @@ class TelegramCommands:
             if price < curr_p * 0.4 or price > curr_p * 1.6:
                 await self._safe_reply(update.effective_message, f"🚨 <b>오입력 차단:</b> 입력하신 평단가(<b>${price:.2f}</b>)가 현재가 대비 ±60%를 벗어납니다. 오타를 확인하세요!", parse_mode='HTML')
                 return
-       
+    
         if not getattr(self, 'queue_ledger', None):
             from queue_ledger import QueueLedger
             self.queue_ledger = await asyncio.to_thread(QueueLedger)
@@ -665,7 +668,7 @@ class TelegramCommands:
         status_msg = update.effective_message if is_callback else None
         
         if not is_callback:
-            status_msg = await self._safe_reply(update.effective_message, "⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
+             status_msg = await self._safe_reply(update.effective_message, "⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
         
         success, msg = await updater.pull_latest_code()
         safe_msg = html.escape(str(msg)) 

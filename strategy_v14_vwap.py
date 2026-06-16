@@ -16,6 +16,7 @@
 # 🚨 MODIFIED: [TypeError 붕괴 방어] get_ledger() 결측치(None) 유입 시 루프 마비를 막기 위한 단락 평가(or []) 쉴드 래핑
 # 🚨 MODIFIED: [최후의 맹점 수술] get_plan 및 ensure_failsafe_snapshot 진입부의 모든 파라미터와 config 반환값에 _safe_float 쉴드를 100% 강제 래핑하여 TypeError 런타임 붕괴 원천 봉쇄
 # 🚨 MODIFIED: [상태 참조 오염 수술] _load_state_if_needed 에서 딕셔너리를 통째로 float 캐스팅하려던 ValueError 맹점 교정 (종목 Drill-down 결속)
+# 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
 # ==========================================================
 import math
 import logging
@@ -79,7 +80,7 @@ class V14VwapStrategy:
                     return
         except Exception:
             pass
-                  
+                
         self.executed["BUY_BUDGET"][ticker] = 0.0
         self.executed["SELL_QTY"][ticker] = 0
         self.state_loaded[ticker] = today_str
@@ -242,7 +243,7 @@ class V14VwapStrategy:
                         continue 
                     if min_s > 0 and self._safe_float(new_o.get('price')) >= min_s:
                         new_o['price'] = round(min_s - 0.01, 2)
-                        if "🛡️" not in new_o.get('desc', ''): 
+                    if "🛡️" not in new_o.get('desc', ''): 
                             new_o['desc'] = f"🛡️교정_{new_o.get('desc', '').replace('🧹', '')}"
                     new_o['price'] = max(0.01, self._safe_float(new_o.get('price')))
                 res.append(new_o)
@@ -260,7 +261,7 @@ class V14VwapStrategy:
         if not is_snapshot_mode:
             cached_plan = self.load_daily_snapshot(ticker)
             if cached_plan:
-                return cached_plan
+                 return cached_plan
 
         split = self._safe_float(self.cfg.get_split_count(ticker))
         target_ratio = self._safe_float(self.cfg.get_target_profit(ticker)) / 100.0
@@ -280,6 +281,22 @@ class V14VwapStrategy:
         _, dynamic_budget, _ = self.cfg.calculate_v14_state(ticker)
         dynamic_budget = self._safe_float(dynamic_budget)
         
+        # 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
+        base_price = prev_close if prev_close > 0.0 else current_price
+        
+        if base_price <= 0.0:
+            plan_result = {
+                'core_orders': [], 'bonus_orders': [], 'orders': [],
+                't_val': t_val, 'one_portion': dynamic_budget, 'star_price': star_price,
+                'buy_star_price': buy_star_price, 'star_ratio': star_ratio,
+                'target_price': target_price, 'is_reverse': False,
+                'process_status': "⛔가격오류", 'tracking_info': {},
+                'initial_qty': int(qty), 'is_zero_start': False
+            }
+            if is_snapshot_mode:
+                self.save_daily_snapshot(ticker, plan_result)
+            return plan_result
+
         core_orders = []
         bonus_orders = []
         process_status = "예방적방어선"
@@ -303,7 +320,8 @@ class V14VwapStrategy:
 
         if qty == 0:
             is_zero_start_fact = True
-            p_buy = max(0.01, round((prev_close * 1.15) - 0.01, 2))
+            
+            p_buy = max(0.01, round(self._ceil(base_price * 1.15) - 0.01, 2))
             buy_star_price = p_buy 
             
             b1_budget = dynamic_budget * 0.5
