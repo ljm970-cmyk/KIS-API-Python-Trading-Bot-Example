@@ -2,8 +2,8 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [종가 오염 팩트 수복] YF 롤오버 지연으로 인해 KIS의 정상 종가(curr)가 과거 데이터로 덮어씌워지는 치명적 맹점을 100% 영구 소각 완료.
-# 🚨 MODIFIED: [YF 폴백 격리] prev_close 결측 시(0.0 이하)에만 YF 데이터를 수용하도록 예비 전력(Fallback)으로 진공 압축.
+# 🚨 MODIFIED: [종가 오염 팩트 수복] KIS API 롤오버 지연으로 과거 종가가 유입되는 맹점을 차단하고, YF 정규장 1분봉(prepost=False)을 스캔하여 완벽한 prev_close 팩트 강제 락온.
+# 🚨 MODIFIED: [가상 잔고 역산 영구 소각] 주문가능금액을 임의로 역산(Reverse Calculate)하려는 낡은 로직을 전면 파기하고 KIS 실데이터 100% 추종 유지.
 # 🚨 MODIFIED: [현재가 보존 락온] 장마감(CLOSE) 시 curr를 safe_prev_close로 덮어씌우는 치명적 데드코드를 영구 소각하여 KIS 최신 종가 무결성 사수.
 # 🚨 MODIFIED: [Phase 1 명령어 도메인 독립] 기존 telegram_bot.py 의 God Object 안티패턴을 뜯어내어 명령어 제어 로직을 전담하는 순수 도메인 클래스 분리 락온.
 # 🚨 MODIFIED: [Phase 3 통신 데드락 붕괴 영구 소각] 무한 반복되던 asyncio.wait_for 및 to_thread 보일러플레이트를 _retry_api, _safe_reply, _safe_edit 헬퍼로 통합 압축 (DRY 원칙).
@@ -224,19 +224,19 @@ class TelegramCommands:
             safe_prev_close = prev_close
             
             if status_code in ["AFTER", "CLOSE", "PRE"]:
-                # 🚨 MODIFIED: [Thread-Safety 락온] 명시적 파라미터 전달
-                def get_yf_close(ticker_name):
+                # 🚨 MODIFIED: [종가 팩트 스캔망] 정규장 마감 이후 KIS 서버의 전일 종가(base)가 롤오버되지 않는 맹점을 YF 정규장 1분봉(prepost=False)으로 오버라이드하여 완벽한 prev_close 팩트 구축
+                def get_exact_prev_close(ticker_name):
                     time.sleep(0.06)
-                    df = yf.Ticker(ticker_name).history(period="5d", interval="1d", timeout=5.0)
+                    df = yf.Ticker(ticker_name).history(period="5d", interval="1m", prepost=False, timeout=5)
                     if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
-                        val = self._safe_float(df['Close'].iloc[-1])
-                        return val if val > 0 else None
+                        val = float(df['Close'].iloc[-1])
+                        return val if not math.isnan(val) else None
                     return None
                     
-                # 🚨 MODIFIED: [YF 폴백 격리] prev_close가 결측 시(0.0 이하)에만 YF 데이터 수용 (오염 원천 차단)
-                if safe_prev_close <= 0.0:
-                    yf_close = await self._retry_api(get_yf_close, t)
-                    if yf_close and yf_close > 0: safe_prev_close = yf_close
+                yf_exact_close = await self._retry_api(get_exact_prev_close, t)
+                if yf_exact_close and yf_exact_close > 0: 
+                    safe_prev_close = yf_exact_close
+                    prev_close = safe_prev_close
 
             if status_code == "CLOSE": 
                 # 🚨 MODIFIED: [현재가 보존 락온] curr = safe_prev_close 덮어쓰기 뇌관 영구 소각
@@ -357,10 +357,11 @@ class TelegramCommands:
                 else:
                     v_rev_guidance += " 🔵 매도: 대기 물량 없음 (관망)\n"
                 
-                safe_anchor = l1_price if l1_price > 0.0 else safe_prev_close
+                base_p = curr if curr > 0.0 else safe_prev_close
+                safe_anchor = l1_price if l1_price > 0.0 else base_p
                 if safe_anchor > 0:
-                    b1_price = round(safe_prev_close * 1.15 if is_zero_start_fact else safe_anchor * 0.9976, 2)
-                    b2_price = round(safe_prev_close * 0.999 if is_zero_start_fact else safe_anchor * 0.9887, 2)
+                    b1_price = round(base_p * 1.15 if is_zero_start_fact else safe_anchor * 0.998, 2)
+                    b2_price = round(base_p * 0.999 if is_zero_start_fact else safe_anchor * 0.993, 2)
                     
                     b1_qty = math.floor(half_portion_cash / b1_price) if b1_price > 0 else 0
                     b2_qty = math.floor(half_portion_cash / b2_price) if b2_price > 0 else 0
@@ -684,7 +685,7 @@ class TelegramCommands:
             
         q_data = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
         if not isinstance(q_data, list): q_data = [] 
-        
+       
         q_data.append({"qty": qty, "price": price, "date": f"{date_str} 23:59:59", "type": "MANUAL_OVERRIDE"})
         q_data.sort(key=lambda x: str(x.get('date', '')) if isinstance(x, dict) else '', reverse=True)
  

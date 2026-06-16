@@ -2,14 +2,13 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
-# 🚨 MODIFIED: [종가 오염 팩트 수복] YF 롤오버 지연으로 인해 KIS의 정상 종가(curr)가 과거 데이터로 덮어씌워지는 치명적 맹점을 100% 영구 소각 완료.
-# 🚨 MODIFIED: [YF 폴백 격리] prev_close 결측 시(0.0 이하)에만 YF 데이터를 수용하도록 예비 전력(Fallback)으로 진공 압축.
+# 🚨 MODIFIED: [종가 오염 팩트 수복] KIS API 롤오버 지연으로 과거 종가가 유입되는 맹점을 차단하고, YF 정규장 1분봉(prepost=False)을 스캔하여 완벽한 prev_close 팩트 강제 락온.
+# 🚨 MODIFIED: [가상 잔고 역산 영구 소각] 주문가능금액을 임의로 역산(Reverse Calculate)하려는 낡은 로직을 전면 파기하고 KIS 실데이터 100% 추종 유지.
 # 🚨 MODIFIED: [Indentation 붕괴 수술] process_auto_sync 내 V-REV 큐 관리 블록의 21칸 들여쓰기 오차를 20칸 표준으로 정밀 교정하여 SyntaxError 즉사 버그 완벽 차단.
 # 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 가동 시 표출되던 본진 셧다운 안내를 영구 소각하고, "본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온" 텍스트를 주입하여 디커플링 상태를 관제탑 UI에 완벽히 명시.
 # 🚨 MODIFIED: [1-Shot 1-Kill 타격망 UI 교정] 가상의 85% 시드 개념 파기에 따라, 암살자 상태를 '가용 현금 100% 올인'으로 변경하고 15:59 전량 최유리 지정가 덤핑 로직을 UI에 동기화 완료.
 # 🚨 MODIFIED: [Phase 3 비동기 통신 헬퍼 래핑 (DRY 원칙)] 무한 반복되는 asyncio.wait_for(asyncio.to_thread(...)) 및 텔레그램 메시지 발송 샌드박스 로직을 범용 헬퍼 메서드(_retry_api, _safe_send)로 단일화하여 코드 라인 수를 극한으로 진공 압축.
 # 🚨 MODIFIED: [Thread-Safety 락온] 내부 헬퍼 함수(_get_last_trade_date, get_yf_close 등)가 클로저(Closure) 외부 변수에 의존하지 않고 명시적 파라미터를 받도록 교정하여 Thread Context 오염 원천 차단.
-# 🚨 MODIFIED: [동기화 코어 유령 차감 뇌관 완벽 소각] 암살자 실매매가 소각됨에 따라, KIS 실잔고(actual_qty)에서 avwap_qty 및 avwap_daily_buy/sell을 억지로 빼서 연산하던 과거 에스크로(Escrow) 로직 찌꺼기를 100% 영구 삭제했습니다.
 # 🚨 NEW: [0주 오인 패러독스 소각 & Fact Override] 실제 잔고가 존재함에도 불구하고 새벽 스냅샷의 0주(is_zero_start=True) 상태를 맹신하던 로직을 전면 파기하고, KIS 실잔고 및 큐 장부를 최우선으로 오버라이드하여 Fact Mismatch 원천 차단.
 # 🚨 NEW: [Ghost Balance (유령 잔고) 방어막 주입] KIS 서버 오류로 실잔고가 0주로 반환되었을 때, 실제 당일 매도 체결(sold_today) 내역이 없다면 장부 소각(자동 졸업)을 원천 차단하여 Phantom Graduation 붕괴 완벽 방어.
 # 🚨 NEW: [제1헌법 100% 준수] _retry_api 헬퍼를 통해 파일 I/O 동기화 로직 전역에 wait_for(timeout=10.0/15.0) 족쇄를 래핑하여 이벤트 루프 교착 완벽 차단.
@@ -257,7 +256,7 @@ class TelegramSyncEngine:
                             rec_item = {'date': target_ledger_str, 'side': "BUY" if side_cd == "02" else "SELL", 'qty': exec_qty, 'price': exec_price, 'avg_price': temp_sim_avg}
                             if is_rev: rec_item['is_reverse'] = True
                             new_target_records.append(rec_item)
-                            
+                             
                     gap_qty = actual_qty - temp_sim_qty
                     if gap_qty != 0:
                         calib_side = "BUY" if gap_qty > 0 else "SELL"
@@ -329,7 +328,7 @@ class TelegramSyncEngine:
                             temp_invested = sum(self._safe_float(item.get("qty")) * self._safe_float(item.get("price")) for item in q_data_before if isinstance(item, dict))
                             temp_avg = temp_invested / vrev_ledger_qty if vrev_ledger_qty > 0 else 0.0
                             missing_price = temp_avg
-                            
+                             
                             if buy_execs:
                                 b_tot_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in buy_execs)
                                 b_tot_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in buy_execs)
@@ -369,7 +368,7 @@ class TelegramSyncEngine:
                                 added_seed = realized_pnl * compound_rate
                                 current_seed = self._safe_float(await self._retry_api(self.cfg.get_seed, ticker, default=6720.0))
                                 await self._retry_api(self.cfg.set_seed, ticker, current_seed + added_seed, timeout=10.0)
-                            
+                             
                             cap_dt = snapshot.get('captured_at', now_est)
                             cap_dt_str = cap_dt if isinstance(cap_dt, str) else cap_dt.strftime('%Y-%m-%d')
                             start_dt_str = str(q_data_before[0].get('date', ''))[:10] if q_data_before and isinstance(q_data_before[0], dict) else cap_dt_str[:10]
@@ -387,7 +386,7 @@ class TelegramSyncEngine:
                                 
                         if getattr(self, 'queue_ledger', None):
                             await self._retry_api(self.queue_ledger.sync_with_broker, ticker, 0, timeout=10.0)
-                         
+                          
                         if _vrev_snap_ok:
                             msg = f"🎉 <b>[{html.escape(str(ticker))} V-REV 잭팟 스윕(전량 익절) 감지!]</b>\n▫️ 잔고가 0주가 되어 LIFO 큐 지층을 100% 소각(초기화)했습니다."
                             if added_seed > 0: msg += f"\n💸 <b>자동 복리 +${added_seed:,.0f}</b> 이 다음 운용 시드에 완벽하게 추가되었습니다!"
@@ -416,7 +415,7 @@ class TelegramSyncEngine:
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
                             
                         return "SUCCESS"
-                 
+                  
                     if actual_qty == vrev_ledger_qty:
                         pass
                     elif actual_qty > 0 and actual_qty < vrev_ledger_qty:
@@ -425,7 +424,7 @@ class TelegramSyncEngine:
                         
                         def _read_v_state(f_path):
                             with open(f_path, 'r', encoding='utf-8') as vf: return json.load(vf)
-                            
+                             
                         v_state = await self._retry_api(_read_v_state, vwap_state_file, default={})
                         if isinstance(v_state, dict) and "executed" in v_state and isinstance(v_state["executed"], dict) and "SELL_QTY" in v_state["executed"]:
                             old_sell_qty = v_state["executed"]["SELL_QTY"]
@@ -461,11 +460,11 @@ class TelegramSyncEngine:
                                 t_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in sell_execs_sync)
                                 t_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in sell_execs_sync)
                                 if t_q > 0: actual_clear_price_for_sync = round(t_amt / t_q, 4)
-                      
+                       
                         calibrated = False
                         if getattr(self, 'queue_ledger', None):
                             calibrated = await self._retry_api(self.queue_ledger.sync_with_broker, ticker, actual_qty, 0.0, actual_clear_price_for_sync, timeout=10.0, default=False)
-                          
+                           
                         if calibrated: await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 비파괴 보정 및 리앵커링 완료!</b>\n▫️ 수동 매도 물량(<b>{gap_qty}주</b>)을 LIFO 큐에서 안전하게 차감하고, 수익금만큼 잔여 지층의 평단가를 일괄 차감했습니다.", parse_mode='HTML')
                           
                     elif actual_qty > 0 and actual_qty > vrev_ledger_qty:
@@ -632,5 +631,3 @@ class TelegramSyncEngine:
             except Exception: pass
         else:
             await self._safe_send(context, chat_id, msg, reply_markup=markup, parse_mode='HTML')
-
-        # (get_settlement_message 및 create_sync_report 는 TelegramView 도메인으로 100% 이관 완료)
