@@ -2,6 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [NameError 런타임 붕괴 수술] _display_ledger 내부에서 사용하는 텔레그램 인라인 키보드 UI 컴포넌트(InlineKeyboardButton, InlineKeyboardMarkup)의 임포트 누락을 교정하여 렌더링 즉사 버그 100% 원천 차단.
 # 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가(actual_avg)를 0.0으로 오염시키던 else 구문을 전면 삭제하여 KIS 팩트 평단가를 100% 보존 락온.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False를 강제 래핑하여 스냅샷을 절대 덮어쓰지 않고 팩트 그대로 불러오도록 락온.
 # 🚨 MODIFIED: [동적 역산 뇌관 소각] 현재가를 참조해 타점을 역산하던 낡은 폴백 로직을 시스템 전역에서 파기하고, 스냅샷의 팩트 지시서만을 100% 핀셋 추출하여 렌더링 매핑.
@@ -22,6 +23,9 @@ import functools
 import yfinance as yf
 import pandas as pd 
 import pandas_market_calendars as mcal
+
+# 🚨 NEW: [NameError 방어] 렌더링에 필수적인 텔레그램 UI 컴포넌트 명시적 임포트 락온
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 class TelegramSyncEngine:
     def __init__(self, config, broker, strategy, queue_ledger, view, tx_lock, sync_locks):
@@ -98,21 +102,21 @@ class TelegramSyncEngine:
                     
                     split_type = "액면분할" if split_ratio > 1.0 else "액면병합(역분할)"
                     await self._safe_send(context, chat_id, f"✂️ <b>[{html.escape(str(ticker))}] 야후 파이낸스 {split_type} 자동 감지!</b>\n▫️ 감지된 비율: <b>{split_ratio}배</b> (발생일: {html.escape(str(split_date))})\n▫️ 봇이 기존 V14 장부, V-REV 큐 장부, AVWAP 상태 캐시의 수량과 평단가를 100% 무인 자동 소급 조정 완료했습니다.", parse_mode='HTML')
-                  
+             
                 def _get_last_trade_date(target_est):
                     time.sleep(0.06)
                     nyse = mcal.get_calendar('NYSE')
                     return nyse.schedule(start_date=(target_est - datetime.timedelta(days=10)).date(), end_date=target_est.date())
 
                 schedule = await self._retry_api(_get_last_trade_date, now_est, timeout=10.0, default=pd.DataFrame())
-                if not schedule.empty:
+                 if not schedule.empty:
                     last_trade_date = schedule.index[-1]
                     target_ledger_str = last_trade_date.strftime('%Y-%m-%d')
                 else: target_ledger_str = now_est.strftime('%Y-%m-%d')
 
                 res_bal = await self._retry_api(self.broker.get_account_balance, timeout=15.0, default=None)
                 if not res_bal:
-                    await self._safe_send(context, chat_id, f"❌ <b>[{html.escape(str(ticker))}] API 오류</b>\n잔고를 불러오지 못했습니다.", parse_mode='HTML')
+                     await self._safe_send(context, chat_id, f"❌ <b>[{html.escape(str(ticker))}] API 오류</b>\n잔고를 불러오지 못했습니다.", parse_mode='HTML')
                     return "ERROR"
                     
                 holdings = res_bal[1] if isinstance(res_bal, (list, tuple)) and len(res_bal) > 1 else {}
@@ -321,7 +325,7 @@ class TelegramSyncEngine:
                                             iq = int(self._safe_float(item.get("qty")))
                                             q_today_qty += iq
                                             q_today_amt += iq * self._safe_float(item.get("price"))
-                                            
+                                             
                                     pure_manual_q = b_tot_q - q_today_qty
                                     pure_manual_amt = b_tot_amt - q_today_amt
                                     if pure_manual_q >= missing_qty and pure_manual_q > 0 and pure_manual_amt > 0:
@@ -339,7 +343,7 @@ class TelegramSyncEngine:
                         curr_p = await self._retry_api(self.broker.get_current_price, ticker, timeout=15.0, default=0.0)
                         clear_price = actual_clear_price if actual_clear_price > 0.0 else (curr_p if curr_p and curr_p > 0 else q_avg_price * 1.006)
                         snapshot = await self._retry_api(self.strategy.capture_vrev_snapshot, ticker, clear_price, q_avg_price, vrev_ledger_qty, timeout=10.0, default={})
-                        
+                         
                         if snapshot and isinstance(snapshot, dict):
                             realized_pnl = self._safe_float(snapshot.get('realized_pnl', 0.0))
                             yield_pct = self._safe_float(snapshot.get('realized_pnl_pct', 0.0))
@@ -353,7 +357,7 @@ class TelegramSyncEngine:
                             cap_dt = snapshot.get('captured_at', now_est)
                             cap_dt_str = cap_dt if isinstance(cap_dt, str) else cap_dt.strftime('%Y-%m-%d')
                             start_dt_str = str(q_data_before[0].get('date', ''))[:10] if q_data_before and isinstance(q_data_before[0], dict) else cap_dt_str[:10]
-                            
+                             
                             hist_data = await self._retry_api(self.cfg._load_json, self.cfg.FILES["HISTORY"], [], default=[])
                             
                             new_hist = {
@@ -364,7 +368,7 @@ class TelegramSyncEngine:
                             hist_data.append(new_hist)
                             await self._retry_api(self.cfg._save_json, self.cfg.FILES["HISTORY"], hist_data, timeout=10.0)
                             _vrev_snap_ok = True
-                                
+                                 
                         if getattr(self, 'queue_ledger', None):
                             await self._retry_api(self.queue_ledger.sync_with_broker, ticker, 0, timeout=10.0)
                           
@@ -410,7 +414,7 @@ class TelegramSyncEngine:
                         if isinstance(v_state, dict) and "executed" in v_state and isinstance(v_state["executed"], dict) and "SELL_QTY" in v_state["executed"]:
                             old_sell_qty = v_state["executed"]["SELL_QTY"]
                             v_state["executed"]["SELL_QTY"] = max(0, old_sell_qty - gap_qty)
-                            
+                             
                         def _write_v_state(state_dict, f_path):
                             fd = None
                             tmp_path = None
@@ -463,7 +467,7 @@ class TelegramSyncEngine:
                             last_price = self._safe_float(q_data_temp[-1].get('price')) if q_data_temp and isinstance(q_data_temp[-1], dict) else 0.0
                             real_buy_price = curr_p if curr_p > 0 else (last_price if last_price > 0 else 1.0)
               
-            
+             
                         q_data = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
                         q_data.append({"date": now_est.strftime('%Y-%m-%d %H:%M:%S'), "qty": gap_qty, "price": real_buy_price, "exec_id": f"MANUAL_BUY_{int(time.time())}"})
                         await self._retry_api(self.queue_ledger.overwrite_queue, ticker, q_data, timeout=10.0)
@@ -535,7 +539,7 @@ class TelegramSyncEngine:
                      
                 side_str = "🔴매수" if rec.get('side') == 'BUY' else "🔵매도"
                 key = (date_short, side_str)
-                
+            
                 if key not in agg_dict: agg_dict[key] = {'qty': 0, 'amt': 0.0}
             
                 agg_dict[key]['qty'] += int(self._safe_float(rec.get('qty')))
@@ -598,6 +602,7 @@ class TelegramSyncEngine:
         keyboard = []
          
         if v_mode == "V_REV":
+            # 🚨 MODIFIED: [NameError 런타임 붕괴 수술] 텔레그램 인라인 키보드 객체 참조 무결성 보장
             keyboard.append([InlineKeyboardButton(f"🗄️ {html.escape(str(ticker))} V-REV 큐(Queue) 정밀 관리", callback_data=f"QUEUE:VIEW:{ticker}")])
              
         row = [InlineKeyboardButton(f"🔄 {html.escape(str(t))} 장부 업데이트", callback_data=f"REC:SYNC:{t}") for t in active_tickers if isinstance(t, str)]
