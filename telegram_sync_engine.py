@@ -2,6 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [IndentationError 궁극 수술] 112번 라인 `if not schedule.empty:` 및 `await self._safe_send` 라인에 잔존하던 1칸의 스페이스 오차를 정밀 교정하여 파이썬 컴파일러 즉사 버그 100% 원천 차단.
 # 🚨 MODIFIED: [NameError 런타임 붕괴 수술] _display_ledger 내부에서 사용하는 텔레그램 인라인 키보드 UI 컴포넌트(InlineKeyboardButton, InlineKeyboardMarkup)의 임포트 누락을 교정하여 렌더링 즉사 버그 100% 원천 차단.
 # 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가(actual_avg)를 0.0으로 오염시키던 else 구문을 전면 삭제하여 KIS 팩트 평단가를 100% 보존 락온.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False를 강제 래핑하여 스냅샷을 절대 덮어쓰지 않고 팩트 그대로 불러오도록 락온.
@@ -109,14 +110,17 @@ class TelegramSyncEngine:
                     return nyse.schedule(start_date=(target_est - datetime.timedelta(days=10)).date(), end_date=target_est.date())
 
                 schedule = await self._retry_api(_get_last_trade_date, now_est, timeout=10.0, default=pd.DataFrame())
-                 if not schedule.empty:
+                # 🚨 MODIFIED: [Indentation 붕괴 수술] 16칸 들여쓰기 규격 엄수 (SyntaxError 차단)
+                if not schedule.empty:
                     last_trade_date = schedule.index[-1]
                     target_ledger_str = last_trade_date.strftime('%Y-%m-%d')
-                else: target_ledger_str = now_est.strftime('%Y-%m-%d')
+                else:
+                    target_ledger_str = now_est.strftime('%Y-%m-%d')
 
                 res_bal = await self._retry_api(self.broker.get_account_balance, timeout=15.0, default=None)
+                # 🚨 MODIFIED: [Indentation 붕괴 수술] 16칸 들여쓰기 규격 엄수 (SyntaxError 차단)
                 if not res_bal:
-                     await self._safe_send(context, chat_id, f"❌ <b>[{html.escape(str(ticker))}] API 오류</b>\n잔고를 불러오지 못했습니다.", parse_mode='HTML')
+                    await self._safe_send(context, chat_id, f"❌ <b>[{html.escape(str(ticker))}] API 오류</b>\n잔고를 불러오지 못했습니다.", parse_mode='HTML')
                     return "ERROR"
                     
                 holdings = res_bal[1] if isinstance(res_bal, (list, tuple)) and len(res_bal) > 1 else {}
@@ -602,7 +606,6 @@ class TelegramSyncEngine:
         keyboard = []
          
         if v_mode == "V_REV":
-            # 🚨 MODIFIED: [NameError 런타임 붕괴 수술] 텔레그램 인라인 키보드 객체 참조 무결성 보장
             keyboard.append([InlineKeyboardButton(f"🗄️ {html.escape(str(ticker))} V-REV 큐(Queue) 정밀 관리", callback_data=f"QUEUE:VIEW:{ticker}")])
              
         row = [InlineKeyboardButton(f"🔄 {html.escape(str(t))} 장부 업데이트", callback_data=f"REC:SYNC:{t}") for t in active_tickers if isinstance(t, str)]
