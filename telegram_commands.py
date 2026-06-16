@@ -157,7 +157,7 @@ class TelegramCommands:
         status_msg = update.effective_message if is_callback else None
         
         if not is_callback:
-            status_msg = await self._safe_reply(update.effective_message, "🔄 시장 분석 및 지시서 작성 중...")
+            status_msg = await self._safe_send(context, chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML')
         
         async with self.tx_lock:
             cash, holdings = 0.0, {}
@@ -441,7 +441,6 @@ class TelegramCommands:
         if not is_callback:
             status_msg = await self._safe_send(context, chat_id, "🛡️ <b>장부 무결성 검증 및 동기화 중...</b>", parse_mode='HTML')
         
-        # 🚨 MODIFIED: [침묵의 마비 수술] 락 상태 및 에러 상태 팩트 트래킹 배열 주입
         success_tickers = []
         locked_tickers = []
         error_tickers = []
@@ -451,6 +450,8 @@ class TelegramCommands:
         
         for t in active_tickers:
             try:
+                if status_msg:
+                    await self._safe_edit(status_msg, f"🛡️ <b>[{t}] 장부 무결성 검증 진행 중... (최대 1~2분 소요될 수 있습니다)</b>", parse_mode='HTML')
                 await asyncio.sleep(0.06)
                 res = await self.sync_engine.process_auto_sync(t, chat_id, context, silent_ledger=True)
                 if res == "SUCCESS": success_tickers.append(t)
@@ -465,12 +466,16 @@ class TelegramCommands:
                 res = await self._retry_api(self.broker.get_account_balance, timeout=15.0)
                 holdings = res[1] if res and len(res) > 1 and isinstance(res[1], dict) else {}
             
-            # 🚨 MODIFIED: [다중 종목 렌더링 팩트 교정] 단일 종목(success_tickers[0]) 렌더링 맹점 소각 및 100% 순회 분할 타전 락온
+            # 🚨 MODIFIED: [렌더링 붕괴 샌드박스 락온] 단일 종목 렌더링 에러가 전체 화면 증발로 이어지지 않도록 try-except 및 독립 타전망 팩트 락온
             for idx, t in enumerate(success_tickers):
-                if idx == 0:
-                    await self.sync_engine._display_ledger(t, chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
-                else:
-                    await self.sync_engine._display_ledger(t, chat_id, context, message_obj=None, pre_fetched_holdings=holdings)
+                try:
+                    if idx == 0:
+                        await self.sync_engine._display_ledger(t, chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
+                    else:
+                        await self.sync_engine._display_ledger(t, chat_id, context, message_obj=None, pre_fetched_holdings=holdings)
+                except Exception as e:
+                    logging.error(f"🚨 [{t}] 렌더링 실패: {e}")
+                    await self._safe_send(context, chat_id, f"❌ <b>[{t}] 렌더링 중 오류 발생:</b> {html.escape(str(e))}", parse_mode='HTML')
                     
             if locked_tickers:
                 await self._safe_send(context, chat_id, f"⚠️ <b>[동기화 지연]</b> {', '.join(locked_tickers)} 종목은 현재 백그라운드 스케줄러가 장부를 점유 중입니다. 잠시 후 다시 시도해주세요.", parse_mode='HTML')
@@ -481,9 +486,9 @@ class TelegramCommands:
         else:
             err_msg = "✅ <b>동기화 완료</b> (진행 중인 장부가 없습니다.)"
             if locked_tickers:
-                err_msg = f"⚠️ <b>[동기화 지연]</b> 백그라운드 작업이 장부를 점유 중입니다. 잠시 후 다시 시도해주세요."
+                err_msg = f"⚠️ <b>[동기화 지연]</b> {', '.join(locked_tickers)} 종목은 백그라운드 작업이 장부를 점유 중입니다. 잠시 후 다시 시도해주세요."
             elif error_tickers:
-                err_msg = f"❌ <b>[동기화 에러]</b> KIS 서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+                err_msg = f"❌ <b>[동기화 에러]</b> {', '.join(error_tickers)} 종목의 KIS 서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
                 
             await self._safe_edit(status_msg, err_msg, parse_mode='HTML')
 
