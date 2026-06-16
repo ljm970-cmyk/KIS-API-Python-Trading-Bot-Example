@@ -2,7 +2,7 @@
 # FILE: telegram_view.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해킹 로직을 전면 소각하고 telegram_sync_engine이 전달한 스냅샷 팩트 그대로 출력.
+# 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해킹 로직을 전면 소각하고 스냅샷 팩트 그대로 출력.
 # 🚨 MODIFIED: [Phase 3 암살자 선택권 복구] get_settlement_message 내 암살자 상태(is_avwap_hybrid) 동적 렌더링(ON/OFF) 및 토글 버튼 100% 수복 완료.
 # 🚨 MODIFIED: [순수 리버전 팩트 롤오버] '세션 VWAP -2% 매수' 및 '가용 현금 100% 올인', '+2% 전량 익절', '15:59 강제 덤핑' 팩트를 시스템 UI 전역에 100% 동기화 교체 완료.
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
@@ -368,6 +368,7 @@ class TelegramView:
     
         return msg, InlineKeyboardMarkup(keyboard)
 
+    # 🚨 MODIFIED: [스냅샷 절대주의 렌더링 락온] 동적 역산 뇌관을 전면 소각하고 오직 팩트 지시서(plan_dict['orders'])만 직접 핀셋 추출하여 렌더링합니다.
     def create_sync_report(self, status_text, dst_text, cash, rp_amount, ticker_data, is_trade_active, p_trade_data=None, exchange_rate=None):
         ticker_data = ticker_data or []
         
@@ -418,28 +419,6 @@ class TelegramView:
 
             if fact_qty == 0 and not is_zero_start:
                 is_zero_start = True
-                plan_dict['orders'] = []
-                 
-                if v_mode == "V_REV":
-                    half_budget = (safe_seed * 0.15) * 0.5
-                    if prev_close > 0:
-                        p1_trigger_fact = round(prev_close * 1.15, 2)
-                        p2_trigger_fact = round(prev_close * 0.999, 2)
-                        q1 = math.floor(half_budget / p1_trigger_fact) if p1_trigger_fact > 0 else 0
-                        q2 = math.floor(half_budget / p2_trigger_fact) if p2_trigger_fact > 0 else 0
-                        if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p1_trigger_fact, "type": "LOC", "desc": "가상 매수(Buy1)"})
-                        if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p2_trigger_fact, "type": "LOC", "desc": "가상 매수(Buy2)"})
-            
-                else:
-                    half_budget = safe_one_portion * 0.5
-                    if prev_close > 0:
-                        p_buy = max(0.01, round(math.ceil(prev_close * 1.15 * 100) / 100.0 - 0.01, 2))
-                        q1 = math.floor(half_budget / p_buy) if p_buy > 0 else 0
-                        q2 = math.floor((safe_one_portion - half_budget) / p_buy) if p_buy > 0 else 0
-                        
-                        if q1 == 0 and q2 == 0 and safe_one_portion >= p_buy > 0: q1 = int(math.floor(safe_one_portion / p_buy))
-                        if q1 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q1, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy1)"})
-                        if q2 > 0: plan_dict['orders'].append({"side": "BUY", "qty": q2, "price": p_buy, "type": "LOC", "desc": "가상 매수(Buy2)"})
              
             if safe_split > 0 and safe_t_val > (safe_split * 1.1):
                 body_msg += "⚠️ <b>[🚨 시스템 긴급 경고: 비정상 T값 폭주 감지!]</b>\n"
@@ -518,12 +497,30 @@ class TelegramView:
             if v_mode == "V_REV":
                 body_msg += "📋 <b>[주문 가이던스 - ⚖️다중 LIFO 제어]</b>\n"
                 body_msg += f"⚡ <b>[Gap Hijack 🤖자율주행]</b> 운용종목 갭 이탈 감지 시 잔여예산 스윕 대기\n"
-                raw_guidance = str(t_info.get('v_rev_guidance') or " (가이던스 대기 중)")
-                if is_zero_start:
-                    raw_guidance = '\n'.join([line for line in raw_guidance.split('\n') if "잭팟" not in line and "상위층" not in line])
                 
-                # 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해체 및 스냅샷 팩트 그대로 출력
-                body_msg += raw_guidance.replace(" (LOC)", "").replace(" (VWAP)", "").replace("[가상격리] ", "").replace("[가상 ", "[").replace("가상 ", "") + "\n"
+                # 🚨 MODIFIED: [동적 역산 및 치환 뇌관 전면 소각] 스냅샷 팩트 데이터(plan_dict['orders'])만 100% 직접 핀셋 추출하여 렌더링.
+                raw_guidance = ""
+                plan_orders = plan_dict.get('orders') or []
+                
+                sell_orders = [o for o in plan_orders if isinstance(o, dict) and str(o.get('side')) == 'SELL']
+                buy_orders = [o for o in plan_orders if isinstance(o, dict) and str(o.get('side')) == 'BUY']
+                
+                if sell_orders:
+                    for o in sell_orders:
+                        desc = str(o.get('desc', '매도')).split('(')[0]
+                        raw_guidance += f" 🔵 {html.escape(desc)} ${self._safe_float(o.get('price')):.2f} <b>{int(self._safe_float(o.get('qty')))}주</b>\n"
+                else:
+                    if not is_zero_start:
+                        raw_guidance += " 🔵 매도: 대기 물량 없음 (관망)\n"
+                        
+                if buy_orders:
+                    for o in buy_orders:
+                        desc = str(o.get('desc', '매수'))
+                        raw_guidance += f" 🔴 {html.escape(desc)} ${self._safe_float(o.get('price')):.2f} <b>{int(self._safe_float(o.get('qty')))}주</b>\n"
+                else:
+                    raw_guidance += " 🔴 매수 대기: 타점 연산 대기 중\n"
+                    
+                body_msg += raw_guidance
             else:
                 if is_manual_vwap and not is_rev_logic:
                     body_msg += "⏱️ <b>스케줄:</b> 17:05 KST 선제 덫 장전 ➔ 로컬 1분 VWAP 슬라이싱\n" 

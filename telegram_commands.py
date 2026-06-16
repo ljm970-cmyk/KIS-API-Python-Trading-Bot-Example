@@ -2,6 +2,7 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [UI 렌더링 텍스트 조합 뇌관 영구 소각] cmd_sync 내부에서 현재가(curr)를 참조해 타점을 역산하던 맹독성 `v_rev_guidance` 생성 로직을 100% 삭제. UI 렌더링은 오직 뷰어 도메인으로 전면 위임.
 # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감(16:00 EST) 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단(Cut-off)하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] cmd_sync 및 EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
@@ -247,7 +248,7 @@ class TelegramCommands:
                             val = float(past_df['Close'].iloc[-1])
                             return val if not math.isnan(val) else None
                     return None
-                    
+                
                 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
                 yf_close = await self._retry_api(get_exact_prev_close, t)
                 if yf_close and yf_close > 0: 
@@ -321,7 +322,7 @@ class TelegramCommands:
             t_val = self._safe_float(plan.get('t_val', 0.0))
             is_rev = plan.get('is_reverse', False)
             
-            v_rev_q_qty, v_rev_q_lots, v_rev_guidance, l1_qty, l1_price = 0, 0, "", 0, 0.0
+            v_rev_q_qty, v_rev_q_lots = 0, 0
 
             if ver == "V_REV":
                 q_list = await self._retry_api(self.queue_ledger.get_queue, t, default=[]) if getattr(self, 'queue_ledger', None) else []
@@ -330,63 +331,8 @@ class TelegramCommands:
                 v_rev_q_lots = len(q_list)
                 v_rev_q_qty = sum(int(self._safe_float(item.get('qty', 0))) for item in q_list if isinstance(item, dict))
                 
-                if q_list:
-                    l1_qty = int(self._safe_float(q_list[-1].get('qty'))) if isinstance(q_list[-1], dict) else 0
-                    l1_price = self._safe_float(q_list[-1].get('price')) if isinstance(q_list[-1], dict) else 0.0
-
                 one_portion_cash = safe_seed * 0.15
                 plan['one_portion'] = one_portion_cash
-                half_portion_cash = one_portion_cash * 0.5
-            
-                tag = "VWAP" if is_manual_vwap else "LOC"
-                snap_sells_for_ui = [o for o in (cached_snap.get("orders", []) if cached_snap else []) if isinstance(o, dict) and o.get('side') == 'SELL']
-                
-                if cached_snap and snap_sells_for_ui and actual_qty > 0:
-                    for o in snap_sells_for_ui:
-                         desc_label = str(o.get('desc', '매도')).split('(')[0]
-                         v_rev_guidance += f" 🔵 {html.escape(desc_label)} ${self._safe_float(o.get('price')):.2f} <b>{int(self._safe_float(o.get('qty')))}주</b> ({tag})\n"
-                elif q_list and actual_qty > 0:
-                    trigger_l1 = round(l1_price * 1.006, 2)
-                    valid_q_data = [item for item in q_list if isinstance(item, dict) and self._safe_float(item.get('price')) > 0]
-                    total_q = sum(int(self._safe_float(item.get("qty"))) for item in valid_q_data)
-                    total_inv = sum(self._safe_float(item.get('qty')) * self._safe_float(item.get('price')) for item in valid_q_data)
-                    q_avg_price = (total_inv / total_q) if total_q > 0 else 0.0
-                    
-                    if total_q > 0: actual_avg = round(q_avg_price, 4)
-                  
-                    upper_qty = total_q - l1_qty
-                    trigger_upper = round(q_avg_price * 1.010, 2) if upper_qty > 0 else 0.0
-                    
-                    available_l1 = min(l1_qty, actual_qty)
-                    available_upper = min(upper_qty, actual_qty - available_l1)
-                    
-                    sell_dict = {}
-                    if available_l1 > 0 and trigger_l1 > 0: sell_dict[trigger_l1] = sell_dict.get(trigger_l1, 0) + available_l1
-                    if available_upper > 0 and trigger_upper > 0: sell_dict[trigger_upper] = sell_dict.get(trigger_upper, 0) + available_upper
-                   
-                    for price in sorted(sell_dict.keys()):
-                        s_qty = sell_dict[price]
-                        if price == trigger_l1 and price == trigger_upper: desc_str = "통합탈출"
-                        elif price == trigger_l1: desc_str = "1층탈출"
-                        elif price == trigger_upper: desc_str = "상위층탈출"
-                        else: desc_str = "잔여탈출"
-                        v_rev_guidance += f" 🔵 {desc_str} ${price:.2f} <b>{s_qty}주</b> ({tag})\n"
-                else:
-                    v_rev_guidance += " 🔵 매도: 대기 물량 없음 (관망)\n"
-                
-                base_p = curr if curr > 0.0 else safe_prev_close
-                safe_anchor = l1_price if l1_price > 0.0 else base_p
-                if safe_anchor > 0:
-                    b1_price = round(base_p * 1.15 if is_zero_start_fact else safe_anchor * 0.998, 2)
-                    b2_price = round(base_p * 0.999 if is_zero_start_fact else safe_anchor * 0.993, 2)
-                    
-                    b1_qty = math.floor(half_portion_cash / b1_price) if b1_price > 0 else 0
-                    b2_qty = math.floor(half_portion_cash / b2_price) if b2_price > 0 else 0
-                    
-                    if b1_qty > 0: v_rev_guidance += f" 🔴 매수1(Buy1) ${b1_price:.2f} <b>{b1_qty}주</b> ({tag})\n"
-                    if b2_qty > 0: v_rev_guidance += f" 🔴 매수2(Buy2) ${b2_price:.2f} <b>{b2_qty}주</b> ({tag})\n"
-                else:
-                    v_rev_guidance += " 🔴 매수 대기: 타점 연산 대기 중\n"
 
             is_avwap_hybrid_on = await self._retry_api(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t, default=False)
 
@@ -442,7 +388,7 @@ class TelegramCommands:
                 'vol_status': vol_status,
                 'v_rev_q_lots': v_rev_q_lots,
                 'v_rev_q_qty': v_rev_q_qty,
-                'v_rev_guidance': v_rev_guidance,
+                'v_rev_guidance': "", # 🚨 MODIFIED: UI 렌더링 도메인으로 100% 위임 (데드코드 소각)
                 'avwap_active': is_avwap_active,
                 'avwap_budget': 0.0,
                 'avwap_qty': 0,
