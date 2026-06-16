@@ -15,6 +15,7 @@
 # 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신(send_message)에 `asyncio.wait_for(timeout=15.0)` 족쇄 100% 래핑.
 # 🚨 MODIFIED: [Time Paradox 팩트 교정] 자체 슬라이싱 체결 검증을 위한 KIS 원장 조회 시 KST 팩트 주입 완료.
 # 🚨 NEW: [Scope Mismatch 궁극 방어] 파일 I/O 스레드로 위임되는 `_sync_ledger_atomic` 함수에 명시적 파라미터를 주입하여 클로저 오염으로 인한 `UnboundLocalError` 원천 봉쇄.
+# 🚨 MODIFIED: [큐 장부 절대주의 헌법 수복] 자율주행 하이재킹 엔진이 KIS 실잔고를 오인하여 0주 상태에서 V14 물량을 유령 매도(Ghost Selling)하던 월권행위를 큐 장부 한도 캡핑(vrev_q_qty)으로 원천 차단.
 # ==========================================================
 import logging
 import asyncio
@@ -130,6 +131,12 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
             # 🚨 [보유량 팩트 선취] 상방 하이재킹 판단을 위한 실잔고 파악
             actual_qty = int(_safe_float(holdings.get(t, {}).get('qty', 0)))
 
+            # 🚨 NEW: [큐 장부 절대주의 수복] KIS 잔고 오인 덤핑 방어를 위한 큐 장부 수량 팩트 추출
+            vrev_q_qty = 0
+            if queue_ledger:
+                q_data = await _retry_api(queue_ledger.get_queue, t, default=[])
+                vrev_q_qty = sum(int(_safe_float(item.get("qty"))) for item in (q_data or []) if isinstance(item, dict))
+
             try:
                 version = await _retry_api(cfg.get_version, t, default="V14")
                 is_manual_vwap = await _retry_api(getattr(cfg, 'get_manual_vwap_mode', lambda x: False), t, default=False)
@@ -163,7 +170,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                         if df_1min_t is not None and not df_1min_t.empty:
                             df_t = df_1min_t.copy()
                             
-                            # 🚨 NEW: [Time Paradox 붕괴 궁극 수술] 5일치(5d) 캔들 합산으로 인한 VWAP 오염 패러독스(Hallucination) 원천 차단 및 당일(Today) 타임라인 100% 핀셋 절단 락온
+                            # 🚨 [Time Paradox 붕괴 궁극 수술] 5일치(5d) 캔들 합산으로 인한 VWAP 오염 패러독스 원천 차단
                             df_t = df_t[df_t.index.date == now_est.date()]
                             
                             if 'time_est' in df_t.columns:
@@ -303,9 +310,13 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 # ----------------------------------------------------
                                 # 🚨 [B. 상방 매도 하이재킹 (Upward Sell Hijack) 격발망]
                                 # ----------------------------------------------------
-                                elif gap_pct >= 2.0 and actual_qty > 0:
+                                # 🚨 MODIFIED: [큐 장부 절대주의 수복] KIS 실잔고(actual_qty) 오인 방어를 위해 큐 장부 수량(vrev_q_qty) 팩트 교차 검증 락온
+                                elif gap_pct >= 2.0 and vrev_q_qty > 0 and actual_qty > 0:
                                     logging.info(f"⚡ [{t}] Upward Sell Hijack Triggered! gap: {gap_pct:.2f}% >= +2.0%")
                                     nuked_count = 0
+                                    
+                                    # 🚨 [격리 타격 락온] 오직 큐 장부 한도까지만 타격하여 KIS 잔고에 섞인 타 전략 물량을 절대 방어
+                                    target_sell_qty = min(actual_qty, vrev_q_qty)
                                     
                                     try:
                                         est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
@@ -365,7 +376,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                     exec_price = bid_price if bid_price > 0 else curr_p
                                     
                                     if exec_price > 0:
-                                        res = await _retry_api(broker.send_order, t, "SELL", actual_qty, exec_price, "LIMIT")
+                                        res = await _retry_api(broker.send_order, t, "SELL", target_sell_qty, exec_price, "LIMIT")
                                         safe_res = res if isinstance(res, dict) else {}
                                         odno = str(safe_res.get('odno') or '')
                                         
@@ -379,8 +390,8 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                             
                                             msg = f"🚀 <b>[{html.escape(str(t))}] 🤖 상방 모멘텀 자율주행 (Sell Hijack) 격발!</b>\n"
                                             msg += f"▫️ 당일 누적 VWAP 대비 현재가 슈팅(<b>+{gap_pct:.2f}%</b>)이 익절 임계치(<b>+2.0%</b>)를 관통했습니다.\n"
-                                            msg += f"▫️ KIS 예약/미체결 매도 덫({nuked_count}건) 파기 후, 보유 물량 전량을 매수 1호가로 일괄 스윕(Sweep) 덤핑하여 종가 거품 붕괴를 회피합니다!\n"
-                                            msg += f"▫️ 전량 익절 수량: <b>{actual_qty}주</b> (단가: ${exec_price:.2f})\n"
+                                            msg += f"▫️ KIS 예약/미체결 매도 덫({nuked_count}건) 파기 후, 큐 장부 보유 물량을 매수 1호가로 일괄 스윕(Sweep) 덤핑하여 종가 거품 붕괴를 회피합니다!\n"
+                                            msg += f"▫️ 전량 익절 수량: <b>{target_sell_qty}주</b> (단가: ${exec_price:.2f})\n"
                                             msg += f"▫️ <b>당일 슬라이싱 엔진 가동을 전면 마비시킵니다 (조기 퇴근 락온).</b>"
                                             
                                             await _safe_send(context, chat_id, msg, parse_mode='HTML')
