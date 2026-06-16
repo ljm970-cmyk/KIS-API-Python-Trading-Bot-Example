@@ -2,6 +2,7 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [NameError 즉사 수술] cmd_sync 내부 최상단에 `chat_id = update.effective_chat.id` 선언을 명시적으로 결속하여, `_safe_send` 호출 시 발생하던 NameError 런타임 붕괴를 100% 원천 차단.
 # 🚨 MODIFIED: [침묵의 마비(Silent Death) 원천 봉쇄] cmd_record 내부에 locked_tickers 및 error_tickers 추적망을 신설하여, 백그라운드 락 점유 시 무한 로딩에 빠지지 않고 즉각 피드백하도록 팩트 교정 완료.
 # 🚨 MODIFIED: [다중 종목 렌더링 누락 수술] cmd_record 내부 단일 종목 렌더링 맹점을 소각하고, 모든 가동 종목이 출력되도록 순회 루프(enumerate) 및 분할 타전망 팩트 락온.
 # 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] 전일 종가가 0.0일 때 실시간 현재가로 덮어씌워 타점 연산을 오염시키던 맹독성 조건문을 시스템 전역에서 100% 삭제 완료.
@@ -152,6 +153,9 @@ class TelegramCommands:
         await self._safe_reply(update.effective_message, msg, parse_mode='HTML')
 
     async def cmd_sync(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # 🚨 NEW: [NameError 즉사 방어] 텔레그램 컨텍스트에서 chat_id 명시적 추출 락온
+        chat_id = update.effective_chat.id
+        
         # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 1줄 로딩 텍스트 전면 소각 (Height Collapse 방어)
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
@@ -466,7 +470,6 @@ class TelegramCommands:
                 res = await self._retry_api(self.broker.get_account_balance, timeout=15.0)
                 holdings = res[1] if res and len(res) > 1 and isinstance(res[1], dict) else {}
             
-            # 🚨 MODIFIED: [렌더링 붕괴 샌드박스 락온] 단일 종목 렌더링 에러가 전체 화면 증발로 이어지지 않도록 try-except 및 독립 타전망 팩트 락온
             for idx, t in enumerate(success_tickers):
                 try:
                     if idx == 0:
