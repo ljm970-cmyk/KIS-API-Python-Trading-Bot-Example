@@ -2,9 +2,8 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [종가 오염 팩트 수복] KIS API 롤오버 지연으로 과거 종가가 유입되는 맹점을 차단하고, YF 정규장 1분봉(prepost=False)을 스캔하여 완벽한 prev_close 팩트 강제 락온.
-# 🚨 MODIFIED: [가상 잔고 역산 영구 소각] 주문가능금액을 임의로 역산(Reverse Calculate)하려는 낡은 로직을 전면 파기하고 KIS 실데이터 100% 추종 유지.
-# 🚨 MODIFIED: [현재가 보존 락온] 장마감(CLOSE) 시 curr를 safe_prev_close로 덮어씌우는 치명적 데드코드를 영구 소각하여 KIS 최신 종가 무결성 사수.
+# 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
+# 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
 # 🚨 MODIFIED: [Phase 1 명령어 도메인 독립] 기존 telegram_bot.py 의 God Object 안티패턴을 뜯어내어 명령어 제어 로직을 전담하는 순수 도메인 클래스 분리 락온.
 # 🚨 MODIFIED: [Phase 3 통신 데드락 붕괴 영구 소각] 무한 반복되던 asyncio.wait_for 및 to_thread 보일러플레이트를 _retry_api, _safe_reply, _safe_edit 헬퍼로 통합 압축 (DRY 원칙).
 # 🚨 MODIFIED: [Case 32 & 33 절대 규칙] _retry_api 헬퍼 내부에 TPS 캡핑(0.06s) 및 3단 지수 백오프를 중앙 집중화하여 Rate Limit 밴 원천 차단.
@@ -227,20 +226,21 @@ class TelegramCommands:
                 # 🚨 MODIFIED: [종가 팩트 스캔망] 정규장 마감 이후 KIS 서버의 전일 종가(base)가 롤오버되지 않는 맹점을 YF 정규장 1분봉(prepost=False)으로 오버라이드하여 완벽한 prev_close 팩트 구축
                 def get_exact_prev_close(ticker_name):
                     time.sleep(0.06)
-                    df = yf.Ticker(ticker_name).history(period="5d", interval="1m", prepost=False, timeout=5)
+                    df = yf.Ticker(ticker_name).history(period="5d", interval="1d", timeout=5)
                     if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
                         val = float(df['Close'].iloc[-1])
                         return val if not math.isnan(val) else None
                     return None
                     
-                yf_exact_close = await self._retry_api(get_exact_prev_close, t)
-                if yf_exact_close and yf_exact_close > 0: 
-                    safe_prev_close = yf_exact_close
+                # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
+                yf_close = await self._retry_api(get_exact_prev_close, t)
+                if yf_close and yf_close > 0: 
+                    safe_prev_close = yf_close
                     prev_close = safe_prev_close
 
             if status_code == "CLOSE": 
-                # 🚨 MODIFIED: [현재가 보존 락온] curr = safe_prev_close 덮어쓰기 뇌관 영구 소각
-                pass
+                # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
+                curr = safe_prev_close
 
             idx_ticker = "SOXX" if t == "SOXL" else "QQQ"
             dynamic_pct_obj = await self._retry_api(self.broker.get_dynamic_sniper_target, idx_ticker)

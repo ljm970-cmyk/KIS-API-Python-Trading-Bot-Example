@@ -8,7 +8,7 @@
 # 🚨 MODIFIED: [페이징 팩트 수술] get_execution_history 내 연속 조회(Pagination) 토큰 미갱신으로 인한 체결 내역 증발 버그 완벽 수술
 # 🚨 MODIFIED: [이벤트 루프 교착 방어] cancel_all_orders_safe 내부의 과도한 time.sleep(5)를 1.0초로 단축하여 Caller 타임아웃(10초) 폭발 원천 차단
 # 🚨 VERIFIED: [Case 36 절대 방어망 결속] MOC(시장가 매도) 주문 리젝 시 현재가 -5% 최유리 지정가(LIMIT) 덤핑 자동 폴백 100% 팩트 가동
-# 🚨 MODIFIED: [주문가능금액 역산 영구 소각] 가상의 잔고를 역산(Reverse Calculate)하던 낡은 로직을 100% 파기하고, KIS API가 반환하는 순수 '해외주식 주문가능금액(ovrs_ord_psbl_amt)' 팩트만을 직접 수용하도록 락온.
+# 🚨 MODIFIED: [주문가능금액 역산 팩트 복구] KIS API가 특정 시간대에 예수금을 0.0으로 반환하는 고질적 결함을 우회하기 위해, 오리지널 수리적 역산(Reverse Calc) 공식(외화예수금+매도정산-매수정산)을 100% 롤백 완료.
 # ==========================================================
 
 import time
@@ -38,10 +38,12 @@ class KisOrderEngine(MarketDataProvider):
      
             if not isinstance(o2, dict): o2 = {}
             
-            # 🚨 MODIFIED: [주문가능금액 직접 조회 락온] 임의 역산 영구 소각 및 API 실데이터 100% 수용
-            cash = self._safe_float(o2.get('ovrs_ord_psbl_amt', 0))
-            if cash == 0.0:
-                cash = self._safe_float(o2.get('frcr_ord_psbl_amt1', 0))
+            # 🚨 MODIFIED: [주문가능금액 역산 팩트 복구] KIS API 오류를 우회하는 100% 수식 계산망 롤백
+            dncl_amt = self._safe_float(o2.get('frcr_dncl_amt_2', 0))     
+            sll_amt = self._safe_float(o2.get('frcr_sll_amt_smtl', 0))      
+            buy_amt = self._safe_float(o2.get('frcr_buy_amt_smtl', 0))      
+            raw_bp = dncl_amt + sll_amt - buy_amt
+            cash = max(0.0, math.floor((raw_bp * 0.9945) * 100) / 100.0)
 
         target_excgs = ["NASD", "AMEX", "NYSE"] 
   
@@ -71,8 +73,6 @@ class KisOrderEngine(MarketDataProvider):
                         if isinstance(o2, list): o2 = o2[0] if len(o2) > 0 else {}
                   
                         if not isinstance(o2, dict): o2 = {}
-                        
-                        # 🚨 MODIFIED: [주문가능금액 직접 조회 락온]
                         new_cash = self._safe_float(o2.get('ovrs_ord_psbl_amt', 0))
                         if new_cash > cash: cash = new_cash
                    

@@ -2,6 +2,8 @@
 # FILE: callback_order_handler.py
 # ==========================================================
 # 🚨 MODIFIED: [주문 통신 전담 도메인] KIS API 수동 주문, 수동 취소, 비상 수혈 로직 100% 분리 락온
+# 🚨 MODIFIED: [종가 오염 팩트 수복] KIS API 롤오버 지연으로 과거 종가가 유입되는 맹점을 차단하고, YF 정규장 1분봉(prepost=False)을 스캔하여 완벽한 prev_close 팩트 강제 락온.
+# 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
 # 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프, TPS 캡핑, wait_for(10.0) 래핑, yfinance 타임아웃(timeout=5) 방어막 유지
 # 🚨 MODIFIED: [Insight 26] KIS 서버 타입 불일치(Reject) 원천 차단을 위한 수량(int), 가격(float) 강제 캐스팅 유지
 # ==========================================================
@@ -223,11 +225,17 @@ class CallbackOrderHandler:
                         except Exception:
                             if attempt == 2: pass
                             else: await asyncio.sleep(1.0 * (2 ** attempt))
+                    
+                    # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
                     if yf_close and yf_close > 0:
                         prev_c = yf_close
                 except Exception as e:
                     logging.debug(f"YF 정규장 종가 롤오버 스캔 실패 ({t}): {e}")
-                if curr_p > 0 and prev_c == 0.0:
+                
+                # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
+                if status_code == "CLOSE":
+                    curr_p = prev_c
+                elif curr_p > 0 and prev_c == 0.0:
                     prev_c = curr_p
          
             ma_5day = 0.0
