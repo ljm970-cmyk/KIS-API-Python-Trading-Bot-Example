@@ -85,7 +85,7 @@ async def execute_vwap_init(tx_lock, cfg, broker, chat_id, context, vwap_cache):
                         msg = f"🌅 <b>[{html.escape(str(t))}] 자체 1분 슬라이싱 VWAP 엔진 / Gap Hijack 섀도우 관측망 기상</b>\n"
                         msg += f"▫️ KIS 예약 덫 관망 및 장 마감 34분 전 로컬 펄스 타격 엔진의 가동 대기를 확인했습니다.\n"
                         msg += f"▫️ 운용종목 갭 이탈 감지 시 즉각 개입(Gap Hijack)하는 양방향 섀도우 모드가 함께 가동됩니다. ⚔️"
-                        
+
                         vwap_cache[f"REV_{t}_nuked"] = True
                         
                         await _safe_send(context, chat_id, msg, parse_mode='HTML', disable_notification=True)
@@ -162,6 +162,10 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 
                         if df_1min_t is not None and not df_1min_t.empty:
                             df_t = df_1min_t.copy()
+                            
+                            # 🚨 NEW: [Time Paradox 붕괴 궁극 수술] 5일치(5d) 캔들 합산으로 인한 VWAP 오염 패러독스(Hallucination) 원천 차단 및 당일(Today) 타임라인 100% 핀셋 절단 락온
+                            df_t = df_t[df_t.index.date == now_est.date()]
+                            
                             if 'time_est' in df_t.columns:
                                 df_t = df_t[(df_t['time_est'] >= '093000') & (df_t['time_est'] <= '155900')]
                                 
@@ -357,7 +361,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
 
                                     bid_price = _safe_float(await _retry_api(broker.get_bid_price, t))
                                     curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
-                                            
+                                    
                                     exec_price = bid_price if bid_price > 0 else curr_p
                                     
                                     if exec_price > 0:
@@ -456,7 +460,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 if isinstance(c_res, dict) and str(c_res.get('rt_cd', '')) == '0':
                                     cancel_successful = True
                                     await asyncio.sleep(0.5) 
-                                        
+                                    
                                 is_still_open = False
                                 if not cancel_successful:
                                     unf = await _retry_api(broker.get_unfilled_orders_detail, t, default=[])
@@ -490,7 +494,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                     processed_odnos = vwap_cache.setdefault(f"PROCESSED_ODNOS_{t}", set())
                                     if last_odno not in processed_odnos:
                                         processed_odnos.add(last_odno)
-                                        
+
                                         # 🚨 NEW: [Scope Mismatch 궁극 방어] 클로저(Closure) 오염을 방지하기 위한 명시적 파라미터 패싱 락온
                                         def _sync_ledger_atomic(tkr, sde, c_qty, r_price, q_ledger, strat):
                                             if q_ledger:
