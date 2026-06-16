@@ -2,17 +2,13 @@
 # FILE: telegram_view.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해킹 로직을 전면 소각하고 telegram_sync_engine이 전달한 스냅샷 팩트 그대로 출력.
 # 🚨 MODIFIED: [Phase 3 암살자 선택권 복구] get_settlement_message 내 암살자 상태(is_avwap_hybrid) 동적 렌더링(ON/OFF) 및 토글 버튼 100% 수복 완료.
-# 🚨 MODIFIED: [UI 텍스트 맹독성 하드코딩 소각] 과거 암살자/스캘퍼 실전 매매 시절의 환영(Ghost Text) 및 복잡한 HA 휩소 상태 전이 텍스트 전면 파기.
 # 🚨 MODIFIED: [순수 리버전 팩트 롤오버] '세션 VWAP -2% 매수' 및 '가용 현금 100% 올인', '+2% 전량 익절', '15:59 강제 덤핑' 팩트를 시스템 UI 전역에 100% 동기화 교체 완료.
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
 # 🚨 MODIFIED: [Python 딕셔너리 평가 맹독성 수술] dict.get(key, default)에서 값이 None일 때 default가 무시되고 None이 반환되어 _safe_float(None) -> 0.0 으로 오염되는 치명적 버그를 `or default` 단락 평가로 완벽 교정.
 # 🚨 MODIFIED: [마크다운 리스트 붕괴 방어] 텍스트 내 숫자 리스트(1., 2.)를 이모지(1️⃣, 2️⃣)로 100% 치환하여 텔레그램 파서 안전성 극대화.
 # 🚨 MODIFIED: [Case 16 위반 교정] 이미지 렌더링(create_profit_image) 시 원자적 쓰기 실패에 따른 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 최상단 전진 배치.
-# 🚨 NEW: [명예의 전당 소각] 졸업 기록 상세 뷰포트에 영구 소각 버튼 추가 및 재확인(Confirm) 뷰 렌더링 메서드 신설.
-# 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] get_vrev_mode_selection_menu 안내 텍스트를 "기초자산"에서 "본종목"으로 팩트 교정하여 UI 무결성 사수.
-# 🚨 NEW: [도메인 롤백 결속] telegram_sync_engine.py 에 잔존하던 get_settlement_message 및 create_sync_report를 본연의 뷰 도메인으로 100% 회수 이식.
-# ==========================================================
 import os
 import math
 import logging
@@ -44,7 +40,6 @@ class TelegramView:
             "AppleGothic.ttf", "Arial.ttf"
         ]
 
-    # 🚨 [Insight 14 & 25] NaN, Infinity 및 String-Comma 맹독성 데이터 정밀 필터링 락온
     def _safe_float(self, val):
         try:
             f_val = float(str(val or 0.0).replace(',', ''))
@@ -232,7 +227,6 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 MODIFIED: [타점 롤오버] 암살자 -3% 타점을 -2% 팩트로 교정 완료
     def get_avwap_warning_menu(self, ticker):
         safe_t = html.escape(str(ticker))
         msg = f"👁️ <b>[{safe_t} 순수 리버전 데이 트레이딩 관제탑 가동 승인]</b>\n\n"
@@ -301,7 +295,6 @@ class TelegramView:
         
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 NEW: [도메인 롤백 이식] telegram_sync_engine.py 에서 본연의 뷰 도메인으로 100% 회수 이식
     def get_settlement_message(self, active_tickers, config, atr_data, tracking_cache=None):
         msg = ""
         keyboard = []
@@ -338,7 +331,6 @@ class TelegramView:
             msg += f"{icon} <b>{safe_t} ({ver_display} 모드)</b>\n"
             
             if ver == "V_REV":
-                # 🚨 MODIFIED: [병렬 가동 아키텍처 팩트 수복] 암살자 올인 타격 및 독립 병렬 가동 명시
                 avwap_status = "🟢 ON (주문가능금액 100% 올인)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
                 
                 msg += f"▫️ 본진 예산: 총 시드의 15% (고정 할당)\n▫️ 본진 목표: [가상1층]+0.6% / [상위층]+0.5%\n▫️ 자동복리: {comp_rate}% | 수수료: <b>{fee_rate}%</b>\n▫️ 갭 스위칭: <b>🤖 자율주행 (상승장 자동 가동)</b>\n"
@@ -376,7 +368,6 @@ class TelegramView:
     
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 NEW: [도메인 롤백 이식] telegram_sync_engine.py 에서 본연의 뷰 도메인으로 100% 회수 이식
     def create_sync_report(self, status_text, dst_text, cash, rp_amount, ticker_data, is_trade_active, p_trade_data=None, exchange_rate=None):
         ticker_data = ticker_data or []
         
@@ -531,26 +522,7 @@ class TelegramView:
                 if is_zero_start:
                     raw_guidance = '\n'.join([line for line in raw_guidance.split('\n') if "잭팟" not in line and "상위층" not in line])
                 
-                v_rev_q_lots_val = self._safe_float(t_info.get('v_rev_q_lots') or 0.0)
-                if not is_zero_start and fact_qty > 0 and v_rev_q_lots_val > 0:
-                    try:
-                        b1_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy1' in str(o.get('desc', ''))), None)
-                        b2_order = next((o for o in plan_dict.get('orders', []) if isinstance(o, dict) and 'Buy2' in str(o.get('desc', ''))), None)
-                        
-                        if b1_order or b2_order:
-                            lines = raw_guidance.split('\n')
-                            for i, line in enumerate(lines):
-                                if "매수1(Buy1)" in line and b1_order:
-                                    b1_price = self._safe_float(b1_order.get('price'))
-                                    b1_qty = int(self._safe_float(b1_order.get('qty')))
-                                    lines[i] = f" 🔴 매수1(Buy1) ${b1_price:.2f} <b>{b1_qty}주</b>"
-                                elif "매수2(Buy2)" in line and b2_order:
-                                    b2_price = self._safe_float(b2_order.get('price'))
-                                    b2_qty = int(self._safe_float(b2_order.get('qty')))
-                                    lines[i] = f" 🔴 매수2(Buy2) ${b2_price:.2f} <b>{b2_qty}주</b>"
-                        raw_guidance = '\n'.join(lines)
-                    except Exception: pass
-
+                # 🚨 MODIFIED: [UI 렌더링 동적 역산 파기] 낡은 텍스트 치환 해체 및 스냅샷 팩트 그대로 출력
                 body_msg += raw_guidance.replace(" (LOC)", "").replace(" (VWAP)", "").replace("[가상격리] ", "").replace("[가상 ", "[").replace("가상 ", "") + "\n"
             else:
                 if is_manual_vwap and not is_rev_logic:
@@ -603,7 +575,6 @@ class TelegramView:
 
         return final_msg, InlineKeyboardMarkup(keyboard) if keyboard else None
 
-    # 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] 기초자산 ➔ 본종목 팩트 교정 완료
     def get_vrev_mode_selection_menu(self, ticker):
         safe_t = html.escape(str(ticker))
         msg = f"⚠️ <b>[{safe_t} V-REV 역추세 모드 전환]</b>\n\n"
@@ -634,7 +605,6 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 NEW: [명예의 전당 소각] 2단계 격발망 UI (Fat Finger 방어)
     def get_history_delete_confirm_menu(self, hist_id):
         safe_id = html.escape(str(hist_id))
         msg = f"🚨 <b>[졸업 기록 영구 소각 최종 확인]</b>\n\n정말 이 명예의 전당 기록(ID: {safe_id})을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다!"
@@ -692,7 +662,6 @@ class TelegramView:
             keyboard.append([InlineKeyboardButton("🔙 장부 업데이트", callback_data=f"REC:SYNC:{ticker}")])
         else:
             keyboard.append([InlineKeyboardButton("🖼️ 프리미엄 졸업 카드 발급", callback_data=f"HIST:IMG:{ticker}{f':{history_id}' if history_id else ''}")])
-            # 🚨 NEW: [명예의 전당 소각] 소각 작전 1단계 뷰포트 진입 버튼 추가
             if history_id:
                 keyboard.append([InlineKeyboardButton("🗑️ 졸업 기록 영구 소각", callback_data=f"HIST:DEL_REQ:{history_id}")])
             keyboard.append([InlineKeyboardButton("🔙 역사 목록", callback_data="HIST:LIST")])
@@ -702,7 +671,6 @@ class TelegramView:
     def create_profit_image(self, ticker, profit, yield_pct, invested, revenue, end_date):
         W, H, IMG_H = 600, 920, 430
         
-        # 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기용 임시 변수 전진 배치
         fd = None
         tmp_path = None
         

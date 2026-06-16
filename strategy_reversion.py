@@ -6,6 +6,7 @@
 # 🚨 MODIFIED: [제2헌법 준수] 사용되지 않는 유령 변수(residual) 데드코드 100% 영구 소각 및 파일 I/O 에러 로깅 강제 결속.
 # 🚨 NEW: [Fact Override 락온] 수동 개입(/record, /add_q)으로 인해 실잔고 또는 큐에 수량이 편입되었을 경우, 새벽 스냅샷의 0주(is_zero_start=True) 맹신을 파기하고 실시간 팩트(False)로 오버라이드하여 매수 타점 역전 패러독스를 원천 차단.
 # 🚨 MODIFIED: [0주 타점 팩트 롤백] 갭상승 타점 오염을 막기 위해 0주 새출발은 오직 '전일 종가(prev_c)'만을 절대 베이스로 추종하도록 100% 팩트 교정 완료.
+# 🚨 MODIFIED: [스냅샷 절대주의 락온] 예산 결측(0.0) 시 스냅샷 지시서가 통째로 증발하는 맹점을 막기 위해 1일 고정 예산(daily_limit) 강제 주입 팩트 결속.
 import math
 import os
 import json
@@ -237,13 +238,11 @@ class ReversionStrategy:
         else:
             is_zero_start_session = (actual_qty == 0)
 
-        # 🚨 NEW: [Fact Override 방어막]
-        # 수동 개입(/record, /add_q 등)으로 인해 실잔고(actual_qty)나 큐 장부(total_q)에 실물이 편입되었다면,
-        # 과거 스냅샷의 0주(is_zero_start=True) 팩트를 즉각 파기(False)하여 기보유 앵커(0.998/0.993)를 정상 산출합니다.
+        # 🚨 [Fact Override 방어막]
         if is_zero_start_session and (actual_qty > 0 or total_q > 0):
             is_zero_start_session = False
 
-        # 🚨 MODIFIED: [0주 타점 팩트 롤백] 갭상승에 오염되지 않도록 0주 새출발은 오직 prev_c 만을 100% 절대 앵커로 사용합니다.
+        # 🚨 [0주 타점 팩트 롤백] 갭상승에 오염되지 않도록 0주 새출발은 오직 prev_c 만을 100% 절대 앵커로 사용합니다.
         if is_zero_start_session:
             p1_trigger = round(prev_c * 1.15, 2)
             p2_trigger = round(prev_c * 0.999, 2)
@@ -293,6 +292,10 @@ class ReversionStrategy:
         seed_val = self._safe_float(self.cfg.get_seed(ticker))
         daily_limit = seed_val * 0.15
         
+        # 🚨 MODIFIED: [스냅샷 절대주의 락온] 통신 에러로 예산이 0.0 유입 시 지시서가 통째로 증발하는 맹점을 막기 위해 1일 고정 예산 강제 주입
+        if alloc_cash <= 0.0:
+            alloc_cash = daily_limit
+            
         safe_alloc_cash = min(float(alloc_cash), daily_limit) if daily_limit > 0 else float(alloc_cash)
         rem_budget = max(0.0, safe_alloc_cash - total_spent)
         
