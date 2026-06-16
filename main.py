@@ -2,6 +2,7 @@
 # FILE: main.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 40대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [Event Loop 교착 수술] post_init 내부 commands_handler 및 콜백 하위 도메인 락온 전파 누락 맹점 원천 봉쇄.
 # 🚨 MODIFIED: [Phase 3 스케줄러 디커플링 대통합] 20:05 EST 애프터 정산(scheduled_aftermarket_sync) 크론 스케줄 영구 소각.
 # 🚨 MODIFIED: [15:59 MOC 덤핑 락온] 암살자 제로-오버나이트 강제 청산을 위한 15:59 EST 전용 크론 스케줄 유지.
 # 🚨 MODIFIED: [16:05 확정 정산망 단일화] 암살자 물량 보유 시 스킵하던 로직을 폐기하고, 15:59 덤핑 완료 후 무조건 당일 100% 정산되도록 졸업 스캔망 단일화.
@@ -206,6 +207,12 @@ async def post_init(application: Application):
     
     application.bot_data['bot_controller'].sync_engine.tx_lock = tx_lock
     application.bot_data['bot_controller'].callbacks_handler.tx_lock = tx_lock
+    
+    # 🚨 MODIFIED: [Event Loop 교착 수술] commands_handler 및 콜백 하위 도메인의 Lock 갱신 전파 락온
+    application.bot_data['bot_controller'].commands_handler.tx_lock = tx_lock
+    application.bot_data['bot_controller'].callbacks_handler.order_handler.tx_lock = tx_lock
+    application.bot_data['bot_controller'].callbacks_handler.avwap_handler.tx_lock = tx_lock
+    application.bot_data['bot_controller'].callbacks_handler.config_handler.tx_lock = tx_lock
 
 def main():
     est_zone = ZoneInfo('America/New_York')

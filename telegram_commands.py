@@ -2,6 +2,7 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [다중 종목 렌더링 누락 수술] cmd_record 내부 단일 종목 렌더링 맹점을 소각하고, 모든 가동 종목이 출력되도록 순회 루프(enumerate) 및 분할 타전망 팩트 락온.
 # 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] 전일 종가가 0.0일 때 실시간 현재가로 덮어씌워 타점 연산을 오염시키던 맹독성 조건문을 시스템 전역에서 100% 삭제 완료.
 # 🚨 MODIFIED: [UI 렌더링 텍스트 조합 뇌관 영구 소각] cmd_sync 내부에서 현재가(curr)를 참조해 타점을 역산하던 맹독성 `v_rev_guidance` 생성 로직을 100% 삭제. UI 렌더링은 오직 뷰어 도메인으로 전면 위임.
 # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] YF 1d 캔들 호출 지연 버그를 파기하고, 1m 기반 D-1일 공식 MOC 종가만을 100% 핀셋 추출하도록 전면 수술 완료.
@@ -255,7 +256,15 @@ class TelegramCommands:
                     return None
         
                 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
-                yf_close = await self._retry_api(get_exact_prev_close, t)
+                yf_close = None
+                for attempt in range(3):
+                    try:
+                        yf_close = await asyncio.wait_for(asyncio.to_thread(get_exact_prev_close, t), timeout=10.0)
+                        break
+                    except Exception:
+                        if attempt == 2: pass
+                        else: await asyncio.sleep(1.0 * (2 ** attempt))
+                
                 if yf_close and yf_close > 0: 
                     safe_prev_close = yf_close
                     prev_close = safe_prev_close
@@ -289,9 +298,9 @@ class TelegramCommands:
                 if ver == "V_REV":
                     cached_snap = await self._retry_api(self.strategy.v_rev_plugin.load_daily_snapshot, t)
                 elif ver == "V14":
-                     if is_manual_vwap: cached_snap = await self._retry_api(self.strategy.v14_vwap_plugin.load_daily_snapshot, t)
-                     elif hasattr(self.strategy, 'v14_plugin') and hasattr(self.strategy.v14_plugin, 'load_daily_snapshot'):
-                         cached_snap = await self._retry_api(self.strategy.v14_plugin.load_daily_snapshot, t)
+                    if is_manual_vwap: cached_snap = await self._retry_api(self.strategy.v14_vwap_plugin.load_daily_snapshot, t)
+                    elif hasattr(self.strategy, 'v14_plugin') and hasattr(self.strategy.v14_plugin, 'load_daily_snapshot'):
+                        cached_snap = await self._retry_api(self.strategy.v14_plugin.load_daily_snapshot, t)
             
             if not isinstance(cached_snap, dict): cached_snap = None
             
@@ -447,7 +456,13 @@ class TelegramCommands:
             async with self.tx_lock:
                 res = await self._retry_api(self.broker.get_account_balance, timeout=15.0)
                 holdings = res[1] if res and len(res) > 1 and isinstance(res[1], dict) else {}
-            await self.sync_engine._display_ledger(success_tickers[0], chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
+            
+            # 🚨 MODIFIED: [다중 종목 렌더링 팩트 교정] 단일 종목(success_tickers[0]) 렌더링 맹점 소각 및 100% 순회 분할 타전 락온
+            for idx, t in enumerate(success_tickers):
+                if idx == 0:
+                    await self.sync_engine._display_ledger(t, chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
+                else:
+                    await self.sync_engine._display_ledger(t, chat_id, context, message_obj=None, pre_fetched_holdings=holdings)
         else:
             await self._safe_edit(status_msg, "✅ <b>동기화 완료</b> (표시할 진행 중인 장부가 없거나 에러 대기 중입니다)", parse_mode='HTML')
 
