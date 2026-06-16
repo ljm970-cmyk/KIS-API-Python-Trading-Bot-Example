@@ -3,7 +3,7 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
 # 🚨 MODIFIED: [UI 렌더링 텍스트 조합 뇌관 영구 소각] cmd_sync 내부에서 현재가(curr)를 참조해 타점을 역산하던 맹독성 `v_rev_guidance` 생성 로직을 100% 삭제. UI 렌더링은 오직 뷰어 도메인으로 전면 위임.
-# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감(16:00 EST) 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단(Cut-off)하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
+# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] YF 1d 캔들 호출 지연 버그를 파기하고, 1m 기반 D-1일 공식 MOC 종가만을 100% 핀셋 추출하도록 전면 수술 완료.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] cmd_sync 및 EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
@@ -223,10 +223,10 @@ class TelegramCommands:
             safe_prev_close = prev_close
             
             if status_code in ["AFTER", "CLOSE", "PRE"]:
-                # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 호출 시 라이브 캔들을 절단하고 공식 MOC 종가만 추출.
+                # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] interval="1m" 팩트 추출로 전면 교체
                 def get_exact_prev_close(ticker_name):
                     time.sleep(0.06)
-                    df = yf.Ticker(ticker_name).history(period="5d", interval="1d", timeout=5)
+                    df = yf.Ticker(ticker_name).history(period="5d", interval="1m", prepost=True, timeout=5)
                     if not df.empty and 'Close' in df.columns:
                         tz_est = ZoneInfo('America/New_York')
                         tz_now = datetime.datetime.now(tz_est)
@@ -240,12 +240,18 @@ class TelegramCommands:
                         else:
                             df.index = df.index.tz_convert(tz_est)
                             
-                        past_df = df[df.index.date <= cutoff_date]
+                        past_df = df[df.index.date <= cutoff_date].copy()
                         if not past_df.empty:
-                            val = float(past_df['Close'].iloc[-1])
+                            # 🚨 MODIFIED: [Case 35] 결측치 방어막 강제 주입
+                            past_df['Close'] = past_df['Close'].ffill().bfill()
+                            regular_past = past_df.between_time('09:30', '15:59')
+                            if not regular_past.empty:
+                                val = float(regular_past['Close'].iloc[-1])
+                            else:
+                                val = float(past_df['Close'].iloc[-1])
                             return val if not math.isnan(val) else None
                     return None
-                
+        
                 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
                 yf_close = await self._retry_api(get_exact_prev_close, t)
                 if yf_close and yf_close > 0: 
@@ -312,7 +318,7 @@ class TelegramCommands:
                 market_type="REG", available_cash=allocated_cash.get(t, 0.0),
                 is_simulation=True, regime_data=regime_data, is_snapshot_mode=False
             ) or {}
-              
+               
             split = await self._retry_api(self.cfg.get_split_count, t, default=40.0)
             safe_seed = await self._retry_api(self.cfg.get_seed, t, default=0.0)
             
@@ -433,7 +439,7 @@ class TelegramCommands:
                 if res == "SUCCESS": success_tickers.append(t)
             except Exception as e:
                 logging.error(f"🚨 [{t}] 개별 종목 장부 동기화 중 에러 (격리): {e}")
-            
+        
         if success_tickers: 
             async with self.tx_lock:
                 res = await self._retry_api(self.broker.get_account_balance, timeout=15.0)

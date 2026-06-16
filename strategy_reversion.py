@@ -7,6 +7,7 @@
 # 🚨 NEW: [Fact Override 락온] 수동 개입(/record, /add_q)으로 인해 실잔고 또는 큐에 수량이 편입되었을 경우, 새벽 스냅샷의 0주(is_zero_start=True) 맹신을 파기하고 실시간 팩트(False)로 오버라이드하여 매수 타점 역전 패러독스를 원천 차단.
 # 🚨 MODIFIED: [0주 타점 팩트 롤백] 갭상승 타점 오염을 막기 위해 0주 새출발은 오직 '전일 종가(prev_c)'만을 절대 베이스로 추종하도록 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [스냅샷 절대주의 락온] 예산 결측(0.0) 시 스냅샷 지시서가 통째로 증발하는 맹점을 막기 위해 1일 고정 예산(daily_limit) 강제 주입 팩트 결속.
+# 🚨 MODIFIED: [0주 스냅샷 팩트 리앵커링 (Fact Override)] get_dynamic_plan 진입 시, 스냅샷 오염이 감지되면 YF 무결성 종가(prev_c)로 타점을 자가 치유(Self-Healing)하여 덮어씌웁니다.
 import math
 import os
 import json
@@ -199,7 +200,71 @@ class ReversionStrategy:
 
         cached_plan = self.load_daily_snapshot(ticker)
         
-        # 🚨 [스냅샷 절대 헌법 수복] 장중(is_snapshot_mode=False) 호출 시에는 무조건 스냅샷을 돌려줍니다.
+        # 🚨 MODIFIED: [0주 스냅샷 팩트 리앵커링 (Fact Override)] 자가 치유(Self-Healing) 방어막 결속
+        if cached_plan:
+            is_zero_val = cached_plan.get("is_zero_start")
+            if is_zero_val is None:
+                tot_q_snap = int(self._safe_float(cached_plan.get("snapshot_total_q", cached_plan.get("total_q", -1))))
+                is_zero_snap = (tot_q_snap == 0)
+            else:
+                is_zero_snap = str(is_zero_val).lower() == 'true'
+
+            if is_zero_snap and prev_c > 0.0:
+                orders = cached_plan.get("orders", [])
+                buy_orders = [o for o in orders if isinstance(o, dict) and str(o.get("side")) == "BUY"]
+                
+                target_p1 = round(prev_c * 1.15, 2)
+                target_p2 = round(prev_c * 0.999, 2)
+                
+                is_polluted = False
+                for o in buy_orders:
+                    p = self._safe_float(o.get("price"))
+                    desc = str(o.get("desc", ""))
+                    if p > 0:
+                        if "Buy1" in desc or "1" in desc:
+                            if abs(p - target_p1) / target_p1 >= 0.01: is_polluted = True
+                        elif "Buy2" in desc or "2" in desc:
+                            if abs(p - target_p2) / target_p2 >= 0.01: is_polluted = True
+                
+                if is_polluted:
+                    logging.warning(f"🚨 [{ticker}] 0주 스냅샷 오염 감지 (Timeline Rollover Paradox)! YF 무결성 종가(${prev_c}) 기반으로 타점을 즉각 자가 치유(Self-Healing)합니다.")
+                    
+                    seed_val = self._safe_float(self.cfg.get_seed(ticker))
+                    daily_limit = seed_val * 0.15
+                    
+                    safe_alloc_cash = alloc_cash if alloc_cash > 0.0 else daily_limit
+                    safe_alloc_cash = min(safe_alloc_cash, daily_limit) if daily_limit > 0 else safe_alloc_cash
+                    
+                    total_spent = self._safe_float((self.executed.get("BUY_BUDGET") or {}).get(ticker, 0.0))
+                    rem_budget = max(0.0, safe_alloc_cash - total_spent)
+                    
+                    b1_budget = rem_budget * 0.5
+                    b2_budget = rem_budget * 0.5
+                    
+                    new_q1 = math.floor(b1_budget / target_p1) if target_p1 > 0 else 0
+                    new_q2 = math.floor(b2_budget / target_p2) if target_p2 > 0 else 0
+                    
+                    if new_q1 == 0 and new_q2 == 0:
+                        if target_p1 > 0 and rem_budget >= target_p1: new_q1 = math.floor(rem_budget / target_p1)
+                        elif target_p2 > 0 and rem_budget >= target_p2: new_q2 = math.floor(rem_budget / target_p2)
+                    elif new_q1 == 0 and new_q2 > 0:
+                        new_q2 = math.floor(rem_budget / target_p2) if target_p2 > 0 else 0
+                    elif new_q2 == 0 and new_q1 > 0:
+                        new_q1 = math.floor(rem_budget / target_p1) if target_p1 > 0 else 0
+
+                    for o in cached_plan.get("orders", []):
+                        if str(o.get("side")) == "BUY":
+                            desc = str(o.get("desc", ""))
+                            if "Buy1" in desc or "1" in desc:
+                                o["price"] = target_p1
+                                o["qty"] = new_q1
+                            elif "Buy2" in desc or "2" in desc:
+                                o["price"] = target_p2
+                                o["qty"] = new_q2
+
+                    self.save_daily_snapshot(ticker, cached_plan)
+        
+        # 🚨 [스냅샷 절대 헌법 수복] 장중(is_snapshot_mode=False) 호출 시에는 무조건 (치유된) 스냅샷을 돌려줍니다.
         if not is_snapshot_mode and cached_plan:
             return cached_plan
 
