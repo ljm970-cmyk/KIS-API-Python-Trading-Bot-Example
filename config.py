@@ -11,10 +11,10 @@
 # 🚨 MODIFIED: [TOCTOU 레이스 컨디션 수술] os.path.exists 동기스캔 전면 소각 및 EAFP 패턴 100% 락온 유지.
 # 🚨 MODIFIED: [AttributeError 붕괴 방어] JSON 내부 요소 오염 시 발생하는 타입 캐스팅 에러 원천 차단.
 # 🚨 MODIFIED: [Case 16] tempfile 스코프 전진 배치로 UnboundLocalError 붕괴 차단.
-# 🚨 NEW: [명예의 전당 소각] delete_history 메서드 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
+# 🚨 NEW: [명예의 전당 소각] delete_history 메서 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
 # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
 # 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] get_vrev_gap_threshold 및 get_avwap_gap_threshold의 디폴트 반환값을 -0.67에서 -2.0으로 100% 상향 팩트 교정 완료.
-# 🚨 NEW: [고정형 VWAP 스키마 결속] AVWAP_ANCHOR_CFG 상태 파일 매핑 및 이번 달 1일 기준 자동 롤오버 파이프라인 신설.
+# 🚨 MODIFIED: [State Mismatch 붕괴 수술] get_avwap_anchor_date 결측 시 디폴트 반환값을 "당월 1일"에서 "AUTO"로 팩트 교정하여 자율주행(Auto-Anchoring) 엔진이 정상 격발되도록 락온.
 # ==========================================================
 
 import json
@@ -86,7 +86,6 @@ class ConfigManager:
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",     
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
-            # NEW: AVWAP 고정 기점(Anchor) 저장용 스키마 신설
             "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json"
         }
         
@@ -225,7 +224,6 @@ class ConfigManager:
                 try: os.remove(temp_path)
                 except OSError: pass
 
-    # 🚨 MODIFIED: [Gap Hijack 임계치 팩트 교정] -0.67 ➔ -2.0
     def get_vrev_gap_threshold(self, ticker):
         return self._safe_float(self._load_json(self.FILES["VREV_GAP_THRESH_CFG"], {}).get(ticker, -2.0))
 
@@ -244,7 +242,6 @@ class ConfigManager:
             d[ticker] = bool(v)
             self._save_json(self.FILES["VREV_GAP_SWITCH_CFG"], d)
       
-    # 🚨 MODIFIED: [Gap Hijack 임계치 팩트 교정] -0.67 ➔ -2.0
     def get_avwap_gap_threshold(self, ticker):
         return self._safe_float(self._load_json(self.FILES["AVWAP_GAP_THRESH_CFG"], {}).get(ticker, -2.0))
 
@@ -920,10 +917,8 @@ class ConfigManager:
 
     # 🚨 NEW: AVWAP 고정 기점(Anchor) 데이터 로드 및 당월 1일 디폴트 연산
     def get_avwap_anchor_date(self, ticker):
-        est = ZoneInfo('America/New_York')
-        now_est = datetime.datetime.now(est)
-        default_date = now_est.replace(day=1).strftime('%Y-%m-%d')
-        return str(self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {}).get(ticker, default_date))
+        # 🚨 MODIFIED: [State Mismatch 수술] 디폴트 값을 당월 1일 하드코딩에서 "AUTO"로 팩트 교정하여 자율주행 엔진 격발 락온
+        return str(self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {}).get(ticker, "AUTO"))
 
     # 🚨 NEW: AVWAP 고정 기점 날짜 수동 락온 (원자적 쓰기 강제)
     def set_avwap_anchor_date(self, ticker, date_str):
