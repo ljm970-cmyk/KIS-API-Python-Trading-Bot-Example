@@ -20,6 +20,7 @@
 # 🚨 MODIFIED: [Case 24 결측치 방어] 정규장/프리장 1분봉 데이터(df_pre, df_reg) 부재 시 ValueError를 막기 위해 단락 평가(if not empty) 강제.
 # 🚨 NEW: [올인 타격 렌더링 팩트] '85% 예산 교전망' ➔ '주문가능금액 100% 올인 교전망'으로 직관적 팩트 렌더링 교정.
 # 🚨 NEW: [런타임 호환성 팩트 결속] _get_with_retry 헬퍼 내부에 functools.partial을 주입하여 구버전 파이썬의 to_thread kwargs TypeError 붕괴 원천 차단.
+# 🚨 NEW: [고정형 VWAP 팩트 렌더링 결속] Config(AVWAP_ANCHOR_CFG) 기반 기점 데이터 추출 및 Broker 1d AVWAP 연산 결과 UI 렌더링 100% 이식 완료.
 # ==========================================================
 import logging
 import datetime
@@ -173,12 +174,21 @@ class AvwapConsolePlugin:
             safe_holdings = holdings if isinstance(holdings, dict) else {}
             kis_avg = self._safe_float(safe_holdings.get(t, {}).get('avg', 0.0))
 
+            # 🚨 NEW: [고정형 VWAP (Anchored VWAP) 기점 및 단가 추출망 결속]
+            anchor_date = await _get_with_retry(getattr(self.cfg, 'get_avwap_anchor_date', lambda x: now_est.replace(day=1).strftime('%Y-%m-%d')), t)
+            if not anchor_date: 
+                anchor_date = now_est.replace(day=1).strftime('%Y-%m-%d')
+                
+            anchored_vwap_val = await _get_with_retry(getattr(self.broker, 'get_anchored_vwap', lambda x, y: 0.0), t, anchor_date)
+            anchored_vwap = self._safe_float(anchored_vwap_val)
+
             # 🚨 NEW: [Phase 2 암살자 ON/OFF 플래그 동기화]
             is_avwap_hybrid = bool(await _get_with_retry(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t))
 
         except Exception as e:
             logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
             curr_p, base_amp5, df_1m, ma_5day, kis_avg = 0.0, 0.0, None, 0.0, 0.0
+            anchor_date, anchored_vwap = now_est.replace(day=1).strftime('%Y-%m-%d'), 0.0
             is_avwap_hybrid = False
 
         # 🚨 [암살자 1-Shot 1-Kill 실전 렌더링 팩트 파싱]
@@ -318,6 +328,14 @@ class AvwapConsolePlugin:
             msg += f"🔻 {reg_target_label}: <b>${reg_target:.2f}</b>\n\n"
         else:
             msg += "▫️ 정규장 개장 대기 중...\n\n"
+
+        # 🚨 NEW: [고정형 VWAP (Anchored VWAP) UI 팩트 렌더링 결속]
+        msg += f"⚓ <b>[ 고정형 VWAP (Anchored VWAP) ]</b>\n"
+        if anchored_vwap > 0:
+            formatted_date = anchor_date[2:].replace('-', '.')
+            msg += f"▫️ 기점({formatted_date}) 누적 진성 평단가: <b>${anchored_vwap:.2f}</b>\n\n"
+        else:
+            msg += "▫️ 고정형 VWAP: 데이터 집계 중...\n\n"
 
         msg += f"📊 <b>[ 직전 5거래일 정규장 종가 평균 ]</b>\n"
         if ma_5day > 0:

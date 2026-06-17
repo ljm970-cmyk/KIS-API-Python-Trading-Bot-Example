@@ -14,6 +14,7 @@
 # 🚨 NEW: [명예의 전당 소각] delete_history 메서드 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
 # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
 # 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] get_vrev_gap_threshold 및 get_avwap_gap_threshold의 디폴트 반환값을 -0.67에서 -2.0으로 100% 상향 팩트 교정 완료.
+# 🚨 NEW: [고정형 VWAP 스키마 결속] AVWAP_ANCHOR_CFG 상태 파일 매핑 및 이번 달 1일 기준 자동 롤오버 파이프라인 신설.
 # ==========================================================
 
 import json
@@ -84,7 +85,9 @@ class ConfigManager:
             "SNIPER_SELL_LOCKED": "data/sniper_sell_locked.json",
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",     
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
-            "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json"
+            "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
+            # NEW: AVWAP 고정 기점(Anchor) 저장용 스키마 신설
+            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json"
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -170,7 +173,7 @@ class ConfigManager:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 fd = None
                 json.dump(data, f, ensure_ascii=False, indent=2)
-                f.flush()  
+                f.flush() 
                 os.fsync(f.fileno()) 
       
             os.replace(temp_path, filename)
@@ -434,7 +437,7 @@ class ConfigManager:
     def calibrate_ledger_prices(self, ticker, target_date_str, exec_history):
         if not exec_history:
             return 0
-             
+            
         buy_qty = 0
         buy_amt = 0.0
         sell_qty = 0
@@ -478,7 +481,7 @@ class ConfigManager:
                         if abs(self._safe_float(r.get('price', 0.0)) - actual_sell_price) >= 0.01:
                             r['price'] = actual_sell_price
                             changed_count += 1
-                               
+                                
             if changed_count > 0:
                 self._save_json(self.FILES["LEDGER"], ledger)
             
@@ -496,7 +499,7 @@ class ConfigManager:
             records = self.get_ledger()
         target_recs = [r for r in (records or []) if isinstance(r, dict) and r.get('ticker') == ticker]
         
-        total_qty, total_invested, total_sold = 0, 0.0, 0.0    
+        total_qty, total_invested, total_sold = 0, 0.0, 0.0     
         
         running_qty = 0
         running_cost = 0.0
@@ -619,7 +622,7 @@ class ConfigManager:
         holdings = 0
         rem_cash = seed
         total_invested = 0.0
-         
+        
         for r in target_recs:
             if holdings == 0:
                 rem_cash = seed
@@ -826,7 +829,7 @@ class ConfigManager:
 
     def get_upward_sniper_mode(self, ticker): 
         return bool(self._load_json(self.FILES["UPWARD_SNIPER"], {}).get(ticker, False))
-        
+         
     def set_upward_sniper_mode(self, ticker, v):
         with self._io_lock:
              d = self._load_json(self.FILES["UPWARD_SNIPER"], {})
@@ -889,7 +892,7 @@ class ConfigManager:
 
     def get_secret_mode(self): 
         return self._load_file(self.FILES["SECRET_MODE"]) == 'True'
-        
+         
     def set_secret_mode(self, v): 
          with self._io_lock:
             self._save_file(self.FILES["SECRET_MODE"], str(v))
@@ -901,7 +904,7 @@ class ConfigManager:
         
     def set_active_tickers(self, v): 
         with self._io_lock:
-            self._save_json(self.FILES["TICKER"], v)
+             self._save_json(self.FILES["TICKER"], v)
     
     # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
     def get_chat_id(self): 
@@ -912,5 +915,19 @@ class ConfigManager:
         return None
         
     def set_chat_id(self, v): 
-         with self._io_lock:
+        with self._io_lock:
             self._save_file(self.FILES["CHAT_ID"], v)
+
+    # 🚨 NEW: AVWAP 고정 기점(Anchor) 데이터 로드 및 당월 1일 디폴트 연산
+    def get_avwap_anchor_date(self, ticker):
+        est = ZoneInfo('America/New_York')
+        now_est = datetime.datetime.now(est)
+        default_date = now_est.replace(day=1).strftime('%Y-%m-%d')
+        return str(self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {}).get(ticker, default_date))
+
+    # 🚨 NEW: AVWAP 고정 기점 날짜 수동 락온 (원자적 쓰기 강제)
+    def set_avwap_anchor_date(self, ticker, date_str):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {})
+            d[ticker] = str(date_str)
+            self._save_json(self.FILES["AVWAP_ANCHOR_CFG"], d)

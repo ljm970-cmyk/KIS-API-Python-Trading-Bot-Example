@@ -12,6 +12,7 @@
 # 🚨 VERIFIED: [Case 35 절대 방어망 결속] get_5day_ma, get_previous_close 내부 ffill 주입으로 결측치(NaN) 런타임 에러 차단 무결성 100% 확보
 # 🚨 VERIFIED: [결측치 방어 전역 확장] get_atr_data 및 get_amp_5d_data 에도 ffill() 방어막을 주입하여 Yahoo Finance 서버 노이즈로 인한 수학 연산 붕괴 원천 차단
 # 🚨 NEW: [벡터화 강제 헌법 준수] get_atr_data 내부의 apply(lambda) 묵시적 루프를 영구 소각하고, pd.concat 및 max(axis=1) 기반의 100% 순수 벡터화 연산으로 병목 지점 완벽 교정
+# 🚨 NEW: [고정형 VWAP 엔진] 1일봉(1d) 기반의 순수 팩트 지표(AVWAP) 추출 파이프라인 결속 완료. (Timeout 붕괴 방어)
 # ==========================================================
 
 import time
@@ -61,7 +62,7 @@ class MarketDataProvider(KisApiClient):
                 else: df.index = df.index.tz_convert(est)
     
                 regular_market = df.between_time('09:30', '15:59').copy()
-          
+        
                 if regular_market.empty: return 0.0, 0.0
                 regular_market['Typical_Price'] = (regular_market['High'] + regular_market['Low'] + regular_market['Close']) / 3.0
                 regular_market['Vol_x_Price'] = regular_market['Typical_Price'] * regular_market['Volume']
@@ -124,7 +125,7 @@ class MarketDataProvider(KisApiClient):
           
                 current_vwap = self._safe_float(vwap_series.iloc[-1]) if not vwap_series.empty else 0.0
                 if pd.isna(current_vwap) or current_vwap == 0.0: current_vwap = 0.0
-        
+ 
                 resampled = regular_market.resample('5min', label='left', closed='left').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
                 if resampled.empty: return None
                 resampled['Vol_MA10'] = resampled['Volume'].rolling(10, min_periods=1).mean()
@@ -176,7 +177,7 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(out.get('last', 0.0))
                 break
             except Exception:
-                if attempt == 2: pass
+                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
 
@@ -270,6 +271,7 @@ class MarketDataProvider(KisApiClient):
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
              
+    
                 # 🚨 MODIFIED: [AttributeError 붕괴 방어]
                 if res.get('rt_cd') == '0': 
                     out = res.get('output') or {}
@@ -300,7 +302,7 @@ class MarketDataProvider(KisApiClient):
                         hist.index = hist.index.tz_localize('UTC').tz_convert(est)
                     else: 
                         hist.index = hist.index.tz_convert(est)
-                       
+                        
                     # 🚨 VERIFIED: [Case 35 절대 방어망] 공휴일 및 조기 폐장일 결측치 방어를 위한 ffill 강제 주입
                     hist['Close'] = hist['Close'].ffill()
                     
@@ -476,7 +478,6 @@ class MarketDataProvider(KisApiClient):
                     hist = _flatten_columns(hist)
                     # 🚨 MODIFIED: [Float 오염 방어] _safe_float 래핑
                     return self._safe_float(hist['High'].max()), self._safe_float(hist['Low'].min())
-                break
             except Exception:
                 if attempt == 2: break
                 time.sleep(1.0 * (2 ** attempt))
@@ -495,7 +496,6 @@ class MarketDataProvider(KisApiClient):
             except Exception:
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
-        
         return 0.0, 0.0
 
     # 🚨 MODIFIED: [미래 참조 데이터 누수 전면 차단] 당일 미확정 라이브 캔들 절단 및 D-1 타임라인 락온 복제
@@ -555,7 +555,6 @@ class MarketDataProvider(KisApiClient):
                 if close_val > 0:
                     return round((atr5_val / close_val) * 100, 1), round((atr14_val / close_val) * 100, 1)
  
-                break
             except Exception:
                 if attempt == 2: return 0.0, 0.0
                 time.sleep(1.0 * (2 ** attempt))
@@ -617,5 +616,48 @@ class MarketDataProvider(KisApiClient):
                 if attempt == 2:
                     logging.error(f"⚠️ [Broker] Amp 5MA 파싱 에러 ({ticker}): {e}")
                     break
+                time.sleep(1.0 * (2 ** attempt))
+        return 0.0
+
+    # 🚨 NEW: [AVWAP 엔진] 지정된 기점(anchor_date)부터 당일까지의 고정형 VWAP을 순수 벡터화로 연산 (1d 핀셋 추출)
+    def get_anchored_vwap(self, ticker, anchor_date):
+        for attempt in range(3):
+            try:
+                time.sleep(0.06) # 🚨 NEW: [Case 32] 동적 스캔 시 TPS 캡핑 강제
+                stock = yf.Ticker(ticker)
+                
+                # 🚨 NEW: [Time-Out 패러독스 방어] 1d 캔들 기반으로 진공 압축하여 이벤트 루프 즉사 원천 차단
+                df = stock.history(start=anchor_date, interval="1d", prepost=False, timeout=5)
+                
+                if df.empty:
+                    if attempt == 2: return 0.0
+                    time.sleep(1.0 * (2 ** attempt))
+                    continue
+                    
+                df = _flatten_columns(df)
+                
+                # 🚨 NEW: [Case 35 절대 방어망 결속] 결측치(NaN) 전이 방어
+                df['High'] = df['High'].ffill().bfill()
+                df['Low'] = df['Low'].ffill().bfill()
+                df['Close'] = df['Close'].ffill().bfill()
+                df['Volume'] = df['Volume'].ffill().bfill().fillna(0)
+                
+                # 🚨 NEW: 정통 퀀트 표준 Typical Price 팩트 주입
+                df['Typical_Price'] = (df['High'].astype(float) + df['Low'].astype(float) + df['Close'].astype(float)) / 3.0
+                df['Vol_x_Price'] = df['Typical_Price'] * df['Volume'].astype(float)
+                
+                # 🚨 NEW: [벡터화 강제 헌법 준수] For 루프 전면 소각 및 순수 벡터화 연산 락온
+                df['Cum_Vol_Price'] = df['Vol_x_Price'].cumsum()
+                df['Cum_Volume'] = df['Volume'].astype(float).cumsum()
+                
+                # 🚨 NEW: ZeroDivision 붕괴 방어
+                df['AVWAP'] = np.where(df['Cum_Volume'] > 0, df['Cum_Vol_Price'] / df['Cum_Volume'], 0.0)
+                
+                latest_avwap = self._safe_float(df['AVWAP'].iloc[-1])
+                return round(latest_avwap, 2)
+                
+            except Exception as e:
+                logging.debug(f"⚠️ [Broker] 고정형 VWAP(AVWAP) 파싱 실패 ({ticker}): {e}")
+                if attempt == 2: return 0.0
                 time.sleep(1.0 * (2 ** attempt))
         return 0.0
