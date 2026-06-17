@@ -2,7 +2,7 @@
 # FILE: market_data_provider.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 41대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [IndentationError 궁극 수술] get_current_price, get_ask_price, get_bid_price 등 파일 내부에 산재하던 17칸 들여쓰기 엇갈림 맹점을 16칸 규격으로 100% 정밀 교정하여 OS 데몬 런타임 즉사 버그를 완벽 차단.
+# 🚨 MODIFIED: [IndentationError 궁극 수술] 파일 내부에 산재하던 17칸 들여쓰기 엇갈림 맹점을 16칸 규격으로 100% 정밀 교정하여 OS 데몬 런타임 즉사 버그를 완벽 차단.
 # 🚨 MODIFIED: [스냅샷 오염 전이 절대 방어] YF 1d 캔들 롤오버 지연 맹점을 파기하고 1m 기반 D-1 공식 종가 핀셋 추출 락온.
 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] YF 1d 롤오버 지연 버그 원천 차단을 위해 period="1d" -> "5d" 상향 락온.
 # 🚨 MODIFIED: [5d 롤오버 교정 연계 State 방어] 5일 치 데이터 중 당일(Today) 팩트만 정밀 필터링하여 당일 고/저점(day_high, day_low) 캐싱 오염 원천 차단.
@@ -14,6 +14,7 @@
 # 🚨 VERIFIED: [결측치 방어 전역 확장] Yahoo Finance 서버 노이즈로 인한 수학 연산 붕괴 원천 차단
 # 🚨 NEW: [벡터화 강제 헌법 준수] apply(lambda) 묵시적 루프를 영구 소각하고, pd.concat 및 max(axis=1) 기반의 100% 순수 벡터화 연산으로 병목 지점 완벽 교정
 # 🚨 NEW: [고정형 VWAP 엔진] 1일봉(1d) 기반의 순수 팩트 지표(AVWAP) 추출 파이프라인 결속 완료. (Timeout 붕괴 방어)
+# 🚨 NEW: [자율주행 자동 앵커링(Auto-Anchoring) 엔진 결속] 폭포수(Waterfall) 알고리즘을 통한 Tier 1(갭+거래량 폭발), Tier 2(최고/최저 변곡점), Tier 3(월초) 기점 스캔 100% 벡터화 팩트 이식 완료.
 # ==========================================================
 
 import time
@@ -178,7 +179,6 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(out.get('last', 0.0))
                 break
             except Exception:
-                # 🚨 MODIFIED: [IndentationError 궁극 수술] 16칸 들여쓰기 팩트 교정 완료
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
@@ -201,7 +201,6 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(item.get('pask1', 0.0))
                 break
             except Exception:
-                # 🚨 MODIFIED: [IndentationError 궁극 수술] 16칸 들여쓰기 팩트 교정 완료
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
@@ -224,7 +223,6 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(item.get('pbid1', 0.0))
                 break
             except Exception:
-                # 🚨 MODIFIED: [IndentationError 궁극 수술] 16칸 들여쓰기 팩트 교정 완료
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
@@ -283,7 +281,6 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(out.get('base', 0.0))
                 break
             except Exception:
-                # 🚨 MODIFIED: [IndentationError 궁극 수술] 16칸 들여쓰기 팩트 교정 완료
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
@@ -350,7 +347,6 @@ class MarketDataProvider(KisApiClient):
                                 return self._safe_float(sum(valid_closes) / len(valid_closes))
                 break
             except Exception:
-                # 🚨 MODIFIED: [IndentationError 궁극 수술] 16칸 들여쓰기 팩트 교정 완료
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
@@ -500,7 +496,6 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(out.get('high', 0.0)), self._safe_float(out.get('low', 0.0))
                 break
             except Exception:
-                # 🚨 MODIFIED: [IndentationError 궁극 수술] 16칸 들여쓰기 팩트 교정 완료
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0, 0.0
@@ -625,6 +620,100 @@ class MarketDataProvider(KisApiClient):
                     break
                 time.sleep(1.0 * (2 ** attempt))
         return 0.0
+
+    # 🚨 NEW: [자율주행 자동 앵커링 엔진] 폭포수(Waterfall) 스캔 팩트 결속 완료
+    def get_auto_anchor_date(self, ticker):
+        """ 🚨 [자율주행 앵커링 엔진] 거대 자본의 족적(Volume Spike, Swing High/Low)을 역추적하여 최적의 AVWAP 기점을 반환합니다. """
+        for attempt in range(3):
+            try:
+                time.sleep(0.06) # TPS 캡핑
+                stock = yf.Ticker(ticker)
+                
+                # 🚨 [Time-Out 패러독스 방어] 6개월(약 120거래일) 스캔
+                df = stock.history(period="6mo", interval="1d", prepost=False, timeout=5)
+                
+                if df.empty:
+                    if attempt == 2: break
+                    time.sleep(1.0 * (2 ** attempt))
+                    continue
+                    
+                df = _flatten_columns(df)
+                
+                est = ZoneInfo('America/New_York')
+                now_est = datetime.datetime.now(est)
+                cutoff_date = now_est.date()
+                if now_est.time() <= datetime.time(16, 0, 30):
+                    cutoff_date -= datetime.timedelta(days=1)
+                    
+                if df.index.tzinfo is None:
+                    df.index = df.index.tz_localize('UTC').tz_convert(est)
+                else:
+                    df.index = df.index.tz_convert(est)
+                    
+                df = df[df.index.date <= cutoff_date].copy()
+                
+                if df.empty or len(df) < 20:
+                    break
+                    
+                # 🚨 [Case 35 결측치 전이 방어] 
+                df['Open'] = df['Open'].ffill().bfill()
+                df['High'] = df['High'].ffill().bfill()
+                df['Low'] = df['Low'].ffill().bfill()
+                df['Close'] = df['Close'].ffill().bfill()
+                df['Volume'] = df['Volume'].ffill().bfill().fillna(0)
+                
+                # ==============================================================
+                # 🥇 Tier 1: 거래량 폭발 + 갭 이탈 (Gap & Volume Spike)
+                # ==============================================================
+                df['Prev_Close'] = df['Close'].shift(1)
+                df['Vol_MA20'] = df['Volume'].rolling(window=20).mean()
+                
+                # 🚨 [ZeroDivision 붕괴 방어] Numpy 순수 벡터화 락온
+                safe_prev_close = np.where(df['Prev_Close'] == 0, np.nan, df['Prev_Close'])
+                safe_vol_ma20 = np.where(df['Vol_MA20'] == 0, np.nan, df['Vol_MA20'])
+                
+                df['Gap_Pct'] = (df['Open'] - safe_prev_close) / safe_prev_close
+                df['Vol_Spike'] = df['Volume'] / safe_vol_ma20
+                
+                # 최근 3개월(약 60거래일) 데이터로 한정하여 집중 스캔
+                df_recent = df.tail(60).copy()
+                
+                # 🚨 팩트: 전일 종가 대비 7% 갭 이탈 & 20일 평균 거래량 2.5배(250%) 폭발
+                cond_t1 = (df_recent['Gap_Pct'].abs() >= 0.07) & (df_recent['Vol_Spike'] >= 2.5)
+                df_t1 = df_recent[cond_t1]
+                
+                if not df_t1.empty:
+                    anchor_date = df_t1.index[-1].strftime('%Y-%m-%d')
+                    logging.info(f"⚓ [{ticker}] Tier 1 자동 앵커링 (Gap & Vol Spike): {anchor_date}")
+                    return anchor_date, "거래량 폭발 (Tier 1)"
+                    
+                # ==============================================================
+                # 🥈 Tier 2: 메이저 변곡점 (Swing High / Low)
+                # ==============================================================
+                max_idx = df_recent['High'].astype(float).idxmax()
+                min_idx = df_recent['Low'].astype(float).idxmin()
+                
+                if not pd.isna(max_idx) and not pd.isna(min_idx):
+                    # 더 최근의 날짜(현재가와 가까운 시점)를 선택
+                    anchor_idx = max_idx if max_idx > min_idx else min_idx
+                    anchor_date = anchor_idx.strftime('%Y-%m-%d')
+                    logging.info(f"⚓ [{ticker}] Tier 2 자동 앵커링 (Swing High/Low): {anchor_date}")
+                    return anchor_date, "메이저 변곡점 (Tier 2)"
+                    
+                break
+                
+            except Exception as e:
+                logging.debug(f"⚠️ [Broker] 자율주행 자동 앵커링 연산 실패 (시도 {attempt+1}/3): {e}")
+                if attempt == 2: break
+                time.sleep(1.0 * (2 ** attempt))
+                
+        # ==============================================================
+        # 🥉 Tier 3: MTD Fallback (당월 1일)
+        # ==============================================================
+        est = ZoneInfo('America/New_York')
+        fallback_date = datetime.datetime.now(est).replace(day=1).strftime('%Y-%m-%d')
+        logging.info(f"⚓ [{ticker}] Tier 3 자동 앵커링 (MTD Fallback): {fallback_date}")
+        return fallback_date, "당월 1일 폴백 (Tier 3)"
 
     # 🚨 NEW: [AVWAP 엔진] 지정된 기점(anchor_date)부터 당일까지의 고정형 VWAP을 순수 벡터화로 연산 (1d 핀셋 추출)
     def get_anchored_vwap(self, ticker, anchor_date):

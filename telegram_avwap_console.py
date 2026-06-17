@@ -18,9 +18,8 @@
 # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] 데이터 추출 시 순차적(Sequential) await 및 0.06초 샌드위치 지연(TPS 캡핑), 3단 지수 백오프 강제 락온.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴(Silent Death) 방어를 위한 html.escape 쉴드 전역 강제 주입.
 # 🚨 MODIFIED: [Case 24 결측치 방어] 정규장/프리장 1분봉 데이터(df_pre, df_reg) 부재 시 ValueError를 막기 위해 단락 평가(if not empty) 강제.
-# 🚨 NEW: [올인 타격 렌더링 팩트] '85% 예산 교전망' ➔ '주문가능금액 100% 올인 교전망'으로 직관적 팩트 렌더링 교정.
 # 🚨 NEW: [런타임 호환성 팩트 결속] _get_with_retry 헬퍼 내부에 functools.partial을 주입하여 구버전 파이썬의 to_thread kwargs TypeError 붕괴 원천 차단.
-# 🚨 NEW: [고정형 VWAP 팩트 렌더링 결속] Config(AVWAP_ANCHOR_CFG) 기반 기점 데이터 추출 및 Broker 1d AVWAP 연산 결과 UI 렌더링 100% 이식 완료.
+# 🚨 NEW: [자율주행 앵커링 UI 결속] Config에 지정된 앵커가 없거나 "AUTO"일 경우, `market_data_provider`의 3-Tier 자율주행 스캔 엔진을 격발하여 진성 평단가 및 채택 사유(Tier)를 100% 동적 렌더링 완료.
 # ==========================================================
 import logging
 import datetime
@@ -174,10 +173,16 @@ class AvwapConsolePlugin:
             safe_holdings = holdings if isinstance(holdings, dict) else {}
             kis_avg = self._safe_float(safe_holdings.get(t, {}).get('avg', 0.0))
 
-            # 🚨 NEW: [고정형 VWAP (Anchored VWAP) 기점 및 단가 추출망 결속]
-            anchor_date = await _get_with_retry(getattr(self.cfg, 'get_avwap_anchor_date', lambda x: now_est.replace(day=1).strftime('%Y-%m-%d')), t)
-            if not anchor_date: 
-                anchor_date = now_est.replace(day=1).strftime('%Y-%m-%d')
+            # 🚨 NEW: [자율주행 앵커링 (Auto-Anchoring) 파이프라인 결속]
+            anchor_date = await _get_with_retry(getattr(self.cfg, 'get_avwap_anchor_date', lambda x: "AUTO"), t)
+            tier_reason = "수동 지정"
+            
+            if not anchor_date or str(anchor_date).upper() == "AUTO":
+                anchor_res = await _get_with_retry(getattr(self.broker, 'get_auto_anchor_date', lambda x: (now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)")), t)
+                if isinstance(anchor_res, tuple) and len(anchor_res) == 2:
+                    anchor_date, tier_reason = anchor_res
+                else:
+                    anchor_date, tier_reason = now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)"
                 
             anchored_vwap_val = await _get_with_retry(getattr(self.broker, 'get_anchored_vwap', lambda x, y: 0.0), t, anchor_date)
             anchored_vwap = self._safe_float(anchored_vwap_val)
@@ -188,7 +193,7 @@ class AvwapConsolePlugin:
         except Exception as e:
             logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
             curr_p, base_amp5, df_1m, ma_5day, kis_avg = 0.0, 0.0, None, 0.0, 0.0
-            anchor_date, anchored_vwap = now_est.replace(day=1).strftime('%Y-%m-%d'), 0.0
+            anchor_date, tier_reason, anchored_vwap = now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)", 0.0
             is_avwap_hybrid = False
 
         # 🚨 [암살자 1-Shot 1-Kill 실전 렌더링 팩트 파싱]
@@ -329,11 +334,11 @@ class AvwapConsolePlugin:
         else:
             msg += "▫️ 정규장 개장 대기 중...\n\n"
 
-        # 🚨 NEW: [고정형 VWAP (Anchored VWAP) UI 팩트 렌더링 결속]
+        # 🚨 NEW: [자율주행 앵커링 엔진(Auto-Anchoring) UI 팩트 렌더링 결속]
         msg += f"⚓ <b>[ 고정형 VWAP (Anchored VWAP) ]</b>\n"
         if anchored_vwap > 0:
-            formatted_date = anchor_date[2:].replace('-', '.')
-            msg += f"▫️ 기점({formatted_date}) 누적 진성 평단가: <b>${anchored_vwap:.2f}</b>\n\n"
+            formatted_date = str(anchor_date)[2:].replace('-', '.')
+            msg += f"▫️ 기점({formatted_date}): <b>${anchored_vwap:.2f}</b> ({html.escape(tier_reason)})\n\n"
         else:
             msg += "▫️ 고정형 VWAP: 데이터 집계 중...\n\n"
 
