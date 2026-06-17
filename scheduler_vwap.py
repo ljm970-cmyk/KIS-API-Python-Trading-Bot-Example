@@ -8,6 +8,7 @@
 # 🚨 MODIFIED: [제1헌법 절대 준수] 하위 코어 엔진(execute_vwap_init, execute_vwap_trade 등)을 호출할 때 반드시 `asyncio.wait_for` 타임아웃 족쇄를 채워 메인 이벤트 루프의 교착(Deadlock)을 원천 차단.
 # 🚨 MODIFIED: [Case 32 & 33 절대 규칙] 달력 스캔 및 하위 엔진 호출 전역에 3단 지수 백오프와 TPS 캡핑(0.06s) 100% 샌드위치 락온 유지.
 # 🚨 MODIFIED: [런타임 즉사 방어] 구버전 파이썬 호환성을 위해 `asyncio.TimeoutError`와 `Exception` 분리 캡처 폴백 하드코딩 완료.
+# 🚨 NEW: [I/O Leak 붕괴 수술] 24시간 1분마다 격발되는 무의미한 네트워크 통신(TPS 낭비)을 차단하기 위해, 로컬 시계열 기반의 `Zero-I/O Fast Bypass` 타임 쉴드를 모든 스케줄러 최상단에 전면 락온.
 # ==========================================================
 import logging
 import datetime
@@ -51,6 +52,12 @@ async def _get_market_close_time(now_est):
             return None
 
 async def scheduled_vwap_init_and_cancel(context):
+    # 🚨 NEW: [I/O Leak 붕괴 수술] 무거운 달력 API 및 네트워크 통신 이전에 로컬 시계로 단락 평가 (조기 폐장 12:26 타격 대비 12:00 이전 완벽 Bypass)
+    est = ZoneInfo('America/New_York')
+    now_est = datetime.datetime.now(est)
+    if now_est.time() < datetime.time(12, 0):
+        return
+
     job = getattr(context, 'job', None)
     raw_job_data = getattr(job, 'data', None) if job else None
     job_data = raw_job_data if isinstance(raw_job_data, dict) else {}
@@ -71,21 +78,17 @@ async def scheduled_vwap_init_and_cancel(context):
             break
         except asyncio.TimeoutError:
             if attempt == 2:
-                est = ZoneInfo('America/New_York')
-                is_open = datetime.datetime.now(est).weekday() < 5
+                is_open = now_est.weekday() < 5
             else: await asyncio.sleep(1.0 * (2 ** attempt))
         except Exception:
             if attempt == 2:
-                est = ZoneInfo('America/New_York')
-                is_open = datetime.datetime.now(est).weekday() < 5
+                is_open = now_est.weekday() < 5
             else: await asyncio.sleep(1.0 * (2 ** attempt))
 
     if not is_open:
         return
     
-    est = ZoneInfo('America/New_York')
-    now_est = datetime.datetime.now(est)
-    
+    # 🚨 MODIFIED: 변수 선언 전진 배치(Hoisting)로 인한 하단 중복 선언 데드코드 영구 소각
     market_close = await _get_market_close_time(now_est)
     if not market_close: 
         logging.info("💤 [vwap_init] 달력 API 휴장일 판별 완료.")
@@ -114,6 +117,12 @@ async def scheduled_vwap_init_and_cancel(context):
 
 
 async def scheduled_vwap_trade(context):
+    # 🚨 NEW: [I/O Leak 붕괴 수술] 24시간 매 1분마다 격발되는 API 낭비 및 TPS 폭발 원천 차단 (조기 폐장 대비 12:00 이전 완벽 Bypass)
+    est = ZoneInfo('America/New_York')
+    now_est = datetime.datetime.now(est)
+    if now_est.time() < datetime.time(12, 0):
+        return
+
     job = getattr(context, 'job', None)
     raw_job_data = getattr(job, 'data', None) if job else None
     job_data = raw_job_data if isinstance(raw_job_data, dict) else {}
@@ -136,21 +145,17 @@ async def scheduled_vwap_trade(context):
             break
         except asyncio.TimeoutError:
             if attempt == 2:
-                est = ZoneInfo('America/New_York')
-                is_open = datetime.datetime.now(est).weekday() < 5
+                is_open = now_est.weekday() < 5
             else: await asyncio.sleep(1.0 * (2 ** attempt))
         except Exception:
             if attempt == 2:
-                est = ZoneInfo('America/New_York')
-                is_open = datetime.datetime.now(est).weekday() < 5
+                is_open = now_est.weekday() < 5
             else: await asyncio.sleep(1.0 * (2 ** attempt))
 
     if not is_open:
         return
     
-    est = ZoneInfo('America/New_York')
-    now_est = datetime.datetime.now(est)
-
+    # 🚨 MODIFIED: 변수 선언 전진 배치(Hoisting)로 인한 하단 중복 선언 데드코드 영구 소각
     market_close = await _get_market_close_time(now_est)
     if not market_close: 
         logging.info("💤 [vwap_trade] 달력 API 휴장일 판별 완료.")
@@ -182,6 +187,12 @@ async def scheduled_vwap_trade(context):
 
 
 async def scheduled_aftermarket_vrev_trade(context):
+    # 🚨 NEW: [I/O Leak 붕괴 수술] 애프터장(16:01) 이관 플랜 일괄 타격망이므로 15:00 이전 무의미한 네트워크 I/O 전면 차단
+    est = ZoneInfo('America/New_York')
+    now_est = datetime.datetime.now(est)
+    if now_est.time() < datetime.time(15, 0):
+        return
+
     job = getattr(context, 'job', None)
     raw_job_data = getattr(job, 'data', None) if job else None
     job_data = raw_job_data if isinstance(raw_job_data, dict) else {}
@@ -203,13 +214,11 @@ async def scheduled_aftermarket_vrev_trade(context):
             break
         except asyncio.TimeoutError:
             if attempt == 2:
-                est = ZoneInfo('America/New_York')
-                is_open = datetime.datetime.now(est).weekday() < 5
+                is_open = now_est.weekday() < 5
             else: await asyncio.sleep(1.0 * (2 ** attempt))
         except Exception:
             if attempt == 2:
-                est = ZoneInfo('America/New_York')
-                is_open = datetime.datetime.now(est).weekday() < 5
+                is_open = now_est.weekday() < 5
             else: await asyncio.sleep(1.0 * (2 ** attempt))
 
     if not is_open:
