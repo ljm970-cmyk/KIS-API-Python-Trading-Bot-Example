@@ -17,6 +17,7 @@
 # 🚨 MODIFIED: [Case 30 팩트 동기화] 암살자 매매 직후, KIS 실원장을 재스캔하여 로컬 큐 장부를 100% 오버라이드하도록 유령 차단(Ghost-Sync) 결속.
 # 🚨 MODIFIED: [95% 안전 마진 팩트 락온] KIS 서버의 가승인 증거금 부족(Reject)을 원천 차단하기 위해 가용 현금의 100%가 아닌 95%만 투입.
 # 🚨 MODIFIED: [Silent Death 붕괴 수술] KIS 서버 리젝 시 에러 메시지 텔레그램 타전망 전면 결속.
+# 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장 개장(09:30 EST) 시점까지 매수에 진입하지 못해 보유량이 0주인 경우, 정규장 휩소에 갈려나가는 패러독스를 막기 위해 즉시 셧다운(퇴근) 플래그를 원자적으로 덮어쓰고 신규 딥-매수 진입을 영구 소각.
 # ==========================================================
 import logging
 import datetime
@@ -310,6 +311,16 @@ async def scheduled_sniper_monitor(context):
                             await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                             continue
 
+                        # 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장 폭포수 하락 방어망
+                        if curr_t_obj >= datetime.time(9, 30, 0) and not t_state.get('shutdown') and not t_state.get('dumped'):
+                            if int(_safe_float(t_state.get('qty', 0))) == 0 and not t_state.get('buy_odno'):
+                                logging.info(f"🛑 [{t}] 09:30 EST 정규장 개장. 프리장 미진입으로 인한 암살자 조기 퇴근 락온.")
+                                t_state['shutdown'] = True
+                                await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                if chat_id:
+                                    await _safe_send(context, chat_id, f"🛑 <b>[{html.escape(t)}] 프리장 진입 실패 (조기 퇴근)</b>\n▫️ 정규장 폭포수 하락 방어를 위해 암살자 신규 진입 권한을 당일 영구 소각합니다.", parse_mode='HTML')
+                                continue
+
                         # 🚨 [당일 임무 완수 후 관망]
                         if t_state.get('shutdown'):
                             continue
@@ -319,7 +330,7 @@ async def scheduled_sniper_monitor(context):
                             exec_hist = await _retry_api(broker.get_execution_history, t, today_kst_str, today_kst_str)
                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
                             buy_execs = [ex for ex in safe_exec if str(ex.get('odno')) == t_state['buy_odno'] and ex.get('sll_buy_dvsn_cd') == '02']
-                            
+                             
                             filled_qty = sum(int(_safe_float(ex.get('ft_ccld_qty'))) for ex in buy_execs)
                             if filled_qty > 0:
                                 total_amt = sum(int(_safe_float(ex.get('ft_ccld_qty'))) * _safe_float(ex.get('ft_ccld_unpr3')) for ex in buy_execs)
@@ -481,7 +492,7 @@ async def scheduled_sniper_monitor(context):
                             except Exception as e:
                                 logging.error(f"🚨 [{t}] 상방 감시 매수 통신 에러: {e}")
                                 order_res = None
-                                 
+                                
                             odno = order_res.get('odno', '') if isinstance(order_res, dict) else ''
             
                             if order_res and order_res.get('rt_cd') == '0' and odno:
@@ -612,7 +623,7 @@ async def scheduled_sniper_monitor(context):
           
                             bid_price = _safe_float(await _retry_api(broker.get_bid_price, t))
                             exec_price = bid_price if bid_price > 0 else limit_p
-              
+               
                             try:
                                 await asyncio.sleep(0.06) 
                                 rt_bal_v14 = await _retry_api(broker.get_account_balance)
@@ -625,7 +636,7 @@ async def scheduled_sniper_monitor(context):
                                     rt_qty_v14 = int(_safe_float(_t_hold_v14.get('qty', 0) if isinstance(_t_hold_v14, dict) else 0))
                                 
                                 qty = min(qty, rt_qty_v14)
-                                  
+                                
                                 if qty > 0:
                                     order_res = await asyncio.wait_for(asyncio.to_thread(broker.send_order, t, "SELL", qty, exec_price, "LIMIT"), timeout=15.0)
                                 else:
@@ -648,7 +659,7 @@ async def scheduled_sniper_monitor(context):
                                         await asyncio.sleep(0.06) 
                                         unfilled_check = await asyncio.wait_for(asyncio.to_thread(broker.get_unfilled_orders_detail, t), timeout=10.0)
                                     except Exception: unfilled_check = []
-                                     
+                                      
                                     safe_unfilled = unfilled_check if isinstance(unfilled_check, list) else []
                                     my_order = next((ox for ox in safe_unfilled if isinstance(ox, dict) and str(ox.get('odno', '')) == odno), None)
                                     if my_order:
@@ -708,3 +719,4 @@ async def scheduled_sniper_monitor(context):
         await asyncio.wait_for(_do_sniper(), timeout=240.0)
     except Exception as e:
         logging.error(f"🚨 스나이퍼 타임아웃 에러: {e}", exc_info=True)
+

@@ -2,6 +2,7 @@
 # FILE: strategy_v_avwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
+# 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST 이후) 무포지션(0주) 상태일 경우 타점 관통과 무관하게 신규 진입을 전면 차단하고 '조기 퇴근' 상태를 반환하도록 2중 팩트 락온.
 # 🚨 MODIFIED: [의사결정 코어 엔진 다이어트] 실제 매매가 없으므로 불필요한 주문 타점(Target Price) 계산과 복잡한 상태 전이(State Machine) 로직 진공 압축.
 # 🚨 MODIFIED: [Action Unified 락온] PLACE_TRAP, PLACE_SELL_TRAP, SHUTDOWN, WAIT 등의 Action 반환을 'OBSERVING'(관측 중) 상태로 100% 통합.
 # 🚨 MODIFIED: [관측 타임라인 무중단 사수] 봇이 조기 퇴근하는 SHUTDOWN 락온을 소각하고, 장 마감(16:00 EST)까지 실시간 시장 데이터 스캔(Tracking High)이 무중단 유지되도록 교정.
@@ -272,9 +273,14 @@ class VAvwapHybridPlugin:
             return _build_res('OBSERVING', f'{session_name} 교전 중 (+2% 전량 익절 대기)', tp=sell_target_price, session_vwap=session_vwap)
         else:
             # 무포지션 상태 (매수 대기)
+            # 🚨 NEW: [퀀트 뇌관 하드 락온] 프리장 미진입 시 정규장 신규 진입 원천 차단 (조기 퇴근)
+            if curr_t >= datetime.time(9, 30):
+                return _build_res('OBSERVING', '프리장 미진입으로 인한 진입 차단 (조기 퇴근)', tp=buy_target_price, session_vwap=session_vwap)
+
             if exec_curr_p <= buy_target_price:
                 # 🚨 MODIFIED: [타점 롤오버] 텔레그램 브리핑 텍스트 -3% ➔ -2% 팩트 교정
                 return _build_res('DEEP_BUY', f'{session_name} -2% 타점(${buy_target_price:.2f}) 하향 관통! 1-Shot 1-Kill 격발 인가', tp=buy_target_price, session_vwap=session_vwap)
             else:
                 # 🚨 MODIFIED: [타점 롤오버] 텔레그램 브리핑 텍스트 -3% ➔ -2% 팩트 교정
                 return _build_res('OBSERVING', f'{session_name} -2% 타점(${buy_target_price:.2f}) 감시 중', tp=buy_target_price, session_vwap=session_vwap)
+

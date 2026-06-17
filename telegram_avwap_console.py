@@ -1,8 +1,9 @@
 # ==========================================================
 # FILE: telegram_avwap_console.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 40대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 41대 엣지 케이스 완벽 결속 교차 검증 완료.
 # 🚨 MODIFIED: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 aVWAP 진입 타점을 -3%에서 -2%로 상향 팩트 교정 완료 (0.97 ➔ 0.98).
+# 🚨 NEW: [UI 교정 1 & 2] 정규장(09:30 EST) 개장 후 무포지션(0주) 상태일 때 '조기 퇴근' 팩트를 파싱하여, 교전 상태를 OFF로 렌더링하고 정규장 타점 라벨을 "하방 이격(-2%) 감시선 (진입 차단됨)"으로 동적 팩트 락온.
 # 🚨 NEW: [Case 39 자본 잠김 UI 팩트 렌더링] 암살자(aVWAP) 엔진이 타점을 관통하여 가용 현금을 100% 점유(Lock-up) 중일 경우, 관제탑 UI의 '본진 타격망' 상태를 "15:27 슬라이싱 가동"에서 "애프터장 16:01 일괄 타격으로 이연 대기 중"으로 팩트 교정 락온.
 # 🚨 MODIFIED: [본진 무중단 병렬 가동 UI 수복 (타겟 5)] 15:59 강제 청산(MOC 덤핑) 시 본진 물량에 영향을 미칠 수 있다는 낡은 뉘앙스를 파기하고, "암살자 물량만 매수 1호가 스윕 덤핑 (결측시 -5% 폴백 / 본진 100% 격리)" 팩트를 UI에 강제 락온 완료.
 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 VWAP이 0.0으로 즉사하는 맹점을 차단하고, TWAP(시간가중평균단가)으로 즉각 폴백(Fallback)하는 수리적 방어망 결속.
@@ -183,6 +184,7 @@ class AvwapConsolePlugin:
         # 🚨 [암살자 1-Shot 1-Kill 실전 렌더링 팩트 파싱]
         avwap_qty, avwap_avg, target_usd, avwap_inv_usd = 0, 0.0, 0.0, 0.0
         is_assassin_active = False
+        is_early_shutdown = False  # NEW: 조기 퇴근 상태 마킹
         
         state_file = f"data/avwap_trade_state_{t}.json"
         try:
@@ -201,6 +203,10 @@ class AvwapConsolePlugin:
                 # 🚨 [자본 잠김 판단 절대 팩트] 셧다운 되지 않고 수량이 남아 있을 때
                 is_shutdown = bool(state_data.get('shutdown', False))
                 
+                # 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 추출]
+                if avwap_qty == 0 and is_shutdown:
+                    is_early_shutdown = True
+                    
                 if avwap_qty > 0 and not is_shutdown:
                     is_assassin_active = True
                     avwap_avg = self._safe_float(state_data.get('avg_price', 0.0))
@@ -284,15 +290,23 @@ class AvwapConsolePlugin:
         else:
             msg += f"▫️ 본진 물량 보유 없음 (관망)\n\n"
 
-        # 🚨 MODIFIED: [Phase 2 암살자 상태 연동 동적 텍스트 결속 및 -2% 타점 팩트 교정]
-        target_label = "암살자(-2%) 진입 덫" if is_avwap_hybrid else "하방 이격(-2%) 감시선"
+        # 🚨 NEW: [UI 교정 2] 타임라인별 타점 라벨 동적 렌더링 락온
+        if is_avwap_hybrid:
+            pre_target_label = "암살자(-2%) 진입 덫"
+            if is_early_shutdown:
+                reg_target_label = "하방 이격(-2%) 감시선 (진입 차단됨)"
+            else:
+                reg_target_label = "암살자(-2%) 진입 덫"
+        else:
+            pre_target_label = "하방 이격(-2%) 감시선"
+            reg_target_label = "하방 이격(-2%) 감시선"
 
         msg += f"🌅 <b>[ 1세션 - 프리장 (04:00~09:29) ]</b>\n"
         # 🚨 MODIFIED: [렌더링 팩트 조건 확장] VWAP 0.0 폴백 시에도 고점(틱)이 존재하면 렌더링 유지
         if pre_vwap > 0 or pre_high > 0:
             msg += f"▫️ 고가: ${pre_high:.2f} / 저가: ${pre_low:.2f} (진폭 {pre_amp:.2f}%)\n"
             msg += f"▫️ 누적 VWAP: <b>${pre_vwap:.2f}</b>\n"
-            msg += f"🔻 {target_label}: <b>${pre_target:.2f}</b>\n\n"
+            msg += f"🔻 {pre_target_label}: <b>${pre_target:.2f}</b>\n\n"
         else:
             msg += "▫️ 데이터 집계 대기 중...\n\n"
 
@@ -301,7 +315,7 @@ class AvwapConsolePlugin:
         if reg_vwap > 0 or reg_high > 0:
             msg += f"▫️ 고가: ${reg_high:.2f} / 저가: ${reg_low:.2f} (진폭 {reg_amp:.2f}%)\n"
             msg += f"▫️ 누적 VWAP: <b>${reg_vwap:.2f}</b>\n"
-            msg += f"🔻 {target_label}: <b>${reg_target:.2f}</b>\n\n"
+            msg += f"🔻 {reg_target_label}: <b>${reg_target:.2f}</b>\n\n"
         else:
             msg += "▫️ 정규장 개장 대기 중...\n\n"
 
@@ -329,8 +343,11 @@ class AvwapConsolePlugin:
             msg += f"▫️ 본진 타격망: <b>⏳ 자본 잠김 감지 ➔ 애프터장 16:01 일괄 타격으로 이연 대기 중</b>\n"
         else:
             if is_avwap_hybrid:
-                # 🚨 MODIFIED: [-2% 타점 관통 대기 중 팩트 롤오버]
-                msg += f"▫️ 교전 상태: <b>ON (세션 VWAP -2% 타점 관통 대기 중)</b>\n"
+                # 🚨 MODIFIED: [UI 교정 1] 프리장 미진입으로 인한 조기 퇴근 상태 렌더링 락온
+                if is_early_shutdown:
+                    msg += f"▫️ 교전 상태: <b>OFF (프리장 미진입으로 인한 진입 차단 - 조기 퇴근)</b>\n"
+                else:
+                    msg += f"▫️ 교전 상태: <b>ON (세션 VWAP -2% 타점 관통 대기 중)</b>\n"
                 msg += f"▫️ 본진 타격망: <b>15:27 V-REV 슬라이싱 정상 가동 대기</b>\n"
             else:
                 msg += f"▫️ 교전 상태: <b>OFF (수동 가동 대기)</b>\n"
