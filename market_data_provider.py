@@ -15,6 +15,7 @@
 # 🚨 NEW: [벡터화 강제 헌법 준수] apply(lambda) 묵시적 루프를 영구 소각하고, pd.concat 및 max(axis=1) 기반의 100% 순수 벡터화 연산으로 병목 지점 완벽 교정
 # 🚨 NEW: [토스증권 패치 - 초단기 자율주행 앵커링 엔진 결속] Tier 1(WTD 이번 주 첫 거래일), Tier 2(최근 5일 변곡점), Tier 3(월초) 기점 스캔 100% 팩트 이식 완료.
 # 🚨 NEW: [동적 해상도(Dynamic Resolution) 엔진 이식] AVWAP 연산 시 기점 거리에 따라 1m / 5m / 1h 캔들을 동적으로 호출하여 리테일 매체(토스증권)와 100% 동일한 인트라데이 틱(Tick) 정밀도 사수.
+# 🚨 MODIFIED: [24H 유동성 누락 패러독스 차단] get_anchored_vwap 엔진에 prepost=True 옵션을 강제 주입하여 정규장 외(프리/애프터) 거래대금을 100% 흡수(토스증권 렌더링 팩트 완벽 동기화).
 # ==========================================================
 
 import time
@@ -696,7 +697,7 @@ class MarketDataProvider(KisApiClient):
         logging.info(f"⚓ [{ticker}] Tier 3 단기 앵커링 (MTD Fallback): {fallback_date}")
         return fallback_date, "당월 1일 폴백 (Tier 3)"
 
-    # 🚨 NEW: [동적 정밀도 AVWAP 엔진] 지정된 기점(anchor_date)부터 당일까지의 고정형 VWAP을 동적 타임프레임(1m/5m/1h)으로 정밀 연산
+    # 🚨 NEW: [동적 해상도(Dynamic Resolution) AVWAP 엔진] 기점(anchor_date) 거리에 따라 1m / 5m / 1h 캔들을 동적 롤오버
     def get_anchored_vwap(self, ticker, anchor_date):
         for attempt in range(3):
             try:
@@ -716,11 +717,12 @@ class MarketDataProvider(KisApiClient):
                     interval = "1h"
                     
                 stock = yf.Ticker(ticker)
-                df = stock.history(start=anchor_date, interval=interval, prepost=False, timeout=5)
+                # 🚨 MODIFIED: [24H 유동성 누락 패러독스 차단] prepost=True 팩트 락온 (토스증권 AVWAP 100% 동기화)
+                df = stock.history(start=anchor_date, interval=interval, prepost=True, timeout=5)
                 
                 if df.empty:
                     # 🚨 [Fallback] 세밀한 분봉 호출 실패 시 안전하게 1일봉(1d)으로 롤백
-                    df = stock.history(start=anchor_date, interval="1d", prepost=False, timeout=5)
+                    df = stock.history(start=anchor_date, interval="1d", prepost=True, timeout=5)
                     if df.empty:
                         if attempt == 2: return 0.0
                         time.sleep(1.0 * (2 ** attempt))
