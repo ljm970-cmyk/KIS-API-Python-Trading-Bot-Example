@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 NEW: [추적형 물리적 선제 장전(Trailing Limit Pre-placement) 아키텍처 락온] 타점을 관통할 때까지 관망하던 낡은 후행 격발 로직을 100% 파기하고, 1분마다 갱신되는 VWAP 타점을 실시간 추적하여 KIS 서버에 지정가(LIMIT) 덫을 물리적으로 선제 장전(Replace)하는 0% 슬리피지(Zero-Slippage) 팩트 엔진을 결속 완료. (Case 37)
+# 🚨 NEW: [Ghost Order 절대 방어망 결속] KIS 서버에서 미체결 주문이 증발(수동 취소 등)했을 경우, 봇이 무한 관망에 빠지는 침묵의 마비(Silent Paralysis)를 원천 차단하기 위해 매 분마다 KIS 미체결 원장을 교차 검증하여 즉각 덫을 재장전하는 자가 치유(Self-Healing) 로직 이식.
 # 🚨 MODIFIED: [타임라인 역전 패러독스 궁극 수술] 기존 덫 취소 직후 KIS 서버에서 반환된 증거금을 인식하지 못해 0주로 산출되는 버그를 파기하고, 취소 직후 `broker.get_account_balance`를 재스캔하여 가용 현금을 100% 롤오버하도록 팩트 락온.
 # 🚨 MODIFIED: [무한 교착(Phantom Paralysis) 붕괴 차단] KIS 서버에서 취소가 거절(Reject)될 경우, 이미 체결되었거나 증발한 덫에 갇히는 무한 루프를 막기 위해 `t_state['buy_odno']` 락온을 강제 해제하고 다음 파이프라인으로 안전하게 인계.
 # 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST) 개장 시점까지 프리장 선제 장전 덫이 체결되지 않았을 경우, 장전되어 있던 미체결 덫을 즉시 취소(Cancel)하고 당일 신규 매수 권한을 영구 소각(조기 퇴근)하여 정규장 폭포수 하락에 갈리는 패러독스 원천 차단.
@@ -344,7 +345,7 @@ async def scheduled_sniper_monitor(context):
                         if t_state.get('shutdown'):
                             continue
 
-                        # 🚨 [매수 덫 동적 체결 감시망]
+                        # 🚨 [매수 덫 동적 체결 감시망 및 고스트(Ghost) 오더 방어망 결속]
                         if t_state.get('buy_odno') and t_state.get('qty') == 0:
                             exec_hist = await _retry_api(broker.get_execution_history, t, today_kst_str, today_kst_str)
                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
@@ -366,6 +367,19 @@ async def scheduled_sniper_monitor(context):
                                 if chat_id:
                                     # 🚨 NEW: 텔레그램 동적 변수 팩트 렌더링
                                     await _safe_send(context, chat_id, f"🎯 <b>[{html.escape(t)}] 암살자 1-Shot 1-Kill 매수 타격!</b>\n▫️ 주문가능금액 100% 올인 진입: {filled_qty}주 @ ${avg_p:.2f}\n▫️ 즉시 과욕 제어망(+{exit_rate}% 지정가 전량 매도 덫)을 장전합니다.", parse_mode='HTML')
+                            else:
+                                # 🚨 [Ghost Order Evaporation Shield] KIS 서버 미체결 내역 교차 검증
+                                unfilled = await _retry_api(broker.get_unfilled_orders_detail, t)
+                                if unfilled is not None:
+                                    safe_unfilled = unfilled if isinstance(unfilled, list) else []
+                                    is_alive = any(str(uo.get('odno')) == t_state['buy_odno'] for uo in safe_unfilled)
+                                    
+                                    if not is_alive:
+                                        logging.warning(f"🚨 [{t}] 암살자 덫 증발(Ghost Order) 감지! KIS 미체결/체결 내역에 존재하지 않아 상태를 강제 초기화합니다.")
+                                        t_state['buy_odno'] = ""
+                                        await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                else:
+                                    logging.warning(f"⚠️ [{t}] KIS 미체결 내역 조회 실패. 고스트 오더 검증을 다음 루프로 이연합니다.")
 
                         # 🚨 [매도 덫 동적(+N%) 강제 장전망]
                         if t_state.get('qty') > 0 and not t_state.get('sell_odno'):
@@ -432,8 +446,7 @@ async def scheduled_sniper_monitor(context):
                                             t_state['buy_odno'] = ""
                                             cash_refunded = True
                                         else:
-                                            # 🚨 [Phantom Paralysis 방어] 취소 실패 시, 이미 체결되었거나 증발한 덫일 수 있으므로
-                                            # 무한 교착에 빠지지 않도록 odno를 초기화하여 다음 스텝으로 유도합니다.
+                                            # 🚨 [Phantom Paralysis 방어] 취소 실패 시 무한 교착 방지를 위해 상태 락온 강제 해제
                                             err_msg = c_res.get('msg1') if isinstance(c_res, dict) else "통신장애"
                                             logging.error(f"🚨 [{t}] 암살자 추적 덫 취소 실패 ({err_msg}). 무한 교착 방지를 위해 상태 락온 해제.")
                                             t_state['buy_odno'] = ""
@@ -467,13 +480,7 @@ async def scheduled_sniper_monitor(context):
                                             else:
                                                 err_msg = html.escape(str(b_res.get('msg1') or '응답 없음/통신 장애')) if isinstance(b_res, dict) else '통신 장애'
                                                 logging.error(f"🚨 [{t}] 암살자 1-Shot 1-Kill 선제 장전 KIS 서버 거절: {err_msg}")
-                                                reject_msg = (
-                                                    f"🚨 <b>[{html.escape(str(t))}] 암살자 선제 장전 서버 거절 (Reject)!</b>\n"
-                                                    f"▫️ 사유: <code>{err_msg}</code>\n"
-                                                    f"▫️ 조치: 다음 60초 스캔 시 재시도합니다."
-                                                )
-                                                if chat_id:
-                                                    await _safe_send(context, chat_id, reject_msg, parse_mode='HTML')
+                                                # 실패 시 buy_odno를 기록하지 않아 다음 분에 재시도합니다.
                                         else:
                                             # 🚨 [예수금 부족 팩트 타전망]
                                             if not t_state.get('cash_warned'):
@@ -557,7 +564,6 @@ async def scheduled_sniper_monitor(context):
                             odno = order_res.get('odno', '') if isinstance(order_res, dict) else ''
             
                             if order_res and order_res.get('rt_cd') == '0' and odno:
-                                # 🚨 [UnboundLocalError 붕괴 수술] 초고속 체결을 위한 KST 날짜 변수 전진 배치
                                 now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
                                 today_kst_str_fresh = now_kst_fresh.strftime('%Y%m%d')
                                 ccld_qty = 0
@@ -709,7 +715,6 @@ async def scheduled_sniper_monitor(context):
                             odno = order_res.get('odno', '') if isinstance(order_res, dict) else ''
                 
                             if order_res and order_res.get('rt_cd') == '0' and odno:
-                                # 🚨 [UnboundLocalError 붕괴 수술] 매도 구간 역시 스코프 전진 배치 강제
                                 now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
                                 today_kst_str_fresh = now_kst_fresh.strftime('%Y%m%d')
                                 ccld_qty = 0
