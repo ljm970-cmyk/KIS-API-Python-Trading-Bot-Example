@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 NEW: [추적형 물리적 선제 장전(Trailing Limit Pre-placement) 아키텍처 락온] 타점을 관통할 때까지 관망하던 낡은 후행 격발 로직을 100% 파기하고, 1분마다 갱신되는 VWAP 타점을 실시간 추적하여 KIS 서버에 지정가(LIMIT) 덫을 물리적으로 선제 장전(Replace)하는 0% 슬리피지(Zero-Slippage) 팩트 엔진을 결속 완료. (Case 37)
+# 🚨 MODIFIED: [스팸 폭격 원천 차단] 1분 단위 추적형 선제 장전 시 발생하는 무한 알림 스팸을 파기하고, 최초 1회 발송 후 제자리 갱신(In-place Edit)만 수행하여 조용히 새로고침(업데이트)되도록 UI 팩트 교정 완료.
 # 🚨 NEW: [Ghost Order 절대 방어망 결속] KIS 서버에서 미체결 주문이 증발(수동 취소 등)했을 경우, 봇이 무한 관망에 빠지는 침묵의 마비(Silent Paralysis)를 원천 차단하기 위해 매 분마다 KIS 미체결 원장을 교차 검증하여 즉각 덫을 재장전하는 자가 치유(Self-Healing) 로직 이식.
 # 🚨 MODIFIED: [타임라인 역전 패러독스 궁극 수술] 기존 덫 취소 직후 KIS 서버에서 반환된 증거금을 인식하지 못해 0주로 산출되는 버그를 파기하고, 취소 직후 `broker.get_account_balance`를 재스캔하여 가용 현금을 100% 롤오버하도록 팩트 락온.
 # 🚨 MODIFIED: [무한 교착(Phantom Paralysis) 붕괴 차단] KIS 서버에서 취소가 거절(Reject)될 경우, 이미 체결되었거나 증발한 덫에 갇히는 무한 루프를 막기 위해 `t_state['buy_odno']` 락온을 강제 해제하고 다음 파이프라인으로 안전하게 인계.
@@ -75,7 +76,8 @@ def _load_avwap_trade_state(ticker, now_est):
             'sell_odno': "",
             'shutdown': False,
             'dumped': False,
-            'cash_warned': False  # 🚨 NEW: 예수금 부족 경고 알림 토글용 스키마 결속
+            'cash_warned': False,  # 🚨 NEW: 예수금 부족 경고 알림 토글용 스키마 결속
+            'alert_msg_id': 0      # 🚨 NEW: 추적 스팸 방지용 제자리 갱신 메시지 ID 캐싱
         }
         _save_avwap_trade_state(ticker, data)
     return data
@@ -472,11 +474,27 @@ async def scheduled_sniper_monitor(context):
                                             if isinstance(b_res, dict) and b_res.get('rt_cd') == '0':
                                                 t_state['buy_odno'] = str(b_res.get('odno'))
                                                 t_state['buy_target_price'] = buy_target_price
-                                                await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
-                                        
-                                                # 🚨 NEW: 암살자 동적 격발(추적 장전) 브리핑 텍스트
+                                                
+                                                # 🚨 MODIFIED: [스팸 폭격 원천 차단] 최초 1회만 발송하고, 이후에는 해당 메시지를 조용히 제자리 갱신(Edit)
                                                 if chat_id:
-                                                    await _safe_send(context, chat_id, f"🎯 <b>[{html.escape(t)}] 암살자 -{entrance_rate}% 추적형 선제 장전(Trailing Limit) 갱신!</b>\n▫️ 1분 단위 VWAP 타점 변동에 맞춰 지정가 덫을 이동 장전했습니다.\n▫️ 예산 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f})\n▫️ 덫 장전 완료: {buy_qty}주 @ ${buy_target_price:.2f}", parse_mode='HTML')
+                                                    msg_text = f"🎯 <b>[{html.escape(t)}] 암살자 -{entrance_rate}% 추적형 선제 장전(Trailing Limit) 가동!</b>\n▫️ 1분 단위 VWAP 타점 변동에 맞춰 지정가 덫을 조용히 이동 장전 중입니다.\n▫️ 예산 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f})\n▫️ 덫 갱신 완료: {buy_qty}주 @ ${buy_target_price:.2f}"
+                                                    
+                                                    alert_msg_id = t_state.get('alert_msg_id', 0)
+                                                    if alert_msg_id == 0:
+                                                        sent_msg = await _safe_send(context, chat_id, msg_text, parse_mode='HTML')
+                                                        if sent_msg:
+                                                            t_state['alert_msg_id'] = sent_msg.message_id
+                                                    else:
+                                                        try:
+                                                            await context.bot.edit_message_text(chat_id=chat_id, message_id=alert_msg_id, text=msg_text, parse_mode='HTML')
+                                                        except Exception as e:
+                                                            if "not modified" not in str(e).lower():
+                                                                # 텔레그램 서버에서 메시지가 삭제/증발한 경우 새로 발송
+                                                                sent_msg = await _safe_send(context, chat_id, msg_text, parse_mode='HTML')
+                                                                if sent_msg:
+                                                                    t_state['alert_msg_id'] = sent_msg.message_id
+                                                                    
+                                                await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                             else:
                                                 err_msg = html.escape(str(b_res.get('msg1') or '응답 없음/통신 장애')) if isinstance(b_res, dict) else '통신 장애'
                                                 logging.error(f"🚨 [{t}] 암살자 1-Shot 1-Kill 선제 장전 KIS 서버 거절: {err_msg}")
