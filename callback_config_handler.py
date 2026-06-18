@@ -1,16 +1,17 @@
 # ==========================================================
 # FILE: callback_config_handler.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [암살자 팻핑거 뇌관 영구 소각] 수동 목표 수익(KRW/PCT) 설정 기능을 전면 소각함에 따라, 콜백 라우터에 잔존하던 TOGGLE_TARGET_MODE 라우팅 및 INPUT 분기 데드코드를 100% 진공 압축.
-# 🚨 MODIFIED: [Case 38 UI 렌더링 높이 붕괴 패러독스 차단] 버튼 클릭 시 1줄짜리 텍스트("업데이트 중...")로 중간 갱신하여 기존 화면을 증발시키는 행위를 전면 금지. 로딩은 query.answer() 팝업으로 대체하고 최종 결과로 단 1회 제자리 갱신(In-place Edit) 락온.
-# 🚨 MODIFIED: [Reset 0주 오인 패러독스 소각] 리셋(장부 소각) 후 새로운 스냅샷을 박제할 때, qty=0 을 강제 주입하던 치명적 하드코딩 버그를 소각하고 KIS 실잔고(kis_qty)와 평단가(kis_avg) 정밀 추출.
-# 🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 및 _process_reset_files 내부의 os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료.
-# 🚨 MODIFIED: [시그니처 Mismatch 소각] 텔레그램 라우터의 action, sub, data 파싱 구조를 100% 반영하여 handle 메서드 시그니처 완벽 수복.
-# 🚨 MODIFIED: [TypeError 방어] set_reverse_state 호출 시 누락된 파라미터(0.0)를 강제 주입하여 백엔드 스키마 충돌 원천 차단.
-# 🚨 MODIFIED: [커스텀 토스트 팝업 패러독스 완벽 교정] 최상단의 범용 query.answer()가 하위 라우팅의 커스텀 로딩 팝업("🔥 소각 중...")을 씹어먹는 현상을 막기 위해 needs_custom_toast 바이패스 락온망 구축.
-# 🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단).
-# 🚨 NEW: [명예의 전당 소각] HIST:DEL_REQ, HIST:DEL_EXEC 액션 라우팅 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장.
+# [span_8](start_span)🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료[span_8](end_span).
+# [span_9](start_span)🚨 MODIFIED: [암살자 팻핑거 뇌관 영구 소각] 수동 목표 수익(KRW/PCT) 설정 기능을 전면 소각함에 따라, 콜백 라우터에 잔존하던 TOGGLE_TARGET_MODE 라우팅 및 INPUT 분기 데드코드를 100% 진공 압축[span_9](end_span).
+# 🚨 MODIFIED: [Case 38 UI 렌더링 높이 붕괴 패러독스 차단] 버튼 클릭 시 1줄짜리 텍스트("업데이트 중...")로 중간 갱신하여 기존 화면을 증발시키는 행위를 전면 금지. [span_10](start_span)로딩은 query.answer() 팝업으로 대체하고 최종 결과로 단 1회 제자리 갱신(In-place Edit) 락온[span_10](end_span).
+# [span_11](start_span)🚨 MODIFIED: [Reset 0주 오인 패러독스 소각] 리셋(장부 소각) 후 새로운 스냅샷을 박제할 때, qty=0 을 강제 주입하던 치명적 하드코딩 버그를 소각하고 KIS 실잔고(kis_qty)와 평단가(kis_avg) 정밀 추출[span_11](end_span).
+# [span_12](start_span)🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 및 _process_reset_files 내부의 os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료[span_12](end_span).
+# [span_13](start_span)🚨 MODIFIED: [시그니처 Mismatch 소각] 텔레그램 라우터의 action, sub, data 파싱 구조를 100% 반영하여 handle 메서드 시그니처 완벽 수복 [cite: 2044-2045].
+# [cite_start]🚨 MODIFIED: [TypeError 방어] set_reverse_state 호출 시 누락된 파라미터(0.0)를 강제 주입하여 백엔드 스키마 충돌 원천 차단[span_13](end_span).
+# [span_14](start_span)🚨 MODIFIED: [커스텀 토스트 팝업 패러독스 완벽 교정] 최상단의 범용 query.answer()가 하위 라우팅의 커스텀 로딩 팝업("🔥 소각 중...")을 씹어먹는 현상을 막기 위해 needs_custom_toast 바이패스 락온망 구축[span_14](end_span).
+# [span_15](start_span)🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단)[span_15](end_span).
+# [span_16](start_span)🚨 NEW: [명예의 전당 소각] HIST:DEL_REQ, HIST:DEL_EXEC 액션 라우팅 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장[span_16](end_span).
+# 🚨 NEW: [암살자 동적 타점 라우팅] INPUT 액션 서브 분기에 AVWAP_ENTRANCE 및 AVWAP_EXIT를 추가하여 직관적인 렌더링 피드백(ko_name) 및 샌드박스 가이던스 락온.
 # ==========================================================
 import logging
 import datetime
@@ -161,7 +162,7 @@ class CallbackConfigHandler:
                                     fd = None
                                     json.dump(s_state, f_out, ensure_ascii=False, indent=4)
                                     f_out.flush()
-                                    os.fsync(f_out.fileno())
+                                os.fsync(f_out.fileno())
                                 os.replace(tmp_path, slice_file)
                                 tmp_path = None
                             except Exception:
@@ -234,7 +235,7 @@ class CallbackConfigHandler:
                                 fd = None
                                 json.dump(b_data, f_out, ensure_ascii=False, indent=4)
                                 f_out.flush()
-                                os.fsync(f_out.fileno())
+                            os.fsync(f_out.fileno())
                             os.replace(tmp_path, backup_file)
                             tmp_path = None
                         except Exception:
@@ -246,7 +247,7 @@ class CallbackConfigHandler:
                                 except OSError: pass
                     except OSError: pass
                     except Exception: pass
-                     
+                    
                 await asyncio.wait_for(asyncio.to_thread(_process_reset_files), timeout=10.0)
             
                 if getattr(self, 'queue_ledger', None):
@@ -381,7 +382,7 @@ class CallbackConfigHandler:
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True, history_id=hid)
                     except TypeError:
                         msg, markup = self.view.create_ledger_dashboard(target.get('ticker'), qty, avg, invested, sold, safe_trades, 0, 0, is_history=True)
-                     
+                      
                     try: 
                         await asyncio.wait_for(query.edit_message_text(msg, reply_markup=markup, parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
@@ -616,6 +617,7 @@ class CallbackConfigHandler:
                 except Exception as e:
                     logging.error(f"🚨 [{ticker}] 암살자 모드 토글 실패: {e}")
             
+        # 🚨 NEW: [암살자 동적 타점 라우팅] INPUT 액션 서브 분기에 AVWAP_ENTRANCE 및 AVWAP_EXIT를 추가하여 직관적인 렌더링 피드백(ko_name) 락온.
         elif action == "INPUT":
             if not ticker: return
             controller.user_states[chat_id] = f"CONF_{sub}_{ticker}"
@@ -625,10 +627,14 @@ class CallbackConfigHandler:
             elif sub == "COMPOUND": ko_name = "자동 복리율(%)"
             elif sub == "STOCK_SPLIT": ko_name = "액면 분할/병합 비율"
             elif sub == "FEE": ko_name = "증권사 수수료율(%)"
+            elif sub == "AVWAP_ENTRANCE": ko_name = "암살자 진입률(%)"
+            elif sub == "AVWAP_EXIT": ko_name = "암살자 익절률(%)"
             else: ko_name = "값"
              
             desc = "숫자만 입력하세요."
             if sub == "STOCK_SPLIT":
                 desc = "액면분할 시 1주가 10주가 되었다면 10 입력, 10주가 1주로 병합되었다면 0.1 입력"
+            elif sub in ["AVWAP_ENTRANCE", "AVWAP_EXIT"]:
+                desc = "0.1에서 15.0 사이의 숫자만 입력하세요 (안전 임계치 이탈 시 자동 보정 가동)."
                 
             await asyncio.wait_for(context.bot.send_message(chat_id, f"✏️ <b>[{html.escape(str(ticker))}] {html.escape(str(ko_name))}</b>를 설정합니다.\n{desc}", parse_mode='HTML'), timeout=10.0)

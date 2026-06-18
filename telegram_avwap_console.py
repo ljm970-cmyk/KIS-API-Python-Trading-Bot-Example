@@ -2,17 +2,16 @@
 # FILE: telegram_avwap_console.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 41대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 aVWAP 진입 타점을 -3%에서 -2%로 상향 팩트 교정 완료 (0.97 ➔ 0.98).
-# 🚨 NEW: [UI 교정 1 & 2] 정규장(09:30 EST) 개장 후 무포지션(0주) 상태일 때 '조기 퇴근' 팩트를 파싱하여, 교전 상태를 OFF로 렌더링하고 정규장 타점 라벨을 "하방 이격(-2%) 감시선 (진입 차단됨)"으로 동적 팩트 락온.
+# 🚨 NEW: [순수 리버전 데이 트레이딩 동적 타점 롤오버] 하드코딩된 -2% / +2% 연산식과 렌더링 텍스트를 전면 소각하고, Config 동적 변수(entrance_rate, exit_rate) 기반 렌더링 팩트 100% 이식 완료.
+# 🚨 NEW: [UI 교정 1 & 2] 정규장(09:30 EST) 개장 후 무포지션(0주) 상태일 때 '조기 퇴근' 팩트를 파싱하여, 교전 상태를 OFF로 렌더링하고 정규장 타점 라벨을 "하방 이격(-N%) 감시선 (진입 차단됨)"으로 동적 팩트 락온.
 # 🚨 NEW: [Case 39 자본 잠김 UI 팩트 렌더링] 암살자(aVWAP) 엔진이 타점을 관통하여 가용 현금을 100% 점유(Lock-up) 중일 경우, 관제탑 UI의 '본진 타격망' 상태를 "15:27 슬라이싱 가동"에서 "애프터장 16:01 일괄 타격으로 이연 대기 중"으로 팩트 교정 락온.
 # 🚨 MODIFIED: [본진 무중단 병렬 가동 UI 수복 (타겟 5)] 15:59 강제 청산(MOC 덤핑) 시 본진 물량에 영향을 미칠 수 있다는 낡은 뉘앙스를 파기하고, "암살자 물량만 매수 1호가 스윕 덤핑 (결측시 -5% 폴백 / 본진 100% 격리)" 팩트를 UI에 강제 락온 완료.
 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 VWAP이 0.0으로 즉사하는 맹점을 차단하고, TWAP(시간가중평균단가)으로 즉각 폴백(Fallback)하는 수리적 방어망 결속.
 # 🚨 MODIFIED: [렌더링 팩트 조건 확장] 거래량이 없더라도 가격 틱(High)만 존재하면 관제탑 시야가 밝혀지도록 렌더링 조건을 `if pre_vwap > 0 or pre_high > 0:`으로 전면 상향 락온.
 # 🚨 MODIFIED: [제2헌법 준수] 사용되지 않는 유령 임포트(os, yfinance)를 정적 분석기의 관점에서 영구 소각하여 파일 응집도 극대화.
-# 🚨 MODIFIED: [순수 리버전 +2% 익절 팩트 락온] 과거의 복잡한 환율 및 수수료 역산 스키마를 소각하고, 코어 엔진과 100% 동일한 진입가(+2%) 기반 하드코딩 익절 타점 명시.
-# 🚨 MODIFIED: [UX 패러독스 원천 소각] 암살자가 OFF일 때 타점이 '진입 덫'으로 표출되던 오해를 막기 위해, OFF 시 "하방 이격(-2%) 감시선"으로 명칭을 강제 전환하는 동적 분기망 결속.
+# 🚨 MODIFIED: [UX 패러독스 원천 소각] 암살자가 OFF일 때 타점이 '진입 덫'으로 표출되던 오해를 막기 위해, OFF 시 "하방 이격(-N%) 감시선"으로 명칭을 강제 전환하는 동적 분기망 결속.
 # 🚨 MODIFIED: [암살자 셧다운 팩트 브리핑] 암살자가 OFF 상태일 경우, 하단 교전망 상태에 "⚠️ [ 암살자 타격망 OFF (단순 관측 모드) ]"를 명시하여 보조 타격망이 대기 상태임을 직관적으로 렌더링.
-# 🚨 MODIFIED: [Case 17 순수 리버전 관제탑 롤오버] '데이 트레이딩 리버전' 통제소로 UI를 리빌딩하고 세션별 VWAP, -2% 타점, +2% 익절가, 15:59 강제 청산 팩트만 직관적으로 렌더링.
+# 🚨 MODIFIED: [Case 17 순수 리버전 관제탑 롤오버] '데이 트레이딩 리버전' 통제소로 UI를 리빌딩하고 세션별 VWAP, 동적 타점, 동적 익절가, 15:59 강제 청산 팩트만 직관적으로 렌더링.
 # 🚨 MODIFIED: [타 종목 오염 원천 차단] aVWAP 암살자 모듈의 SOXL 전용 가동 원칙에 따라 TQQQ 등 타 종목 유입 시 '관측망 오프라인' 처리 락온.
 # 🚨 MODIFIED: [Quant Logic 교정] 1분봉 데이터를 1세션(04:00~09:29) 및 2세션(09:30~16:00)으로 완벽히 분할 슬라이싱하여 독립된 VWAP(순수 거래대금/거래량 기반) 동적 산출 이식.
 # 🚨 MODIFIED: [고성능 클라우드 TPS 방어] 데이터 추출 시 순차적(Sequential) await 및 0.06초 샌드위치 지연(TPS 캡핑), 3단 지수 백오프 강제 락온.
@@ -156,7 +155,7 @@ class AvwapConsolePlugin:
                     await asyncio.sleep(1.0 * (2 ** attempt))
 
         try:
-            # 🚨 데이터 추출 및 병목 방지
+            # 🚨 데이터 추출 및 병목 방어
             curr_p_val = await _get_with_retry(self.broker.get_current_price, t)
             curr_p = self._safe_float(curr_p_val)
             
@@ -189,12 +188,21 @@ class AvwapConsolePlugin:
 
             # 🚨 NEW: [Phase 2 암살자 ON/OFF 플래그 동기화]
             is_avwap_hybrid = bool(await _get_with_retry(getattr(self.cfg, 'get_avwap_hybrid_mode', lambda x: False), t))
+            
+            # 🚨 NEW: 암살자 진입/익절 동적 비율 추출
+            entrance_rate = await _get_with_retry(getattr(self.cfg, 'get_avwap_entrance_rate', lambda x: 2.0), t)
+            entrance_rate = self._safe_float(entrance_rate) if entrance_rate else 2.0
+            
+            exit_rate = await _get_with_retry(getattr(self.cfg, 'get_avwap_exit_rate', lambda x: 2.0), t)
+            exit_rate = self._safe_float(exit_rate) if exit_rate else 2.0
 
         except Exception as e:
             logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
             curr_p, base_amp5, df_1m, ma_5day, kis_avg = 0.0, 0.0, None, 0.0, 0.0
             anchor_date, tier_reason, anchored_vwap = now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)", 0.0
             is_avwap_hybrid = False
+            entrance_rate = 2.0
+            exit_rate = 2.0
 
         # 🚨 [암살자 1-Shot 1-Kill 실전 렌더링 팩트 파싱]
         avwap_qty, avwap_avg, target_usd, avwap_inv_usd = 0, 0.0, 0.0, 0.0
@@ -227,8 +235,8 @@ class AvwapConsolePlugin:
                     avwap_avg = self._safe_float(state_data.get('avg_price', 0.0))
                     avwap_inv_usd = avwap_qty * avwap_avg
                     
-                    # 🚨 MODIFIED: [순수 리버전 +2% 익절 팩트 락온] 복잡한 수수료 역산식 소각 및 진입가 * 1.02 하드코딩
-                    target_usd = math.ceil(avwap_avg * 1.02 * 100) / 100.0
+                    # 🚨 MODIFIED: [순수 리버전 동적 익절 팩트 락온] 동적 비율(exit_rate) 역산
+                    target_usd = math.ceil(avwap_avg * (1.0 + (exit_rate / 100.0)) * 100) / 100.0
         except Exception:
             pass
 
@@ -277,8 +285,8 @@ class AvwapConsolePlugin:
                 else:
                     s_vwap = self._safe_float(df_session['tp'].mean())
                 
-                # 🚨 MODIFIED: [-2% 진입 타점 내림 연산 팩트 롤오버]
-                s_target = math.floor(s_vwap * 0.98 * 100) / 100.0 if s_vwap > 0 else 0.0
+                # 🚨 MODIFIED: [동적 진입 타점 내림 연산 팩트 롤오버]
+                s_target = math.floor(s_vwap * (1.0 - (entrance_rate / 100.0)) * 100) / 100.0 if s_vwap > 0 else 0.0
                 
                 return s_vwap, s_target, s_high, s_low, s_amp
 
@@ -307,14 +315,14 @@ class AvwapConsolePlugin:
 
         # 🚨 NEW: [UI 교정 2] 타임라인별 타점 라벨 동적 렌더링 락온
         if is_avwap_hybrid:
-            pre_target_label = "암살자(-2%) 진입 덫"
+            pre_target_label = f"암살자(-{entrance_rate}%) 진입 덫"
             if is_early_shutdown:
-                reg_target_label = "하방 이격(-2%) 감시선 (진입 차단됨)"
+                reg_target_label = f"하방 이격(-{entrance_rate}%) 감시선 (진입 차단됨)"
             else:
-                reg_target_label = "암살자(-2%) 진입 덫"
+                reg_target_label = f"암살자(-{entrance_rate}%) 진입 덫"
         else:
-            pre_target_label = "하방 이격(-2%) 감시선"
-            reg_target_label = "하방 이격(-2%) 감시선"
+            pre_target_label = f"하방 이격(-{entrance_rate}%) 감시선"
+            reg_target_label = f"하방 이격(-{entrance_rate}%) 감시선"
 
         msg += f"🌅 <b>[ 1세션 - 프리장 (04:00~09:29) ]</b>\n"
         # 🚨 MODIFIED: [렌더링 팩트 조건 확장] VWAP 0.0 폴백 시에도 고점(틱)이 존재하면 렌더링 유지
@@ -356,10 +364,10 @@ class AvwapConsolePlugin:
             msg += f"⚠️ <b>[ 암살자 타격망 OFF (단순 관측 모드) ]</b>\n"
 
         if is_assassin_active:
-            # 🚨 MODIFIED: [1-Shot 1-Kill 아키텍처에 맞춘 진공 압축 렌더링 팩트 교정 (-2% 타점 적용)]
-            msg += f"▫️ 교전 상태: <b>ON (-2% 타점 관통 및 진입 완료)</b>\n"
+            # 🚨 MODIFIED: [1-Shot 1-Kill 아키텍처에 맞춘 진공 압축 렌더링 동적 팩트 교정]
+            msg += f"▫️ 교전 상태: <b>ON (-{entrance_rate}% 타점 관통 및 진입 완료)</b>\n"
             msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
-            msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (+2% 지정가 락온)\n"
+            msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (+{exit_rate}% 지정가 락온)\n"
             # 🚨 NEW: [타겟 5 작전 지시 팩트 락온] 본진 격리 및 암살자 전용 덤핑 명시 (결측시 -5% 폴백 포함)
             msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 암살자 물량만 매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백 / 본진 100% 격리)</b>\n"
             # 🚨 NEW: [Case 39, 40] 본진 애프터장 이연 대기 팩트 명시
@@ -370,7 +378,7 @@ class AvwapConsolePlugin:
                 if is_early_shutdown:
                     msg += f"▫️ 교전 상태: <b>OFF (프리장 미진입으로 인한 진입 차단 - 조기 퇴근)</b>\n"
                 else:
-                    msg += f"▫️ 교전 상태: <b>ON (세션 VWAP -2% 타점 관통 대기 중)</b>\n"
+                    msg += f"▫️ 교전 상태: <b>ON (세션 VWAP -{entrance_rate}% 타점 관통 대기 중)</b>\n"
                 msg += f"▫️ 본진 타격망: <b>15:27 V-REV 슬라이싱 정상 가동 대기</b>\n"
             else:
                 msg += f"▫️ 교전 상태: <b>OFF (수동 가동 대기)</b>\n"
@@ -407,5 +415,5 @@ class AvwapConsolePlugin:
         body = ""
         for line in chronological_logs: body += f"{html.escape(str(line))}\n"
         if len(body) > (4000 - len(header) - len(footer)):
-            body = "… (글자 수 제한으로 이전 로그 생략) …\n" + body[-(3800 - len(header) - len(footer)):]
+             body = "… (글자 수 제한으로 이전 로그 생략) …\n" + body[-(3800 - len(header) - len(footer)):]
         return header + body + footer

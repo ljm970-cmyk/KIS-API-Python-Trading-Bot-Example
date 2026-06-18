@@ -2,11 +2,11 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 1-Shot 1-Kill 타격 격발 시 텔레그램에 타전되는 브리핑 텍스트 내 '-3% 하방 이격도 타점 관통!' 메시지를 '-2%'로 상향 팩트 교정 완료.
+# 🚨 NEW: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 1-Shot 1-Kill 진입 및 익절 타점을 Config의 동적 변수(entrance_rate, exit_rate)로 100% 해방하여 팻핑거 샌드박스와 연동 완료.
 # 🚨 MODIFIED: [Phase 3 암살자 실전 매매망 전면 재조립] 복잡한 다중 페이즈(Phase 1/2/3), 무한 재진입, 50/50 분할 타격 데드코드를 100% 영구 삭제하고 1-Shot 1-Kill 순수 리버전 데이 트레이딩 아키텍처 이식.
-# 🚨 MODIFIED: [본진 무중단 병렬 가동 팩트 수복] 암살자가 +2% 익절 목표가에 도달하여 당일 임무를 완수했을 때 발송하던 낡은 브리핑 텍스트(시나리오 2 본진 셧다운)를 전면 파기하고, "암살자 단독 당일 임무 완수 (본진 무중단 정상 가동)" 팩트로 UI 교정 완료.
+# 🚨 MODIFIED: [본진 무중단 병렬 가동 팩트 수복] 암살자가 동적 익절 목표가에 도달하여 당일 임무를 완수했을 때 발송하던 낡은 브리핑 텍스트(시나리오 2 본진 셧다운)를 전면 파기하고, "암살자 단독 당일 임무 완수 (본진 무중단 정상 가동)" 팩트로 UI 교정 완료.
 # 🚨 MODIFIED: [Silent Death 붕괴 수술] strategy.get_avwap_decision 호출 시 base_ticker 결측으로 인해 타점 연산이 조기 종료(return {})되던 치명적 버그를 파라미터 강제 주입으로 원천 차단.
-# 🚨 MODIFIED: [슬리피지 제로(0%) 팩트 락온] 암살자 매수(-2%) 및 매도(+2%) 시 시장가 추격을 철저히 배제하고 무조건 100% 지정가(LIMIT) 장전 강제.
+# 🚨 MODIFIED: [슬리피지 제로(0%) 팩트 락온] 암살자 동적 매수 및 매도 시 시장가 추격을 철저히 배제하고 무조건 100% 지정가(LIMIT) 장전 강제.
 # 🚨 MODIFIED: [15:59 EST 제로-오버나이트 강제 덤핑망 정밀 타격 수술] 정규장 마감 1분 전, 본진 덫과의 간섭을 막기 위해 암살자의 덫(buy_odno/sell_odno)만을 핀셋 취소하고 매수 1호가 최유리 지정가로 스윕(Sweep) 덤핑하여 자본 잠김 원천 차단.
 # 🚨 MODIFIED: [V14 상방 스나이퍼 생태계 절대 보존] 암살자 로직과 100% 물리적으로 디커플링하여 기존 상방 스나이퍼 매수/매도 로직은 무결점 사수.
 # 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프 및 KIS 전송 TPS 캡핑(0.06s) 샌드위치 전면 락온.
@@ -237,7 +237,7 @@ async def scheduled_sniper_monitor(context):
                 active_tickers = await asyncio.wait_for(asyncio.to_thread(cfg.get_active_tickers), timeout=5.0) or []
             except Exception:
                 active_tickers = []
-                
+             
             for t in active_tickers:
                 try:
                     await asyncio.sleep(0.06) 
@@ -246,9 +246,14 @@ async def scheduled_sniper_monitor(context):
                     try:
                         version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                         is_avwap_hybrid = await asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
+                        # 🚨 NEW: 암살자 동적 비율 추출
+                        entrance_rate = _safe_float(await asyncio.to_thread(getattr(cfg, 'get_avwap_entrance_rate', lambda x: 2.0), t))
+                        exit_rate = _safe_float(await asyncio.to_thread(getattr(cfg, 'get_avwap_exit_rate', lambda x: 2.0), t))
                     except Exception:
                         version = "V14"
                         is_avwap_hybrid = False
+                        entrance_rate = 2.0
+                        exit_rate = 2.0
                         
                     # ==============================================================
                     # 1. ⚔️ 순수 리버전 데이 트레이딩 (암살자 1-Shot 1-Kill 팩트 교전망)
@@ -276,7 +281,7 @@ async def scheduled_sniper_monitor(context):
                              
                             filled_buy_qty = sum(int(_safe_float(ex.get('ft_ccld_qty'))) for ex in safe_exec if str(ex.get('odno')) == t_state.get('buy_odno') and ex.get('sll_buy_dvsn_cd') == '02')
                             filled_sell_qty = sum(int(_safe_float(ex.get('ft_ccld_qty'))) for ex in safe_exec if str(ex.get('odno')) == t_state.get('sell_odno') and ex.get('sll_buy_dvsn_cd') == '01')
-                             
+                              
                             if t_state.get('buy_odno') and filled_buy_qty > 0:
                                 t_state['qty'] = filled_buy_qty
                             t_state['qty'] = max(0, t_state['qty'] - filled_sell_qty)
@@ -325,7 +330,7 @@ async def scheduled_sniper_monitor(context):
                         if t_state.get('shutdown'):
                             continue
 
-                        # 🚨 [매수 덫(-2%) 체결 감시망]
+                        # 🚨 [매수 덫 동적 체결 감시망]
                         if t_state.get('buy_odno') and t_state.get('qty') == 0:
                             exec_hist = await _retry_api(broker.get_execution_history, t, today_kst_str, today_kst_str)
                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
@@ -345,20 +350,23 @@ async def scheduled_sniper_monitor(context):
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 
                                 if chat_id:
-                                    await _safe_send(context, chat_id, f"🎯 <b>[{html.escape(t)}] 암살자 1-Shot 1-Kill 매수 타격!</b>\n▫️ 주문가능금액 100% 올인 진입: {filled_qty}주 @ ${avg_p:.2f}\n▫️ 즉시 과욕 제어망(+2% 지정가 전량 매도 덫)을 장전합니다.", parse_mode='HTML')
+                                    # 🚨 NEW: 텔레그램 동적 변수 팩트 렌더링
+                                    await _safe_send(context, chat_id, f"🎯 <b>[{html.escape(t)}] 암살자 1-Shot 1-Kill 매수 타격!</b>\n▫️ 주문가능금액 100% 올인 진입: {filled_qty}주 @ ${avg_p:.2f}\n▫️ 즉시 과욕 제어망(+{exit_rate}% 지정가 전량 매도 덫)을 장전합니다.", parse_mode='HTML')
 
-                        # 🚨 [매도 덫(+2%) 강제 장전망]
+                        # 🚨 [매도 덫 동적(+N%) 강제 장전망]
                         if t_state.get('qty') > 0 and not t_state.get('sell_odno'):
-                            sell_price = math.ceil(t_state['avg_price'] * 1.02 * 100) / 100.0
+                            # 🚨 NEW: 하드코딩 * 1.02 폐기 및 동적 익절률 팩트 락온
+                            exit_multiplier = 1.0 + (exit_rate / 100.0)
+                            sell_price = math.ceil(t_state['avg_price'] * exit_multiplier * 100) / 100.0
                             s_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], sell_price, "LIMIT")
                             
                             if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
                                 t_state['sell_odno'] = str(s_res.get('odno'))
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 if chat_id:
-                                    await _safe_send(context, chat_id, f"🕸️ <b>[{html.escape(t)}] +2% 익절망 장전 완료</b>\n▫️ 목표 지정가: ${sell_price:.2f} ({t_state['qty']}주)", parse_mode='HTML')
+                                    await _safe_send(context, chat_id, f"🕸️ <b>[{html.escape(t)}] +{exit_rate}% 익절망 장전 완료</b>\n▫️ 목표 지정가: ${sell_price:.2f} ({t_state['qty']}주)", parse_mode='HTML')
 
-                        # 🚨 [매도 덫(+2%) 익절 체결 감시망] (Scenario 2)
+                        # 🚨 [매도 덫 동적 익절 체결 감시망] (Scenario 2)
                         if t_state.get('sell_odno') and t_state.get('qty') > 0:
                             exec_hist = await _retry_api(broker.get_execution_history, t, today_kst_str, today_kst_str)
                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
@@ -372,23 +380,25 @@ async def scheduled_sniper_monitor(context):
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 
                                 if chat_id:
-                                    # 🚨 MODIFIED: [본진 무중단 병렬 가동 팩트 수복] 오염된 텍스트 영구 파기 및 독립 퇴근망 UI 팩트 교정
-                                    await _safe_send(context, chat_id, f"🚀 <b>[{html.escape(t)}] 암살자 +2% 전량 익절 성공! (당일 임무 완수)</b>\n▫️ 교전에서 승리하여 투입된 예산을 성공적으로 100% 현금화했습니다.\n▫️ 암살자 단독 당일 임무 완수 (본진은 무중단 정상 가동됩니다).", parse_mode='HTML')
+                                    # 🚨 MODIFIED: [본진 무중단 병렬 가동 팩트 수복] 독립 퇴근망 동적 UI 팩트 교정
+                                    await _safe_send(context, chat_id, f"🚀 <b>[{html.escape(t)}] 암살자 +{exit_rate}% 전량 익절 성공! (당일 임무 완수)</b>\n▫️ 교전에서 승리하여 투입된 예산을 성공적으로 100% 현금화했습니다.\n▫️ 암살자 단독 당일 임무 완수 (본진은 무중단 정상 가동됩니다).", parse_mode='HTML')
                                 continue
 
-                        # 🚨 [진입 타점(-2%) 실시간 감시 및 1-Shot 1-Kill 딥-매수 격발망]
+                        # 🚨 [진입 타점 동적 실시간 감시 및 1-Shot 1-Kill 딥-매수 격발망]
                         if t_state.get('qty') == 0 and not t_state.get('buy_odno') and not t_state.get('shutdown'):
                             exec_curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
                             df_1min_t = await _retry_api(broker.get_1min_candles_df, t)
                             
-                            # 🚨 MODIFIED: [Silent Death 붕괴 수술] base_ticker 누락으로 인한 빈 딕셔너리 반환 및 딥매수 마비 원천 차단
+                            # 🚨 NEW: [동적 파라미터 주입] 하드코딩 폐기 후 entrance_rate / exit_rate 주입
                             decision = await asyncio.wait_for(
                                 asyncio.to_thread(
                                     strategy.get_avwap_decision,
                                     base_ticker=target_base,
                                     exec_ticker=t, exec_curr_p=exec_curr_p, 
                                     df_1min_exec=df_1min_t, now_est=now_est,
-                                    is_simulation=False
+                                    is_simulation=False,
+                                    avwap_entrance_rate=entrance_rate,
+                                    avwap_exit_rate=exit_rate
                                 ),
                                 timeout=15.0
                             )
@@ -396,7 +406,7 @@ async def scheduled_sniper_monitor(context):
                             if decision and decision.get('raw_action') == 'DEEP_BUY':
                                 buy_price = _safe_float(decision.get('target_price', 0.0))
                                 if buy_price > 0.0:
-                                    # MODIFIED: [95% 안전 마진 팩트 락온] KIS 서버의 가승인 증거금 부족(Reject)을 원천 차단하기 위해 가용 현금의 95%만 투입
+                                    # MODIFIED: [95% 안전 마진 팩트 락온] 가승인 증거금 부족 Reject 원천 차단
                                     safe_available_cash = available_cash * 0.95
                                     buy_qty = int(math.floor(safe_available_cash / buy_price))
                                     
@@ -406,10 +416,9 @@ async def scheduled_sniper_monitor(context):
                                             t_state['buy_odno'] = str(b_res.get('odno'))
                                             await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                             
-                                            # MODIFIED: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 격발 브리핑 텍스트 95% 안전 마진 표기 반영
+                                            # 🚨 NEW: 암살자 동적 격발 브리핑 텍스트
                                             if chat_id:
-                                                await _safe_send(context, chat_id, f"⚔️ <b>[{html.escape(t)}] 암살자 -2% 하방 이격도 타점 관통!</b>\n▫️ 주문가능금액 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f}) 지정가(LIMIT) 장전 완료: {buy_qty}주 @ ${buy_price:.2f}", parse_mode='HTML')
-                                        # MODIFIED: [Silent Death 붕괴 수술] KIS 서버 리젝 시 에러 메시지 텔레그램 타전망 결속
+                                                await _safe_send(context, chat_id, f"⚔️ <b>[{html.escape(t)}] 암살자 -{entrance_rate}% 하방 이격도 타점 관통!</b>\n▫️ 주문가능금액 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f}) 지정가(LIMIT) 장전 완료: {buy_qty}주 @ ${buy_price:.2f}", parse_mode='HTML')
                                         else:
                                             err_msg = html.escape(str(b_res.get('msg1') or '응답 없음/통신 장애')) if isinstance(b_res, dict) else '통신 장애'
                                             logging.error(f"🚨 [{t}] 암살자 1-Shot 1-Kill 딥매수 KIS 서버 거절: {err_msg}")
@@ -646,7 +655,7 @@ async def scheduled_sniper_monitor(context):
                                 order_res = None
                                 
                             odno = order_res.get('odno', '') if isinstance(order_res, dict) else ''
-    
+  
                             if order_res and order_res.get('rt_cd') == '0' and odno:
                                 # 🚨 [UnboundLocalError 붕괴 수술] 매도 구간 역시 스코프 전진 배치 강제
                                 now_kst_fresh = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
@@ -659,7 +668,7 @@ async def scheduled_sniper_monitor(context):
                                         await asyncio.sleep(0.06) 
                                         unfilled_check = await asyncio.wait_for(asyncio.to_thread(broker.get_unfilled_orders_detail, t), timeout=10.0)
                                     except Exception: unfilled_check = []
-                                      
+                                    
                                     safe_unfilled = unfilled_check if isinstance(unfilled_check, list) else []
                                     my_order = next((ox for ox in safe_unfilled if isinstance(ox, dict) and str(ox.get('odno', '')) == odno), None)
                                     if my_order:
@@ -719,4 +728,3 @@ async def scheduled_sniper_monitor(context):
         await asyncio.wait_for(_do_sniper(), timeout=240.0)
     except Exception as e:
         logging.error(f"🚨 스나이퍼 타임아웃 에러: {e}", exc_info=True)
-

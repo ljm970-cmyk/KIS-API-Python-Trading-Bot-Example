@@ -3,7 +3,8 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
 # 🚨 MODIFIED: [Indentation 붕괴 수술] set_seed, get_secret_mode, get_chat_id 등 내부의 13칸/17칸 들여쓰기 엇갈림 오차를 4칸 배수 표준으로 정밀 교정하여 파이썬 컴파일러 즉사 버그 완벽 차단.
-# 🚨 MODIFIED: [암살자 수동 타겟팅 뇌관 영구 소각] 순수 리버전 데이 트레이딩 아키텍처 이식에 따라, 암살자의 원화(KRW)/수익률(PCT) 수동 설정 스키마 및 관련 Getter/Setter 100% 영구 삭제 (+2% 절대 익절 팩트 락온).
+# 🚨 MODIFIED: [암살자 수동 타겟팅 뇌관 영구 소각] 순수 리버전 데이 트레이딩 아키텍처 이식에 따라, 암살자의 원화(KRW)/수익률(PCT) 수동 설정 스키마 및 관련 Getter/Setter 100% 영구 삭제.
+# 🚨 NEW: [암살자 동적 제어 해방] AVWAP_ENTRANCE_CFG 및 AVWAP_EXIT_CFG 파일 결속, 0.1% ~ 15.0% 클램핑 샌드박스 구축 완료.
 # 🚨 MODIFIED: [V-REV 슬라이싱 수학 무결성 락온] VWAP_PROFILES 누적 가중치(Cumulative, CDF) 100% 교정 유지.
 # 🚨 MODIFIED: [V54.03 JSON 락온(Mutex) 방어막 전면 이식] Thread-safe 한 로컬 파일 동기화 사수.
 # 🚨 MODIFIED: [Case 34] 락온 센티널 파일 고아화(Orphan Lock) 맹점 영구 소각 유지.
@@ -86,7 +87,10 @@ class ConfigManager:
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",     
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
-            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json"
+            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json",
+            # NEW: 암살자 진입/익절 동적 타점 제어용 상태 파일 배선
+            "AVWAP_ENTRANCE_CFG": "data/avwap_entrance.json",
+            "AVWAP_EXIT_CFG": "data/avwap_exit.json"
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -96,6 +100,10 @@ class ConfigManager:
         self.DEFAULT_COMPOUND = {"SOXL": 70.0, "TQQQ": 70.0}
         self.DEFAULT_SNIPER_MULTIPLIER = {"SOXL": 1.0, "TQQQ": 0.9}
         self.DEFAULT_FEE = {"SOXL": 0.07, "TQQQ": 0.07} 
+        
+        # NEW: 암살자 진입/익절 디폴트 설정 (2.0%)
+        self.DEFAULT_AVWAP_ENTRANCE = 2.0
+        self.DEFAULT_AVWAP_EXIT = 2.0
         
         self._locks_mutex = threading.Lock()
         self._io_lock = threading.RLock()
@@ -410,7 +418,7 @@ class ConfigManager:
             if len(target_recs) > 0:
                 logging.warning(f"⚠️ [보안 차단] {ticker}의 장부 기록이 이미 존재하여 파괴적 INIT 덮어쓰기를 차단했습니다.")
                 return
-                  
+                
             est = ZoneInfo('America/New_York')
             today_str = datetime.datetime.now(est).strftime('%Y-%m-%d')
             new_id = 1 if not ledger else max([int(self._safe_float(r.get('id', 0))) for r in ledger] + [0]) + 1
@@ -735,7 +743,6 @@ class ConfigManager:
         raw_data = self._load_json(self.FILES["HISTORY"], [])
         return [h for h in raw_data if isinstance(h, dict)]
 
-    # 🚨 NEW: [명예의 전당 소각] 특정 졸업 기록(ID) 영구 소각 및 중복 타격(Double Tap) 붕괴 방어 팩트 결속
     def delete_history(self, hist_id: int) -> bool:
         with self._io_lock:
             history = self.get_history()
@@ -743,7 +750,6 @@ class ConfigManager:
                 return False
                 
             original_len = len(history)
-            # 🚨 MODIFIED: [타입 오염 붕괴 방어] id 값 비교 시 _safe_float 후 int 캐스팅을 거쳐 JSON 파싱 타입 불일치 즉사 버그 차단
             safe_target_id = int(self._safe_float(hist_id))
             remaining_history = [
                 h for h in history 
@@ -751,7 +757,7 @@ class ConfigManager:
             ]
             
             if len(remaining_history) == original_len:
-                return False # 삭제 대상 없음 (중복 타격 붕괴 패러독스 방어 멱등성 보장)
+                return False 
                 
             self._save_json(self.FILES["HISTORY"], remaining_history)
             return True
@@ -903,7 +909,6 @@ class ConfigManager:
         with self._io_lock:
              self._save_json(self.FILES["TICKER"], v)
     
-    # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
     def get_chat_id(self): 
         v = self._load_file(self.FILES["CHAT_ID"])
         if v:
@@ -915,14 +920,33 @@ class ConfigManager:
         with self._io_lock:
             self._save_file(self.FILES["CHAT_ID"], v)
 
-    # 🚨 NEW: AVWAP 고정 기점(Anchor) 데이터 로드 및 당월 1일 디폴트 연산
     def get_avwap_anchor_date(self, ticker):
-        # 🚨 MODIFIED: [State Mismatch 수술] 디폴트 값을 당월 1일 하드코딩에서 "AUTO"로 팩트 교정하여 자율주행 엔진 격발 락온
         return str(self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {}).get(ticker, "AUTO"))
 
-    # 🚨 NEW: AVWAP 고정 기점 날짜 수동 락온 (원자적 쓰기 강제)
     def set_avwap_anchor_date(self, ticker, date_str):
         with self._io_lock:
             d = self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {})
             d[ticker] = str(date_str)
             self._save_json(self.FILES["AVWAP_ANCHOR_CFG"], d)
+
+    # NEW: 암살자 진입률(%) 동적 제어 (0.1% ~ 15.0% 클램핑 팩트 락온)
+    def get_avwap_entrance_rate(self, ticker):
+        val = self._safe_float(self._load_json(self.FILES["AVWAP_ENTRANCE_CFG"], {}).get(ticker, self.DEFAULT_AVWAP_ENTRANCE))
+        return max(0.1, min(15.0, val))
+
+    def set_avwap_entrance_rate(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_ENTRANCE_CFG"], {})
+            d[ticker] = max(0.1, min(15.0, self._safe_float(v)))
+            self._save_json(self.FILES["AVWAP_ENTRANCE_CFG"], d)
+
+    # NEW: 암살자 익절률(%) 동적 제어 (0.1% ~ 15.0% 클램핑 팩트 락온)
+    def get_avwap_exit_rate(self, ticker):
+        val = self._safe_float(self._load_json(self.FILES["AVWAP_EXIT_CFG"], {}).get(ticker, self.DEFAULT_AVWAP_EXIT))
+        return max(0.1, min(15.0, val))
+
+    def set_avwap_exit_rate(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_EXIT_CFG"], {})
+            d[ticker] = max(0.1, min(15.0, self._safe_float(v)))
+            self._save_json(self.FILES["AVWAP_EXIT_CFG"], d)

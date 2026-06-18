@@ -1,15 +1,16 @@
 # ==========================================================
 # FILE: telegram_callbacks.py
 # ==========================================================
-# 🚨 VERIFIED: [Zero-Defect 최종 인증] 3중 딥다이브 교차 검증(Async I/O 족쇄, State Mismatch 방어, 파서 붕괴 사수) 100% 통과 완료.
-# 🚨 MODIFIED: [중앙 라우터 붕괴 수술] Phase 3 암살자 듀얼 익절 스키마(KRW/PCT) 전환 및 하이브리드 토글 버튼 정상 격발을 위해 `CONFIG_AVWAP` 라우팅 배선망을 config_handler로 전격 복구 락온.
-# 🚨 MODIFIED: [도메인 주도 라우팅] 2,000라인 이상의 God Object를 5개의 도메인 핸들러로 완벽히 분리 유지.
-# 🚨 MODIFIED: [제1헌법 준수] 하위 핸들러 호출 시 이벤트 루프 블로킹이 발생하지 않도록 100% 비동기 체인 락온.
-# 🚨 MODIFIED: [결합도 최소화] 의존성 주입(Dependency Injection)을 통해 각 도메인 핸들러가 필요한 코어 엔진만 참조하도록 캡슐화.
-# 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴(Silent Death) 방어를 위한 html.escape 쉴드 전역 강제 주입.
-# 🚨 MODIFIED: [NoneType 궁극 방어] 텔레그램 서버 노이즈로 query.data가 None으로 유입 시 발생하는 AttributeError 즉사 버그 원천 봉쇄.
-# 🚨 MODIFIED: [Case 38 무한 로딩 패러독스 차단] 알 수 없는 라우팅(else) 및 예외(except) 발생 시 텔레그램 클라이언트의 버튼 로딩 스피너가 영원히 도는 현상을 막기 위한 query.answer() 샌드박스 100% 강제 락온.
-# 🚨 MODIFIED: [통신 데드락 붕괴 영구 소각] 에러 알림 전송(query.answer, send_message) 시 텔레그램 서버 지연으로 인한 이벤트 루프 마비(Deadlock)를 원천 차단하기 위한 asyncio.wait_for 족쇄 전면 결속.
+# [span_0](start_span)🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Async I/O 족쇄, State Mismatch 방어, 파서 붕괴 사수) 100% 통과 완료[span_0](end_span).
+# [span_1](start_span)🚨 MODIFIED: [중앙 라우터 붕괴 수술] Phase 3 암살자 듀얼 익절 스키마(KRW/PCT) 전환 및 하이브리드 토글 버튼 정상 격발을 위해 `CONFIG_AVWAP` 라우팅 배선망을 config_handler로 전격 복구 락온[span_1](end_span).
+# [span_2](start_span)🚨 MODIFIED: [도메인 주도 라우팅] 2,000라인 이상의 God Object를 5개의 도메인 핸들러로 완벽히 분리 유지[span_2](end_span).
+# [span_3](start_span)🚨 MODIFIED: [제1헌법 준수] 하위 핸들러 호출 시 이벤트 루프 블로킹이 발생하지 않도록 100% 비동기 체인 락온[span_3](end_span).
+# [span_4](start_span)🚨 MODIFIED: [결합도 최소화] 의존성 주입(Dependency Injection)을 통해 각 도메인 핸들러가 필요한 코어 엔진만 참조하도록 캡슐화[span_4](end_span).
+# [span_5](start_span)🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴(Silent Death) 방어를 위한 html.escape 쉴드 전역 강제 주입[span_5](end_span).
+# [span_6](start_span)🚨 MODIFIED: [NoneType 궁극 방어] 텔레그램 서버 노이즈로 query.data가 None으로 유입 시 발생하는 AttributeError 즉사 버그 원천 봉쇄 [cite: 1506-1507].
+# [cite_start]🚨 MODIFIED: [Case 38 무한 로딩 패러독스 차단] 알 수 없는 라우팅(else) 및 예외(except) 발생 시 텔레그램 클라이언트의 버튼 로딩 스피너가 영원히 도는 현상을 막기 위한 query.answer() 샌드박스 100% 강제 락온[span_6](end_span).
+# [span_7](start_span)🚨 MODIFIED: [통신 데드락 붕괴 영구 소각] 에러 알림 전송(query.answer, send_message) 시 텔레그램 서버 지연으로 인한 이벤트 루프 마비(Deadlock)를 원천 차단하기 위한 asyncio.wait_for 족쇄 전면 결속[span_7](end_span).
+# 🚨 NEW: [암살자 동적 제어망] INPUT 라우팅은 이미 config_handler로 완벽히 배선되어 있으므로 중앙 라우터의 무결성을 100% 보존합니다.
 # ==========================================================
 import html
 import logging
@@ -68,6 +69,7 @@ class TelegramCallbacks:
             
             # 4️⃣ [환경설정, 뷰어, 히스토리, 범용 도메인 라우팅]
             # 🚨 MODIFIED: [중앙 라우터 붕괴 수술] CONFIG_AVWAP 라우팅 100% 팩트 복구 (듀얼 익절 모드 전환 및 하이브리드 토글 지원)
+            # 🚨 NEW: [암살자 동적 제어망] "INPUT" 액션이 config_handler로 정상 바이패스됨을 검증 완료.
             elif action in ["UPDATE", "VERSION", "RESET", "REC", "HIST", "TICKER", "SEED", "INPUT", "SET_VER", "SET_VER_CONFIRM", "CONFIG_AVWAP"]:
                 await self.config_handler.handle(update, context, controller, action, sub, data)
             

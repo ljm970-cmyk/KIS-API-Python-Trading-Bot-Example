@@ -2,6 +2,7 @@
 # FILE: strategy_v_avwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
+# 🚨 NEW: [순수 리버전 데이 트레이딩 동적 타점 해방] 하드코딩 되어있던 -2% / +2% 연산식을 100% 파기하고, kwargs로 주입된 entrance_rate 및 exit_rate 기반의 동적 연산(Dynamic Decoupling) 엔진 이식 완료.
 # 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST 이후) 무포지션(0주) 상태일 경우 타점 관통과 무관하게 신규 진입을 전면 차단하고 '조기 퇴근' 상태를 반환하도록 2중 팩트 락온.
 # 🚨 MODIFIED: [의사결정 코어 엔진 다이어트] 실제 매매가 없으므로 불필요한 주문 타점(Target Price) 계산과 복잡한 상태 전이(State Machine) 로직 진공 압축.
 # 🚨 MODIFIED: [Action Unified 락온] PLACE_TRAP, PLACE_SELL_TRAP, SHUTDOWN, WAIT 등의 Action 반환을 'OBSERVING'(관측 중) 상태로 100% 통합.
@@ -11,7 +12,7 @@
 # 🚨 MODIFIED: [Time Paradox 붕괴 수술] 04:00~04:04 구간에서 전일(Yesterday)의 데이터를 불러와 RAM을 오염시키는 맹점을 차단하고 04:00 정각에 100% 당일(Today)로 롤오버되도록 팩트 락온.
 # 🚨 MODIFIED: [JSON 직렬화 붕괴 예방 락온] Numpy float64 타입 혼입으로 인한 json.dump 에러를 원천 차단하기 위해 순수 Python 타입으로 강제 캐스팅(self._safe_float) 100% 결속.
 # 🚨 MODIFIED: [Case 08, 16] os.path.exists 동기스캔 배제, EAFP 적용 및 temp_path 원자적 쓰기 스코프 전진 배치 유지.
-# 🚨 NEW: [순수 리버전 데이 트레이딩 코어 복원] HA 하드 리셋 쉴드 소각 및 순수 세션별 VWAP -2% 타격망 100% 팩트 이식 완료.
+# 🚨 NEW: [순수 리버전 데이 트레이딩 코어 복원] HA 하드 리셋 쉴드 소각 및 순수 세션별 VWAP 동적 타격망 100% 팩트 이식 완료.
 # 🚨 MODIFIED: [Case 35 결측치 전이 방어] 1분봉 데이터의 결측치(NaN)로 인해 VWAP 연산이 붕괴되는 현상을 막기 위해 ffill().bfill() 체인 강제 락온.
 # 🚨 MODIFIED: [Case 01 절대 헌법 사수] 날짜 비교 시 '%Y-%m-%d' 시스템 표준 포맷 100% 강제 래핑 완료.
 # 🚨 NEW: [Case 05 최후의 오발사 방어] exec_curr_p(현재가)가 0.0으로 유입될 경우, 무조건 타점을 터치한 것으로 오인하여 딥-매수가 격발되는 즉사 버그를 막기 위한 원천 방어 쉴드 락온.
@@ -148,6 +149,7 @@ class VAvwapHybridPlugin:
     
                 if not df_1m.empty:
                     df_1m = self._flatten_columns(df_1m)
+    
                     if df_1m.index.tz is None:
                         df_1m.index = df_1m.index.tz_localize('UTC').tz_convert(est)
                     else:
@@ -198,6 +200,10 @@ class VAvwapHybridPlugin:
         now_est = now_est or datetime.datetime.now(ZoneInfo('America/New_York'))
         today_est_date = now_est.date()
         curr_t = now_est.time()
+
+        # 🚨 NEW: kwargs로부터 사용자 설정 진입률/익절률 팩트 추출 (없을 경우 2.0% 디폴트 락온)
+        entrance_rate = self._safe_float(kwargs.get('avwap_entrance_rate', 2.0))
+        exit_rate = self._safe_float(kwargs.get('avwap_exit_rate', 2.0))
 
         def _build_res(action, reason, tp=0.0, session_vwap=0.0):
             return {
@@ -264,23 +270,22 @@ class VAvwapHybridPlugin:
         if session_vwap <= 0.0:
             return _build_res('OBSERVING', f'{session_name} 실시간 VWAP 연산 대기중')
 
-        # 🚨 MODIFIED: [타점 롤오버] 암살자 진입가 -3% ➔ -2% 팩트 교정 (0.97 -> 0.98)
-        buy_target_price = math.floor(session_vwap * 0.98 * 100) / 100.0
+        # 🚨 MODIFIED: [동적 타점 롤오버] 하드코딩 -2% 소각 및 entrance_rate 동적 연산 결속
+        buy_target_price = math.floor(session_vwap * (1.0 - (entrance_rate / 100.0)) * 100) / 100.0
 
         if avwap_qty > 0:
-            # 🚨 [과욕 제어 매도 타점 연산] : 진입 단가 * 1.02 (올림)
-            sell_target_price = math.ceil(avwap_avg_price * 1.02 * 100) / 100.0 if avwap_avg_price > 0 else 0.0
-            return _build_res('OBSERVING', f'{session_name} 교전 중 (+2% 전량 익절 대기)', tp=sell_target_price, session_vwap=session_vwap)
+            # 🚨 MODIFIED: [과욕 제어 매도 타점 동적 연산] 하드코딩 +2% 소각 및 exit_rate 동적 연산 결속
+            sell_target_price = math.ceil(avwap_avg_price * (1.0 + (exit_rate / 100.0)) * 100) / 100.0 if avwap_avg_price > 0 else 0.0
+            return _build_res('OBSERVING', f'{session_name} 교전 중 (+{exit_rate}% 전량 익절 대기)', tp=sell_target_price, session_vwap=session_vwap)
         else:
             # 무포지션 상태 (매수 대기)
-            # 🚨 NEW: [퀀트 뇌관 하드 락온] 프리장 미진입 시 정규장 신규 진입 원천 차단 (조기 퇴근)
+            # 🚨 [퀀트 뇌관 하드 락온] 프리장 미진입 시 정규장 신규 진입 원천 차단 (조기 퇴근)
             if curr_t >= datetime.time(9, 30):
                 return _build_res('OBSERVING', '프리장 미진입으로 인한 진입 차단 (조기 퇴근)', tp=buy_target_price, session_vwap=session_vwap)
 
             if exec_curr_p <= buy_target_price:
-                # 🚨 MODIFIED: [타점 롤오버] 텔레그램 브리핑 텍스트 -3% ➔ -2% 팩트 교정
-                return _build_res('DEEP_BUY', f'{session_name} -2% 타점(${buy_target_price:.2f}) 하향 관통! 1-Shot 1-Kill 격발 인가', tp=buy_target_price, session_vwap=session_vwap)
+                # 🚨 MODIFIED: 텔레그램 브리핑 텍스트 동적 변수 팩트 교정
+                return _build_res('DEEP_BUY', f'{session_name} -{entrance_rate}% 타점(${buy_target_price:.2f}) 하향 관통! 1-Shot 1-Kill 격발 인가', tp=buy_target_price, session_vwap=session_vwap)
             else:
-                # 🚨 MODIFIED: [타점 롤오버] 텔레그램 브리핑 텍스트 -3% ➔ -2% 팩트 교정
-                return _build_res('OBSERVING', f'{session_name} -2% 타점(${buy_target_price:.2f}) 감시 중', tp=buy_target_price, session_vwap=session_vwap)
-
+                # 🚨 MODIFIED: 텔레그램 브리핑 텍스트 동적 변수 팩트 교정
+                return _build_res('OBSERVING', f'{session_name} -{entrance_rate}% 타점(${buy_target_price:.2f}) 감시 중', tp=buy_target_price, session_vwap=session_vwap)
