@@ -7,8 +7,8 @@
 # 🚨 MODIFIED: [제1헌법 철저 준수] 로컬 파일 I/O(config 조작) 실행 시 `wait_for(..., timeout=5.0)` 족쇄를 완벽히 래핑하여 디스크 I/O 병목으로 인한 이벤트 루프 교착 원천 차단.
 # 🚨 MODIFIED: [Ghost Chat 붕괴 원천 봉쇄] update.callback_query 결측치 유입 시 발생하는 즉사 버그 방어.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 타전망 내 동적 변수 전역에 `html.escape` 쉴드 강제 래핑 완료.
-# 🚨 MODIFIED: [데드코드 콜백 소각] AVWAP_WARN, AVWAP_ON, AVWAP_OFF 콜백 분기문을 100% 영구 삭제하여 팻핑거 유입 시 시스템 오작동을 원천 차단 (Phase 3 완료).
-# 🚨 NEW: [숏 스퀴즈 가이던스 라우팅 결속] AVWAP_SET:SQUEEZE_GUIDE 서브 라우팅을 신설하여, ShortSqueezeScanner의 팩트 가이던스를 사용자에게 타전하는 2-Depth UI 배선 완료.
+# 🚨 MODIFIED: [데드코드 콜백 소각] AVWAP_WARN, AVWAP_ON, AVWAP_OFF 콜백 분기문을 100% 영구 삭제하여 팻핑거 유입 시 시스템 오작동을 원천 차단.
+# 🚨 NEW: [실시간 숏 스퀴즈 다이내믹 렌더링 락온] AVWAP_SET:SQUEEZE_GUIDE 액션 발생 시, 정적 텍스트 반환을 파기하고 실시간으로 ShortSqueezeScanner를 기동시켜 시스템 판정(Judgment)을 포함한 동적 리포트를 브리핑하도록 팩트 교정 완료.
 # ==========================================================
 import logging
 import datetime
@@ -79,10 +79,8 @@ class CallbackAvwapHandler:
                 if hasattr(controller, 'cmd_mode'):
                     await controller.cmd_mode(update, context)
             
-            # 🚨 MODIFIED: AVWAP_WARN, AVWAP_ON, AVWAP_OFF 365일 상시가동 하드코딩에 의한 콜백 라우팅 영구 소각 완료
 
         elif action == "AVWAP_SET":
-            # 🚨 MODIFIED: [수동 제어망 라우팅 영구 소각] PAUSE_BUY, RESUME_BUY, SYNC_ZERO 등 팻핑거 뇌관을 파일 내에서 100% 완전 제거.
             if sub == "REFRESH":
                 # 🚨 Refresh의 경우 반드시 ticker가 필요하므로 결측 시 바이패스
                 if not ticker or ticker == "NONE": return
@@ -93,16 +91,23 @@ class CallbackAvwapHandler:
                 if hasattr(controller, 'cmd_avwap'):
                     await controller.cmd_avwap(update, context)
 
-            # 🚨 NEW: 숏 스퀴즈 지표 읽는 법 (가이던스) 라우팅 결속
+            # 🚨 NEW: 숏 스퀴즈 실시간 스캔 및 다이내믹 렌더링 라우팅 결속
             elif sub == "SQUEEZE_GUIDE":
-                # 🚨 Case 38: 버튼 무한 로딩 스피너 팩트 소각
-                try: await query.answer() 
+                # 🚨 무한 로딩 스피너 방지
+                try: await query.answer("🔍 실시간 온체인 데이터를 분석 중입니다...", show_alert=False)
                 except Exception: pass
                 
                 try:
-                    # 🚨 [도메인 위임] 숏 스퀴즈 엔진 인스턴스화 및 가이던스 텍스트 추출
+                    # 🚨 [Routing] 기초자산 팩트 추출 (SOXL -> SOXX)
+                    base_ticker = 'SOXX' if ticker == 'SOXL' else ('QQQ' if ticker == 'TQQQ' else ticker)
+                    if not base_ticker: base_ticker = 'SOXX' # 최후의 결측치 폴백
+                    
+                    # 🚨 [도메인 위임 및 제1헌법 사수] 숏 스퀴즈 엔진 인스턴스화 및 실시간 데이터 스캔
                     scanner = ShortSqueezeScanner()
-                    guidance_msg = scanner.get_squeeze_guidance_text()
+                    metrics = await asyncio.wait_for(scanner.get_metrics(base_ticker), timeout=15.0)
+                    
+                    # 스캔된 팩트를 주입하여 동적 가이던스 추출
+                    guidance_msg = scanner.get_squeeze_guidance_text(base_ticker, metrics)
                     
                     # 🚨 [Event Loop 교착 방어] 텔레그램 통신망에 wait_for 족쇄 체결 후 전송
                     await asyncio.wait_for(
@@ -110,10 +115,10 @@ class CallbackAvwapHandler:
                         timeout=15.0
                     )
                 except Exception as e:
-                    logging.error(f"🚨 숏 스퀴즈 가이던스 발송 실패: {e}")
+                    logging.error(f"🚨 숏 스퀴즈 실시간 가이던스 발송 실패: {e}")
                     try:
                         await asyncio.wait_for(
-                            context.bot.send_message(chat_id=chat_id, text="❌ <b>가이던스 추출 실패</b>", parse_mode='HTML'),
+                            context.bot.send_message(chat_id=chat_id, text="❌ <b>실시간 숏 스퀴즈 데이터 스캔에 실패했습니다. (API 통신 오류)</b>", parse_mode='HTML'),
                             timeout=5.0
                         )
                     except Exception: pass
