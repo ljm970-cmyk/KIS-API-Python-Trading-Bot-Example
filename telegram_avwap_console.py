@@ -19,6 +19,8 @@
 # 🚨 MODIFIED: [Case 24 결측치 방어] 정규장/프리장 1분봉 데이터(df_pre, df_reg) 부재 시 ValueError를 막기 위해 단락 평가(if not empty) 강제.
 # 🚨 NEW: [런타임 호환성 팩트 결속] _get_with_retry 헬퍼 내부에 functools.partial을 주입하여 구버전 파이썬의 to_thread kwargs TypeError 붕괴 원천 차단.
 # 🚨 NEW: [자율주행 앵커링 UI 결속] Config에 지정된 앵커가 없거나 "AUTO"일 경우, `market_data_provider`의 3-Tier 자율주행 스캔 엔진을 격발하여 진성 평단가 및 채택 사유(Tier)를 100% 동적 렌더링 완료.
+# 🚨 NEW: [숏 스퀴즈 감시망 전격 이식] 낡은 5일 평균가(SMA 5) 렌더링을 영구 소각하고, short_squeeze_engine 모듈을 호출하여 기초자산(SOXX)의 숏 스퀴즈 팩트를 UI에 덮어쓰기 완료.
+# 🚨 NEW: [가이던스 링크 결속] 사용자가 숏 스퀴즈 해석법을 열람할 수 있도록 인라인 버튼 "💡 숏 스퀴즈 지표 읽는 법" 배선 추가 완료.
 # ==========================================================
 import logging
 import datetime
@@ -33,6 +35,8 @@ import pandas_market_calendars as mcal
 import html  
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+# NEW: 숏 스퀴즈 감시망 코어 엔진 팩트 결속
+from short_squeeze_engine import ShortSqueezeScanner
 
 class AvwapConsolePlugin:
     def __init__(self, config, broker, strategy, tx_lock):
@@ -148,8 +152,12 @@ class AvwapConsolePlugin:
             for attempt in range(3):
                 try:
                     await asyncio.sleep(0.06)
-                    p_func = functools.partial(func, *args, **kwargs)
-                    return await asyncio.wait_for(asyncio.to_thread(p_func), timeout=15.0)
+                    # MODIFIED: [비동기 코루틴 래핑 지원] get_metrics 같은 비동기 함수 유입 시 바로 await 하도록 교정
+                    if asyncio.iscoroutinefunction(func):
+                        return await asyncio.wait_for(func(*args, **kwargs), timeout=15.0)
+                    else:
+                        p_func = functools.partial(func, *args, **kwargs)
+                        return await asyncio.wait_for(asyncio.to_thread(p_func), timeout=15.0)
                 except Exception:
                     if attempt == 2: return None
                     await asyncio.sleep(1.0 * (2 ** attempt))
@@ -164,8 +172,11 @@ class AvwapConsolePlugin:
             
             df_1m = await _get_with_retry(self.broker.get_1min_candles_df, t)
             
-            ma_5day_val = await _get_with_retry(self.broker.get_5day_ma, t)
-            ma_5day = self._safe_float(ma_5day_val)
+            # 🚨 MODIFIED: SMA 5일선 추출 데드코드 파기 및 숏 스퀴즈 감시망 엔진 팩트 결속
+            sq_scanner = ShortSqueezeScanner()
+            # 왜곡이 심한 SOXL(t) 대신 기초자산(base_t) 팩트를 강제 라우팅하여 스캔
+            sq_metrics = await _get_with_retry(sq_scanner.get_metrics, base_t)
+            if not isinstance(sq_metrics, dict): sq_metrics = {}
             
             bal_res = await _get_with_retry(self.broker.get_account_balance)
             holdings = bal_res[1] if isinstance(bal_res, (list, tuple)) and len(bal_res) > 1 else {}
@@ -198,7 +209,7 @@ class AvwapConsolePlugin:
 
         except Exception as e:
             logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
-            curr_p, base_amp5, df_1m, ma_5day, kis_avg = 0.0, 0.0, None, 0.0, 0.0
+            curr_p, base_amp5, df_1m, sq_metrics, kis_avg = 0.0, 0.0, None, {}, 0.0
             anchor_date, tier_reason, anchored_vwap = now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)", 0.0
             is_avwap_hybrid = False
             entrance_rate = 2.0
@@ -350,11 +361,16 @@ class AvwapConsolePlugin:
         else:
             msg += "▫️ 고정형 VWAP: 데이터 집계 중...\n\n"
 
-        msg += f"📊 <b>[ 직전 5거래일 정규장 종가 평균 ]</b>\n"
-        if ma_5day > 0:
-            msg += f"▫️ 5일 평균가(SMA 5): <b>${ma_5day:.2f}</b>\n\n"
+        # 🚨 MODIFIED: [UI 렌더링부 교체] 5일 평균가 파기 및 기초자산 숏 스퀴즈 팩트 덮어쓰기
+        msg += f"🔥 <b>[ 기초자산({base_t_clean}) 숏 스퀴즈 감시망 ]</b>\n"
+        si_float = self._safe_float(sq_metrics.get("SI_Float", 0.0))
+        if sq_metrics and si_float > 0.0:
+            dtc = self._safe_float(sq_metrics.get("DTC", 0.0))
+            status_txt = str(sq_metrics.get("Status", "데이터 집계 대기 중..."))
+            msg += f"▫️ 공매도 잔고율(SI): <b>{si_float:.2f}%</b> | 숏 커버링(DTC): <b>{dtc:.2f}일</b>\n"
+            msg += f"▫️ 판정: {status_txt}\n\n"
         else:
-            msg += "▫️ 5일 평균가(SMA 5): 대기 중...\n\n"
+            msg += "▫️ 공매도 감시망: 데이터 집계 대기 중...\n\n"
 
         # 🚨 NEW: [Phase 2 암살자 ON/OFF 토글 상태 팩트 브리핑]
         if is_avwap_hybrid or is_assassin_active:
@@ -387,6 +403,11 @@ class AvwapConsolePlugin:
             keyboard.append([InlineKeyboardButton(f"💤 [{ticker_clean}] 증시 휴장일", callback_data="AVWAP_SET:REFRESH:NONE")])
         elif status_code in ["CLOSE"]:
             keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감", callback_data="AVWAP_SET:REFRESH:NONE")])
+
+        # 🚨 NEW: [가이던스 링크 결속] 숏 스퀴즈 열람 버튼 배선 추가
+        keyboard.append([
+            InlineKeyboardButton("💡 숏 스퀴즈 지표 읽는 법", callback_data="AVWAP_SET:SQUEEZE_GUIDE:NONE")
+        ])
 
         keyboard.append([
             InlineKeyboardButton("🔄 관제탑 새로고침", callback_data="AVWAP_SET:REFRESH:NONE"),
