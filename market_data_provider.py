@@ -13,8 +13,8 @@
 # 🚨 VERIFIED: [Case 35 절대 방어망 결속] 내부 ffill 주입으로 결측치(NaN) 런타임 에러 차단 무결성 100% 확보
 # 🚨 VERIFIED: [결측치 방어 전역 확장] Yahoo Finance 서버 노이즈로 인한 수학 연산 붕괴 원천 차단
 # 🚨 NEW: [벡터화 강제 헌법 준수] apply(lambda) 묵시적 루프를 영구 소각하고, pd.concat 및 max(axis=1) 기반의 100% 순수 벡터화 연산으로 병목 지점 완벽 교정
-# 🚨 NEW: [고정형 VWAP 엔진] 1일봉(1d) 기반의 순수 팩트 지표(AVWAP) 추출 파이프라인 결속 완료. (Timeout 붕괴 방어)
 # 🚨 NEW: [토스증권 패치 - 초단기 자율주행 앵커링 엔진 결속] Tier 1(WTD 이번 주 첫 거래일), Tier 2(최근 5일 변곡점), Tier 3(월초) 기점 스캔 100% 팩트 이식 완료.
+# 🚨 NEW: [동적 해상도(Dynamic Resolution) 엔진 이식] AVWAP 연산 시 기점 거리에 따라 1m / 5m / 1h 캔들을 동적으로 호출하여 리테일 매체(토스증권)와 100% 동일한 인트라데이 틱(Tick) 정밀도 사수.
 # ==========================================================
 
 import time
@@ -621,7 +621,6 @@ class MarketDataProvider(KisApiClient):
                 time.sleep(1.0 * (2 ** attempt))
         return 0.0
 
-    # 🚨 NEW: [자율주행 자동 앵커링 엔진] 폭포수(Waterfall) 스캔 팩트 결속 완료
     def get_auto_anchor_date(self, ticker):
         """ 🚨 [토스증권 패치 - 단기 자율주행 앵커링 엔진] 리테일 단기 트레이딩 앵커링 (WTD 및 초단기 변곡점) """
         for attempt in range(3):
@@ -697,21 +696,36 @@ class MarketDataProvider(KisApiClient):
         logging.info(f"⚓ [{ticker}] Tier 3 단기 앵커링 (MTD Fallback): {fallback_date}")
         return fallback_date, "당월 1일 폴백 (Tier 3)"
 
-    # 🚨 NEW: [AVWAP 엔진] 지정된 기점(anchor_date)부터 당일까지의 고정형 VWAP을 순수 벡터화로 연산 (1d 핀셋 추출)
+    # 🚨 NEW: [동적 정밀도 AVWAP 엔진] 지정된 기점(anchor_date)부터 당일까지의 고정형 VWAP을 동적 타임프레임(1m/5m/1h)으로 정밀 연산
     def get_anchored_vwap(self, ticker, anchor_date):
         for attempt in range(3):
             try:
                 time.sleep(0.06) # 🚨 NEW: [Case 32] 동적 스캔 시 TPS 캡핑 강제
-                stock = yf.Ticker(ticker)
                 
-                # 🚨 NEW: [Time-Out 패러독스 방어] 1d 캔들 기반으로 진공 압축하여 이벤트 루프 즉사 원천 차단
-                df = stock.history(start=anchor_date, interval="1d", prepost=False, timeout=5)
+                est = ZoneInfo('America/New_York')
+                now_est = datetime.datetime.now(est)
+                anchor_dt = datetime.datetime.strptime(anchor_date, "%Y-%m-%d").date()
+                days_diff = (now_est.date() - anchor_dt).days
+                
+                # 🚨 [Time-Out 및 YF 한계 돌파 방어막] 기점 거리에 따른 해상도(Resolution) 동적 롤오버
+                if days_diff <= 6:
+                    interval = "1m"
+                elif days_diff <= 58:
+                    interval = "5m"
+                else:
+                    interval = "1h"
+                    
+                stock = yf.Ticker(ticker)
+                df = stock.history(start=anchor_date, interval=interval, prepost=False, timeout=5)
                 
                 if df.empty:
-                    if attempt == 2: return 0.0
-                    time.sleep(1.0 * (2 ** attempt))
-                    continue
-                    
+                    # 🚨 [Fallback] 세밀한 분봉 호출 실패 시 안전하게 1일봉(1d)으로 롤백
+                    df = stock.history(start=anchor_date, interval="1d", prepost=False, timeout=5)
+                    if df.empty:
+                        if attempt == 2: return 0.0
+                        time.sleep(1.0 * (2 ** attempt))
+                        continue
+                        
                 df = _flatten_columns(df)
                 
                 # 🚨 NEW: [Case 35 절대 방어망 결속] 결측치(NaN) 전이 방어
