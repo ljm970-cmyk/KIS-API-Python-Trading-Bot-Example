@@ -2,12 +2,13 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 NEW: [추적형 물리적 선제 장전(Trailing Limit Pre-placement) 아키텍처 락온] 타점을 관통할 때까지 관망하던 낡은 후행 격발 로직을 100% 파기하고, 1분마다 갱신되는 VWAP 타점을 실시간 추적하여 KIS 서버에 지정가(LIMIT) 덫을 물리적으로 선제 장전(Replace)하는 0% 슬리피지(Zero-Slippage) 팩트 엔진을 결속 완료. (Case 37)
+# 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST) 개장 시점까지 프리장 선제 장전 덫이 체결되지 않았을 경우, 장전되어 있던 미체결 덫을 즉시 취소(Cancel)하고 당일 신규 매수 권한을 영구 소각(조기 퇴근)하여 정규장 폭포수 하락에 갈리는 패러독스 원천 차단.
 # 🚨 MODIFIED: [제1헌법 절대 수복] get_avwap_hybrid_mode, get_avwap_entrance_rate, get_avwap_exit_rate 등 Config 파일 I/O 스레드 호출 시 누락되었던 asyncio.wait_for(timeout=5.0) 족쇄를 100% 강제 래핑하여 메인 이벤트 루프 교착(Deadlock) 원천 차단.
 # 🚨 NEW: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 1-Shot 1-Kill 진입 및 익절 타점을 Config의 동적 변수(entrance_rate, exit_rate)로 100% 해방하여 팻핑거 샌드박스와 연동 완료.
 # 🚨 MODIFIED: [Phase 3 암살자 실전 매매망 전면 재조립] 복잡한 다중 페이즈(Phase 1/2/3), 무한 재진입, 50/50 분할 타격 데드코드를 100% 영구 삭제하고 1-Shot 1-Kill 순수 리버전 데이 트레이딩 아키텍처 이식.
 # 🚨 MODIFIED: [본진 무중단 병렬 가동 팩트 수복] 암살자가 동적 익절 목표가에 도달하여 당일 임무를 완수했을 때 발송하던 낡은 브리핑 텍스트(시나리오 2 본진 셧다운)를 전면 파기하고, "암살자 단독 당일 임무 완수 (본진 무중단 정상 가동)" 팩트로 UI 교정 완료.
 # 🚨 MODIFIED: [Silent Death 붕괴 수술] strategy.get_avwap_decision 호출 시 base_ticker 결측으로 인해 타점 연산이 조기 종료(return {})되던 치명적 버그를 파라미터 강제 주입으로 원천 차단.
-# 🚨 MODIFIED: [슬리피지 제로(0%) 팩트 락온] 암살자 동적 매수 및 매도 시 시장가 추격을 철저히 배제하고 무조건 100% 지정가(LIMIT) 장전 강제.
 # 🚨 MODIFIED: [15:59 EST 제로-오버나이트 강제 덤핑망 정밀 타격 수술] 정규장 마감 1분 전, 본진 덫과의 간섭을 막기 위해 암살자의 덫(buy_odno/sell_odno)만을 핀셋 취소하고 매수 1호가 최유리 지정가로 스윕(Sweep) 덤핑하여 자본 잠김 원천 차단.
 # 🚨 MODIFIED: [V14 상방 스나이퍼 생태계 절대 보존] 암살자 로직과 100% 물리적으로 디커플링하여 기존 상방 스나이퍼 매수/매도 로직은 무결점 사수.
 # 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프 및 KIS 전송 TPS 캡핑(0.06s) 샌드위치 전면 락온.
@@ -17,7 +18,6 @@
 # 🚨 MODIFIED: [Case 30 팩트 동기화] 암살자 매매 직후, KIS 실원장을 재스캔하여 로컬 큐 장부를 100% 오버라이드하도록 유령 차단(Ghost-Sync) 결속.
 # 🚨 MODIFIED: [95% 안전 마진 팩트 락온] KIS 서버의 가승인 증거금 부족(Reject)을 원천 차단하기 위해 가용 현금의 100%가 아닌 95%만 투입.
 # 🚨 MODIFIED: [Silent Death 붕괴 수술] KIS 서버 리젝 시 에러 메시지 텔레그램 타전망 전면 결속.
-# 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장 개장(09:30 EST) 시점까지 매수에 진입하지 못해 보유량이 0주인 경우, 정규장 휩소에 갈려나가는 패러독스를 막기 위해 즉시 셧다운(퇴근) 플래그를 원자적으로 덮어쓰고 신규 딥-매수 진입을 영구 소각.
 # ==========================================================
 import logging
 import datetime
@@ -61,13 +61,14 @@ def _load_avwap_trade_state(ticker, now_est):
     
     if not isinstance(data, dict): data = {}
     
-    # 🚨 [새로운 스키마 초기화]
+    # 🚨 [새로운 스키마 초기화 및 선제 장전 추적 변수 주입]
     if data.get('date') != date_str:
         data = {
             'date': date_str,
             'qty': 0,
             'avg_price': 0.0,
             'buy_odno': "",
+            'buy_target_price': 0.0,  # 🚨 NEW: 추적 장전 멱등성 보장용 타점 스키마 결속
             'sell_odno': "",
             'shutdown': False,
             'dumped': False
@@ -227,7 +228,7 @@ async def scheduled_sniper_monitor(context):
             cash_tuple = await _retry_api(broker.get_account_balance)
             if not cash_tuple: return
             
-            # NEW: [주문가능금액 100% 팩트 락온] 실시간 KIS 가용 현금 전역 추출
+            # 🚨 [주문가능금액 100% 팩트 락온] 실시간 KIS 가용 현금 전역 추출
             available_cash = _safe_float(cash_tuple[0]) if isinstance(cash_tuple, (list, tuple)) and len(cash_tuple) > 0 else 0.0
             
             holdings = cash_tuple[1] if isinstance(cash_tuple, (list, tuple)) and len(cash_tuple) > 1 else {}
@@ -291,7 +292,7 @@ async def scheduled_sniper_monitor(context):
                             # 3. 최유리 지정가 (매수 1호가 또는 -5% 폴백) 전량 덤핑
                             dump_qty = t_state.get('qty', 0)
                             if dump_qty > 0:
-                                # MODIFIED: [Case 36 절대 팩트] 매수 1호가(Bid Price) 직접 조회 후 스윕 타격
+                                # 🚨 MODIFIED: [Case 36 절대 팩트] 매수 1호가(Bid Price) 직접 조회 후 스윕 타격
                                 bid_p = _safe_float(await _retry_api(broker.get_bid_price, t))
                                 if bid_p > 0:
                                     dump_price = bid_p
@@ -320,12 +321,19 @@ async def scheduled_sniper_monitor(context):
 
                         # 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장 폭포수 하락 방어망
                         if curr_t_obj >= datetime.time(9, 30, 0) and not t_state.get('shutdown') and not t_state.get('dumped'):
-                            if int(_safe_float(t_state.get('qty', 0))) == 0 and not t_state.get('buy_odno'):
+                            if int(_safe_float(t_state.get('qty', 0))) == 0:
                                 logging.info(f"🛑 [{t}] 09:30 EST 정규장 개장. 프리장 미진입으로 인한 암살자 조기 퇴근 락온.")
+                                
+                                # 🚨 NEW: 09:30 돌파 시 남아있는 선제 장전 덫을 무조건 취소하고 당일 영구 퇴근
+                                if t_state.get('buy_odno'):
+                                    c_res = await _retry_api(broker.cancel_order, t, t_state['buy_odno'])
+                                    if isinstance(c_res, dict) and c_res.get('rt_cd') == '0':
+                                        t_state['buy_odno'] = ""
+                                
                                 t_state['shutdown'] = True
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 if chat_id:
-                                    await _safe_send(context, chat_id, f"🛑 <b>[{html.escape(t)}] 프리장 진입 실패 (조기 퇴근)</b>\n▫️ 정규장 폭포수 하락 방어를 위해 암살자 신규 진입 권한을 당일 영구 소각합니다.", parse_mode='HTML')
+                                    await _safe_send(context, chat_id, f"🛑 <b>[{html.escape(t)}] 프리장 진입 실패 (조기 퇴근)</b>\n▫️ 장전되어 있던 미체결 매수 덫을 취소하고 정규장 신규 진입 권한을 영구 소각합니다.", parse_mode='HTML')
                                 continue
 
                         # 🚨 [당일 임무 완수 후 관망]
@@ -386,8 +394,8 @@ async def scheduled_sniper_monitor(context):
                                     await _safe_send(context, chat_id, f"🚀 <b>[{html.escape(t)}] 암살자 +{exit_rate}% 전량 익절 성공! (당일 임무 완수)</b>\n▫️ 교전에서 승리하여 투입된 예산을 성공적으로 100% 현금화했습니다.\n▫️ 암살자 단독 당일 임무 완수 (본진은 무중단 정상 가동됩니다).", parse_mode='HTML')
                                 continue
 
-                        # 🚨 [진입 타점 동적 실시간 감시 및 1-Shot 1-Kill 딥-매수 격발망]
-                        if t_state.get('qty') == 0 and not t_state.get('buy_odno') and not t_state.get('shutdown'):
+                        # 🚨 [진입 타점 실시간 감시 및 1-Shot 1-Kill 추적형 선제 장전(Trailing Limit) 격발망]
+                        if t_state.get('qty') == 0 and not t_state.get('shutdown'):
                             exec_curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
                             df_1min_t = await _retry_api(broker.get_1min_candles_df, t)
                             
@@ -405,33 +413,48 @@ async def scheduled_sniper_monitor(context):
                                 timeout=15.0
                             )
                              
-                            if decision and decision.get('raw_action') == 'DEEP_BUY':
-                                buy_price = _safe_float(decision.get('target_price', 0.0))
-                                if buy_price > 0.0:
-                                    # MODIFIED: [95% 안전 마진 팩트 락온] KIS 서버의 가승인 증거금 부족(Reject)을 원천 차단하기 위해 가용 현금의 95%만 투입
-                                    safe_available_cash = available_cash * 0.95
-                                    buy_qty = int(math.floor(safe_available_cash / buy_price))
+                            if decision:
+                                buy_target_price = _safe_float(decision.get('target_price', 0.0))
+                                
+                                # 🚨 [추적 장전 타임라인 락온] 오직 1세션(프리장 04:00~09:29) 에만 추적 갱신
+                                if buy_target_price > 0.0 and curr_t_obj < datetime.time(9, 30, 0):
+                                    prev_target_price = _safe_float(t_state.get('buy_target_price', 0.0))
                                     
-                                    if buy_qty > 0:
-                                        b_res = await _retry_api(broker.send_order, t, "BUY", buy_qty, buy_price, "LIMIT")
-                                        if isinstance(b_res, dict) and b_res.get('rt_cd') == '0':
-                                            t_state['buy_odno'] = str(b_res.get('odno'))
-                                            await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
-                                            
-                                            # 🚨 NEW: 암살자 동적 격발 브리핑 텍스트
-                                            if chat_id:
-                                                await _safe_send(context, chat_id, f"⚔️ <b>[{html.escape(t)}] 암살자 -{entrance_rate}% 하방 이격도 타점 관통!</b>\n▫️ 주문가능금액 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f}) 지정가(LIMIT) 장전 완료: {buy_qty}주 @ ${buy_price:.2f}", parse_mode='HTML')
-                                        # MODIFIED: [Silent Death 붕괴 수술] KIS 서버 리젝 시 에러 메시지 텔레그램 타전망 결속
+                                    # 🚨 기존 덫 취소 (타점 갱신 시)
+                                    if t_state.get('buy_odno') and prev_target_price != buy_target_price:
+                                        c_res = await _retry_api(broker.cancel_order, t, t_state['buy_odno'])
+                                        if isinstance(c_res, dict) and c_res.get('rt_cd') == '0':
+                                            t_state['buy_odno'] = ""
                                         else:
-                                            err_msg = html.escape(str(b_res.get('msg1') or '응답 없음/통신 장애')) if isinstance(b_res, dict) else '통신 장애'
-                                            logging.error(f"🚨 [{t}] 암살자 1-Shot 1-Kill 딥매수 KIS 서버 거절: {err_msg}")
-                                            reject_msg = (
-                                                f"🚨 <b>[{html.escape(str(t))}] 암살자 딥매수 서버 거절 (Reject)!</b>\n"
-                                                f"▫️ 사유: <code>{err_msg}</code>\n"
-                                                f"▫️ 조치: 다음 60초 스캔 시 재시도합니다."
-                                            )
-                                            if chat_id:
-                                                await _safe_send(context, chat_id, reject_msg, parse_mode='HTML')
+                                            logging.error(f"🚨 [{t}] 암살자 추적 덫 취소 실패, 다음 루프에서 재시도.")
+                                            continue
+                                            
+                                    # 🚨 신규 타점 선제 장전 (Trailing)
+                                    if not t_state.get('buy_odno'):
+                                        # MODIFIED: [95% 안전 마진 팩트 락온] KIS 서버의 가승인 증거금 부족(Reject)을 원천 차단하기 위해 가용 현금의 95%만 투입
+                                        safe_available_cash = available_cash * 0.95
+                                        buy_qty = int(math.floor(safe_available_cash / buy_target_price))
+                                        
+                                        if buy_qty > 0:
+                                            b_res = await _retry_api(broker.send_order, t, "BUY", buy_qty, buy_target_price, "LIMIT")
+                                            if isinstance(b_res, dict) and b_res.get('rt_cd') == '0':
+                                                t_state['buy_odno'] = str(b_res.get('odno'))
+                                                t_state['buy_target_price'] = buy_target_price
+                                                await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
+                                                
+                                                # 🚨 NEW: 암살자 동적 격발(추적 장전) 브리핑 텍스트
+                                                if chat_id:
+                                                    await _safe_send(context, chat_id, f"🎯 <b>[{html.escape(t)}] 암살자 -{entrance_rate}% 추적형 선제 장전(Trailing Limit) 갱신!</b>\n▫️ 1분 단위 VWAP 타점 변동에 맞춰 지정가 덫을 이동 장전했습니다.\n▫️ 예산 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f})\n▫️ 덫 장전 완료: {buy_qty}주 @ ${buy_target_price:.2f}", parse_mode='HTML')
+                                            else:
+                                                err_msg = html.escape(str(b_res.get('msg1') or '응답 없음/통신 장애')) if isinstance(b_res, dict) else '통신 장애'
+                                                logging.error(f"🚨 [{t}] 암살자 1-Shot 1-Kill 선제 장전 KIS 서버 거절: {err_msg}")
+                                                reject_msg = (
+                                                    f"🚨 <b>[{html.escape(str(t))}] 암살자 선제 장전 서버 거절 (Reject)!</b>\n"
+                                                    f"▫️ 사유: <code>{err_msg}</code>\n"
+                                                    f"▫️ 조치: 다음 60초 스캔 시 재시도합니다."
+                                                )
+                                                if chat_id:
+                                                    await _safe_send(context, chat_id, reject_msg, parse_mode='HTML')
 
                     # ==============================================================
                     # 2. 💎 V14 상방 스나이퍼 (오리지널 스케줄 물리적 절대 보존망)
