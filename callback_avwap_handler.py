@@ -7,8 +7,9 @@
 # 🚨 MODIFIED: [제1헌법 철저 준수] 로컬 파일 I/O(config 조작) 실행 시 `wait_for(..., timeout=5.0)` 족쇄를 완벽히 래핑하여 디스크 I/O 병목으로 인한 이벤트 루프 교착 원천 차단.
 # 🚨 MODIFIED: [Ghost Chat 붕괴 원천 봉쇄] update.callback_query 결측치 유입 시 발생하는 즉사 버그 방어.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 타전망 내 동적 변수 전역에 `html.escape` 쉴드 강제 래핑 완료.
-# 🚨 MODIFIED: [데드코드 콜백 소각] AVWAP_WARN, AVWAP_ON, AVWAP_OFF 콜백 분기문을 100% 영구 삭제하여 팻핑거 유입 시 시스템 오작동을 원천 차단.
+# 🚨 MODIFIED: [데드코드 콜백 소각] AVWAP_WARN, AVWAP_ON, AVWAP_OFF 콜백 분기문을 100% 영구 삭제하여 팻핑거 유입 시 시스템 오작동을 원천 차단 (Phase 3 완료).
 # 🚨 NEW: [실시간 숏 스퀴즈 다이내믹 렌더링 락온] AVWAP_SET:SQUEEZE_GUIDE 액션 발생 시, 정적 텍스트 반환을 파기하고 실시간으로 ShortSqueezeScanner를 기동시켜 시스템 판정(Judgment)을 포함한 동적 리포트를 브리핑하도록 팩트 교정 완료.
+# 🚨 MODIFIED: [결측치 강제 롤오버 방어] SQUEEZE_GUIDE 콜백 수신 시, 종목(ticker)이 'NONE'이거나 결측(None) 상태로 들어올 경우, YF API 즉사 버그를 방어하기 위해 'SOXL'로 강제 롤오버(Fallback)하는 2중 팩트 방어망 결속.
 # ==========================================================
 import logging
 import datetime
@@ -78,7 +79,6 @@ class CallbackAvwapHandler:
                 except Exception: pass
                 if hasattr(controller, 'cmd_mode'):
                     await controller.cmd_mode(update, context)
-            
 
         elif action == "AVWAP_SET":
             if sub == "REFRESH":
@@ -93,6 +93,10 @@ class CallbackAvwapHandler:
 
             # 🚨 NEW: 숏 스퀴즈 실시간 스캔 및 다이내믹 렌더링 라우팅 결속
             elif sub == "SQUEEZE_GUIDE":
+                # 🚨 [결측치 강제 롤오버 방어] 이전 하드코딩 등 통신 노이즈로 ticker가 NONE으로 들어오면 SOXL로 100% 강제 폴백
+                if not ticker or ticker == "NONE":
+                    ticker = "SOXL"
+                
                 # 🚨 무한 로딩 스피너 방지
                 try: await query.answer("🔍 실시간 온체인 데이터를 분석 중입니다...", show_alert=False)
                 except Exception: pass

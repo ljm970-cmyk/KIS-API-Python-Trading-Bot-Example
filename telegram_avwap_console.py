@@ -2,6 +2,7 @@
 # FILE: telegram_avwap_console.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 41대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [버그 수술] "💡 숏 스퀴즈 지표 읽는 법" 버튼의 callback_data에 하드코딩되어 있던 'NONE' 텍스트를 파기하고, 동적 변수 '{t}'를 100% 팩트로 바인딩 완료.
 # 🚨 NEW: [순수 리버전 데이 트레이딩 동적 타점 롤오버] 하드코딩된 -2% / +2% 연산식과 렌더링 텍스트를 전면 소각하고, Config 동적 변수(entrance_rate, exit_rate) 기반 렌더링 팩트 100% 이식 완료.
 # 🚨 NEW: [UI 교정 1 & 2] 정규장(09:30 EST) 개장 후 무포지션(0주) 상태일 때 '조기 퇴근' 팩트를 파싱하여, 교전 상태를 OFF로 렌더링하고 정규장 타점 라벨을 "하방 이격(-N%) 감시선 (진입 차단됨)"으로 동적 팩트 락온.
 # 🚨 NEW: [Case 39 자본 잠김 UI 팩트 렌더링] 암살자(aVWAP) 엔진이 타점을 관통하여 가용 현금을 100% 점유(Lock-up) 중일 경우, 관제탑 UI의 '본진 타격망' 상태를 "15:27 슬라이싱 가동"에서 "애프터장 16:01 일괄 타격으로 이연 대기 중"으로 팩트 교정 락온.
@@ -20,7 +21,6 @@
 # 🚨 NEW: [런타임 호환성 팩트 결속] _get_with_retry 헬퍼 내부에 functools.partial을 주입하여 구버전 파이썬의 to_thread kwargs TypeError 붕괴 원천 차단.
 # 🚨 NEW: [자율주행 앵커링 UI 결속] Config에 지정된 앵커가 없거나 "AUTO"일 경우, `market_data_provider`의 3-Tier 자율주행 스캔 엔진을 격발하여 진성 평단가 및 채택 사유(Tier)를 100% 동적 렌더링 완료.
 # 🚨 NEW: [숏 스퀴즈 감시망 전격 이식] 낡은 5일 평균가(SMA 5) 렌더링을 영구 소각하고, short_squeeze_engine 모듈을 호출하여 기초자산(SOXX)의 숏 스퀴즈 팩트를 UI에 덮어쓰기 완료.
-# 🚨 NEW: [가이던스 링크 결속] 사용자가 숏 스퀴즈 해석법을 열람할 수 있도록 인라인 버튼 "💡 숏 스퀴즈 지표 읽는 법" 배선 추가 완료.
 # ==========================================================
 import logging
 import datetime
@@ -35,7 +35,6 @@ import pandas_market_calendars as mcal
 import html  
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-# NEW: 숏 스퀴즈 감시망 코어 엔진 팩트 결속
 from short_squeeze_engine import ShortSqueezeScanner
 
 class AvwapConsolePlugin:
@@ -152,7 +151,6 @@ class AvwapConsolePlugin:
             for attempt in range(3):
                 try:
                     await asyncio.sleep(0.06)
-                    # MODIFIED: [비동기 코루틴 래핑 지원] get_metrics 같은 비동기 함수 유입 시 바로 await 하도록 교정
                     if asyncio.iscoroutinefunction(func):
                         return await asyncio.wait_for(func(*args, **kwargs), timeout=15.0)
                     else:
@@ -223,7 +221,6 @@ class AvwapConsolePlugin:
         state_file = f"data/avwap_trade_state_{t}.json"
         try:
             def _read_state():
-                # 🚨 [EAFP 패턴 적용] os.path.exists 소각 (제2헌법 os 모듈 100% 진공 압축으로 인한 Try-Except 처리)
                 try:
                     with open(state_file, 'r', encoding='utf-8') as f:
                         return json.load(f)
@@ -374,23 +371,18 @@ class AvwapConsolePlugin:
 
         # 🚨 NEW: [Phase 2 암살자 ON/OFF 토글 상태 팩트 브리핑]
         if is_avwap_hybrid or is_assassin_active:
-            # 🚨 MODIFIED: [렌더링 팩트 교정] '85% 예산' ➔ '주문가능금액 100% 올인'
             msg += f"⚔️ <b>[ 암살자(aVWAP) 주문가능금액 100% 올인 교전망 (🟢 가동중) ]</b>\n"
         else:
             msg += f"⚠️ <b>[ 암살자 타격망 OFF (단순 관측 모드) ]</b>\n"
 
         if is_assassin_active:
-            # 🚨 MODIFIED: [1-Shot 1-Kill 아키텍처에 맞춘 진공 압축 렌더링 동적 팩트 교정]
             msg += f"▫️ 교전 상태: <b>ON (-{entrance_rate}% 타점 관통 및 진입 완료)</b>\n"
             msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
             msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (+{exit_rate}% 지정가 락온)\n"
-            # 🚨 NEW: [타겟 5 작전 지시 팩트 락온] 본진 격리 및 암살자 전용 덤핑 명시 (결측시 -5% 폴백 포함)
             msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 암살자 물량만 매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백 / 본진 100% 격리)</b>\n"
-            # 🚨 NEW: [Case 39, 40] 본진 애프터장 이연 대기 팩트 명시
             msg += f"▫️ 본진 타격망: <b>⏳ 자본 잠김 감지 ➔ 애프터장 16:01 일괄 타격으로 이연 대기 중</b>\n"
         else:
             if is_avwap_hybrid:
-                # 🚨 MODIFIED: [UI 교정 1] 프리장 미진입으로 인한 조기 퇴근 상태 렌더링 락온
                 if is_early_shutdown:
                     msg += f"▫️ 교전 상태: <b>OFF (프리장 미진입으로 인한 진입 차단 - 조기 퇴근)</b>\n"
                 else:
@@ -404,9 +396,9 @@ class AvwapConsolePlugin:
         elif status_code in ["CLOSE"]:
             keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감", callback_data="AVWAP_SET:REFRESH:NONE")])
 
-        # 🚨 NEW: [가이던스 링크 결속] 숏 스퀴즈 열람 버튼 배선 추가
+        # 🚨 MODIFIED: [버그 수술] 하드코딩된 'NONE'을 파기하고 현재 타겟 종목 '{t}'를 동적으로 팩트 바인딩 완료.
         keyboard.append([
-            InlineKeyboardButton("💡 숏 스퀴즈 지표 읽는 법", callback_data="AVWAP_SET:SQUEEZE_GUIDE:NONE")
+            InlineKeyboardButton("💡 숏 스퀴즈 지표 읽는 법", callback_data=f"AVWAP_SET:SQUEEZE_GUIDE:{t}")
         ])
 
         keyboard.append([
