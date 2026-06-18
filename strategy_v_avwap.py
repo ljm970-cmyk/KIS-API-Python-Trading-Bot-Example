@@ -16,6 +16,7 @@
 # 🚨 MODIFIED: [Case 35 결측치 전이 방어] 1분봉 데이터의 결측치(NaN)로 인해 VWAP 연산이 붕괴되는 현상을 막기 위해 ffill().bfill() 체인 강제 락온.
 # 🚨 MODIFIED: [Case 01 절대 헌법 사수] 날짜 비교 시 '%Y-%m-%d' 시스템 표준 포맷 100% 강제 래핑 완료.
 # 🚨 NEW: [Case 05 최후의 오발사 방어] exec_curr_p(현재가)가 0.0으로 유입될 경우, 무조건 타점을 터치한 것으로 오인하여 딥-매수가 격발되는 즉사 버그를 막기 위한 원천 방어 쉴드 락온.
+# 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 코어 엔진의 VWAP이 0.0으로 즉사하여 덫 장전이 무한 스킵되는 침묵의 마비를 원천 차단하고, TWAP(시간가중평균) 폴백을 즉각 가동하도록 관제탑 UI와 100% 동기화 락온.
 # ==========================================================
 import logging
 import datetime
@@ -266,6 +267,9 @@ class VAvwapHybridPlugin:
                 c_vol = vol.sum()
                 if c_vol > 0:
                     session_vwap = self._safe_float(vol_tp.sum() / c_vol)
+                else:
+                    # 🚨 NEW: [프리장 데이터 공백 패러독스 방어] Zero-Volume일 경우 TWAP(시간가중평균) 폴백 가동 (UI 동기화)
+                    session_vwap = self._safe_float(tp.mean())
 
         if session_vwap <= 0.0:
             return _build_res('OBSERVING', f'{session_name} 실시간 VWAP 연산 대기중')
