@@ -2,6 +2,7 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [제1헌법 절대 수복] get_avwap_hybrid_mode, get_avwap_entrance_rate, get_avwap_exit_rate 등 Config 파일 I/O 스레드 호출 시 누락되었던 asyncio.wait_for(timeout=5.0) 족쇄를 100% 강제 래핑하여 메인 이벤트 루프 교착(Deadlock) 원천 차단.
 # 🚨 NEW: [순수 리버전 데이 트레이딩 타점 롤오버] 암살자 1-Shot 1-Kill 진입 및 익절 타점을 Config의 동적 변수(entrance_rate, exit_rate)로 100% 해방하여 팻핑거 샌드박스와 연동 완료.
 # 🚨 MODIFIED: [Phase 3 암살자 실전 매매망 전면 재조립] 복잡한 다중 페이즈(Phase 1/2/3), 무한 재진입, 50/50 분할 타격 데드코드를 100% 영구 삭제하고 1-Shot 1-Kill 순수 리버전 데이 트레이딩 아키텍처 이식.
 # 🚨 MODIFIED: [본진 무중단 병렬 가동 팩트 수복] 암살자가 동적 익절 목표가에 도달하여 당일 임무를 완수했을 때 발송하던 낡은 브리핑 텍스트(시나리오 2 본진 셧다운)를 전면 파기하고, "암살자 단독 당일 임무 완수 (본진 무중단 정상 가동)" 팩트로 UI 교정 완료.
@@ -11,7 +12,6 @@
 # 🚨 MODIFIED: [V14 상방 스나이퍼 생태계 절대 보존] 암살자 로직과 100% 물리적으로 디커플링하여 기존 상방 스나이퍼 매수/매도 로직은 무결점 사수.
 # 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프 및 KIS 전송 TPS 캡핑(0.06s) 샌드위치 전면 락온.
 # 🚨 MODIFIED: [Case 08, 16] 암살자 실매매 상태 파일(avwap_trade_state) EAFP 패턴 및 원자적 쓰기 스코프 전진 배치 유지.
-# 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 통신 및 파일 I/O 구문 전역에 asyncio.wait_for 샌드박스를 결속하여 Deadlock 100% 원천 차단.
 # 🚨 MODIFIED: [UnboundLocalError 붕괴 수술] V14 스나이퍼 매수/매도 검증 루프 내 Scope 참조 에러 원천 차단 (Scope Lift).
 # 🚨 NEW: [Time Paradox 팩트 교정] KIS 당일 체결 내역 조회 시 EST 날짜를 사용하여 조회가 누락되던 맹점을 KST 실시간 동기화로 영구 소각.
 # 🚨 MODIFIED: [Case 30 팩트 동기화] 암살자 매매 직후, KIS 실원장을 재스캔하여 로컬 큐 장부를 100% 오버라이드하도록 유령 차단(Ghost-Sync) 결속.
@@ -245,11 +245,13 @@ async def scheduled_sniper_monitor(context):
 
                     try:
                         version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
-                        is_avwap_hybrid = await asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t)
-                        # 🚨 NEW: 암살자 동적 비율 추출
-                        entrance_rate = _safe_float(await asyncio.to_thread(getattr(cfg, 'get_avwap_entrance_rate', lambda x: 2.0), t))
-                        exit_rate = _safe_float(await asyncio.to_thread(getattr(cfg, 'get_avwap_exit_rate', lambda x: 2.0), t))
-                    except Exception:
+                        # 🚨 MODIFIED: [제1헌법] asyncio.wait_for 샌드박스 강제 래핑 완료
+                        is_avwap_hybrid = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
+                        # 🚨 NEW: 암살자 동적 비율 추출 (타임아웃 족쇄 래핑)
+                        entrance_rate = _safe_float(await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_entrance_rate', lambda x: 2.0), t), timeout=5.0))
+                        exit_rate = _safe_float(await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_exit_rate', lambda x: 2.0), t), timeout=5.0))
+                    except Exception as e:
+                        logging.error(f"🚨 [{t}] Config 파일 스캔 샌드박스 에러 (기본값 폴백): {e}")
                         version = "V14"
                         is_avwap_hybrid = False
                         entrance_rate = 2.0
@@ -406,7 +408,7 @@ async def scheduled_sniper_monitor(context):
                             if decision and decision.get('raw_action') == 'DEEP_BUY':
                                 buy_price = _safe_float(decision.get('target_price', 0.0))
                                 if buy_price > 0.0:
-                                    # MODIFIED: [95% 안전 마진 팩트 락온] 가승인 증거금 부족 Reject 원천 차단
+                                    # MODIFIED: [95% 안전 마진 팩트 락온] KIS 서버의 가승인 증거금 부족(Reject)을 원천 차단하기 위해 가용 현금의 95%만 투입
                                     safe_available_cash = available_cash * 0.95
                                     buy_qty = int(math.floor(safe_available_cash / buy_price))
                                     
@@ -419,6 +421,7 @@ async def scheduled_sniper_monitor(context):
                                             # 🚨 NEW: 암살자 동적 격발 브리핑 텍스트
                                             if chat_id:
                                                 await _safe_send(context, chat_id, f"⚔️ <b>[{html.escape(t)}] 암살자 -{entrance_rate}% 하방 이격도 타점 관통!</b>\n▫️ 주문가능금액 95% 투입(안전버퍼 적용: ${safe_available_cash:,.2f}) 지정가(LIMIT) 장전 완료: {buy_qty}주 @ ${buy_price:.2f}", parse_mode='HTML')
+                                        # MODIFIED: [Silent Death 붕괴 수술] KIS 서버 리젝 시 에러 메시지 텔레그램 타전망 결속
                                         else:
                                             err_msg = html.escape(str(b_res.get('msg1') or '응답 없음/통신 장애')) if isinstance(b_res, dict) else '통신 장애'
                                             logging.error(f"🚨 [{t}] 암살자 1-Shot 1-Kill 딥매수 KIS 서버 거절: {err_msg}")
