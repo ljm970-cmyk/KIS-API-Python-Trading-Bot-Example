@@ -2,21 +2,14 @@
 # FILE: strategy_v_avwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
-# 🚨 NEW: [순수 리버전 데이 트레이딩 동적 타점 해방] 하드코딩 되어있던 -2% / +2% 연산식을 100% 파기하고, kwargs로 주입된 entrance_rate 및 exit_rate 기반의 동적 연산(Dynamic Decoupling) 엔진 이식 완료.
-# 🚨 NEW: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST 이후) 무포지션(0주) 상태일 경우 타점 관통과 무관하게 신규 진입을 전면 차단하고 '조기 퇴근' 상태를 반환하도록 2중 팩트 락온.
-# 🚨 MODIFIED: [의사결정 코어 엔진 다이어트] 실제 매매가 없으므로 불필요한 주문 타점(Target Price) 계산과 복잡한 상태 전이(State Machine) 로직 진공 압축.
-# 🚨 MODIFIED: [Action Unified 락온] PLACE_TRAP, PLACE_SELL_TRAP, SHUTDOWN, WAIT 등의 Action 반환을 'OBSERVING'(관측 중) 상태로 100% 통합.
-# 🚨 MODIFIED: [관측 타임라인 무중단 사수] 봇이 조기 퇴근하는 SHUTDOWN 락온을 소각하고, 장 마감(16:00 EST)까지 실시간 시장 데이터 스캔(Tracking High)이 무중단 유지되도록 교정.
-# 🚨 MODIFIED: [상태 스키마 100% 진공 압축] 매매에 종속된 불필요한 상태 스키마(limit_order_placed, buy_odno, trap_odno, manual_suspend, qty, avg_price 등)를 로컬 메모리 및 파일에서 영구 삭제.
-# 🚨 MODIFIED: [Quant Logic 교정] 기초지수 매크로(fetch_macro_context) 연산 시 (Open+High+Low+Close)/4.0 의 노이즈를 배제하고 정통 퀀트 표준인 (High+Low+Close)/3.0 으로 팩트 교정 완료.
-# 🚨 MODIFIED: [Time Paradox 붕괴 수술] 04:00~04:04 구간에서 전일(Yesterday)의 데이터를 불러와 RAM을 오염시키는 맹점을 차단하고 04:00 정각에 100% 당일(Today)로 롤오버되도록 팩트 락온.
-# 🚨 MODIFIED: [JSON 직렬화 붕괴 예방 락온] Numpy float64 타입 혼입으로 인한 json.dump 에러를 원천 차단하기 위해 순수 Python 타입으로 강제 캐스팅(self._safe_float) 100% 결속.
+# 🚨 MODIFIED: [순수 돌파/추종 데이 트레이딩 아키텍처 팩트 교정] 역추세 기반ের 낡은 '현재가 <= 타점' 하향 관통 로직을 100% 영구 소각하고, "현재가가 실시간 VWAP 이상(상회 또는 상향 돌파)"일 때 `BREAKOUT_BUY`를 반환하도록 팩트 락온.
+# 🚨 MODIFIED: [과욕 제어 매도 타점 팩트 락온] 동적 익절 파라미터를 소각하고 체결 평단가 기준 '+1.0% 고정 익절' 스키마를 하드코딩하여 1-Shot 1-Kill 타격망 수복.
+# 🚨 MODIFIED: [절대 타임쉴드 (04:07 EST) 결속] 04:00~04:06 EST 구간 동안 기관의 휩소(노이즈)를 회피하기 위해 무조건 `OBSERVING(관망)`을 반환하도록 타임라인 방어막 100% 팩트 이식.
+# 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST 이후) 무포지션(0주) 상태일 경우 돌파와 무관하게 신규 진입을 전면 차단하고 '조기 퇴근' 상태를 반환하도록 2중 팩트 락온.
+# 🚨 MODIFIED: [Quant Logic 교정] 기초지수 매크로(fetch_macro_context) 연산 시 (High+Low+Close)/3.0 정통 퀀트 표준으로 팩트 교정 완료.
 # 🚨 MODIFIED: [Case 08, 16] os.path.exists 동기스캔 배제, EAFP 적용 및 temp_path 원자적 쓰기 스코프 전진 배치 유지.
-# 🚨 NEW: [순수 리버전 데이 트레이딩 코어 복원] HA 하드 리셋 쉴드 소각 및 순수 세션별 VWAP 동적 타격망 100% 팩트 이식 완료.
 # 🚨 MODIFIED: [Case 35 결측치 전이 방어] 1분봉 데이터의 결측치(NaN)로 인해 VWAP 연산이 붕괴되는 현상을 막기 위해 ffill().bfill() 체인 강제 락온.
-# 🚨 MODIFIED: [Case 01 절대 헌법 사수] 날짜 비교 시 '%Y-%m-%d' 시스템 표준 포맷 100% 강제 래핑 완료.
-# 🚨 NEW: [Case 05 최후의 오발사 방어] exec_curr_p(현재가)가 0.0으로 유입될 경우, 무조건 타점을 터치한 것으로 오인하여 딥-매수가 격발되는 즉사 버그를 막기 위한 원천 방어 쉴드 락온.
-# 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 코어 엔진의 VWAP이 0.0으로 즉사하여 덫 장전이 무한 스킵되는 침묵의 마비를 원천 차단하고, TWAP(시간가중평균) 폴백을 즉각 가동하도록 관제탑 UI와 100% 동기화 락온.
+# 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 코어 엔진의 VWAP이 0.0으로 즉사하는 맹점을 원천 차단하고, TWAP(시간가중평균) 폴백 가동.
 # ==========================================================
 import logging
 import datetime
@@ -33,7 +26,7 @@ import html
 
 class VAvwapHybridPlugin:
     def __init__(self):
-        self.plugin_name = "AVWAP_PURE_REVERSION_OBSERVER"
+        self.plugin_name = "AVWAP_BREAKOUT_OBSERVER"
 
     def _safe_float(self, value):
         try:
@@ -57,7 +50,7 @@ class VAvwapHybridPlugin:
 
     def _get_logical_date_str(self, now_est):
         if now_est.hour < 4:
-            target_date = now_est - datetime.timedelta(days=1)
+             target_date = now_est - datetime.timedelta(days=1)
         else:
             target_date = now_est
         return target_date.strftime('%Y-%m-%d')
@@ -65,7 +58,6 @@ class VAvwapHybridPlugin:
     def _get_state_file(self, ticker, now_est):
         return f"data/avwap_state_persistent_{ticker}.json"
 
-    # 🚨 MODIFIED: [상태 스키마 100% 진공 압축] 매매에 종속된 불필요한 상태 스키마 영구 삭제
     def load_state(self, ticker, now_est):
         file_path = self._get_state_file(ticker, now_est)
         today_str = self._get_logical_date_str(now_est)
@@ -90,7 +82,6 @@ class VAvwapHybridPlugin:
         
         return data
 
-    # 🚨 MODIFIED: [Case 08, 16] EAFP 기반 원자적 쓰기 스코프 전진 배치 유지
     def save_state(self, ticker, now_est, state_data):
         if not isinstance(state_data, dict):
             state_data = {}
@@ -127,7 +118,6 @@ class VAvwapHybridPlugin:
             logging.error(f"🚨 [V_AVWAP] 관측기 상태 저장 실패 (원자적 쓰기 에러): {e}")
 
     def apply_stock_split(self, ticker, ratio, now_est):
-        # 🚨 MODIFIED: 상태 스키마 진공 압축으로 인해 보정할 수치 소각
         pass
 
     def fetch_macro_context(self, base_ticker):
@@ -171,7 +161,6 @@ class VAvwapHybridPlugin:
 
                             prev_close = self._safe_float(df_prev_day['Close'].iloc[-1])
      
-                            # 🚨 MODIFIED: [Quant Logic 교정] 정통 퀀트 표준 (High+Low+Close)/3.0 락온
                             df_prev_day['tp'] = (df_prev_day['High'].astype(float) + df_prev_day['Low'].astype(float) + df_prev_day['Close'].astype(float)) / 3.0
                             df_prev_day['vol'] = df_prev_day['Volume'].astype(float)
                             df_prev_day['vol_tp'] = df_prev_day['tp'] * df_prev_day['vol']
@@ -202,10 +191,6 @@ class VAvwapHybridPlugin:
         today_est_date = now_est.date()
         curr_t = now_est.time()
 
-        # 🚨 NEW: kwargs로부터 사용자 설정 진입률/익절률 팩트 추출 (없을 경우 2.0% 디폴트 락온)
-        entrance_rate = self._safe_float(kwargs.get('avwap_entrance_rate', 2.0))
-        exit_rate = self._safe_float(kwargs.get('avwap_exit_rate', 2.0))
-
         def _build_res(action, reason, tp=0.0, session_vwap=0.0):
             return {
                 'action': 'OBSERVING' if is_simulation else action,
@@ -217,20 +202,20 @@ class VAvwapHybridPlugin:
 
         exec_curr_p = self._safe_float(exec_curr_p)
 
-        # 🚨 [Case 05] 최후의 오발사 방어막 (현재가 0.0 유입 시 즉각 관망 락온)
         if exec_curr_p <= 0.0:
             return _build_res('OBSERVING', '현재가(exec_curr_p) 데이터 결측 (0.0). 관망 유지.')
             
-        # 🚨 [가동 전제 조건 절대 락온] SOXL 외 종목 유입 시 전면 차단
         if exec_ticker != "SOXL":
             return _build_res('OBSERVING', 'SOXL 전용 모듈 (타 종목 차단)')
 
         if now_est.weekday() >= 5 or is_holiday:
             return _build_res('OBSERVING', '미국 증시 휴장일 (관측 오프라인)')
 
-        # 🚨 [세션별 시간 독립 분기 팩트 락온]
+        # 🚨 [세션별 시간 독립 분기 및 04:07 타임쉴드 락온]
         if curr_t < datetime.time(4, 0):
             return _build_res('OBSERVING', '개장 전 대기 (04:00 이전)')
+        elif curr_t < datetime.time(4, 7):
+            return _build_res('OBSERVING', '타임쉴드 가동 중 (04:07 해제 대기)')
         elif curr_t < datetime.time(9, 30):
             session_name = "1세션(프리장)"
             start_time_str = '040000'
@@ -245,21 +230,17 @@ class VAvwapHybridPlugin:
         avwap_qty = int(self._safe_float(avwap_qty))
         avwap_avg_price = self._safe_float(avwap_avg_price)
 
-        # 🚨 [세션별 독립 VWAP 동적 연산] 당일 1분봉 데이터 팩트 기반 누적 연산
         session_vwap = 0.0
         if df_1min_exec is not None and not df_1min_exec.empty and 'time_est' in df_1min_exec.columns:
-            # Time Paradox 차단: 당일 데이터만 무조건 슬라이싱
             df_today = df_1min_exec[df_1min_exec.index.date == today_est_date].copy()
             df_session = df_today[(df_today['time_est'] >= start_time_str) & (df_today['time_est'] <= end_time_str)].copy()
 
             if not df_session.empty:
-                # 🚨 [Case 35] 결측치(NaN) 전이 방어용 ffill().bfill() 래핑 강제
                 df_session['high'] = df_session['high'].ffill().bfill()
                 df_session['low'] = df_session['low'].ffill().bfill()
                 df_session['close'] = df_session['close'].ffill().bfill()
                 df_session['volume'] = df_session['volume'].ffill().bfill().fillna(0)
 
-                # 🚨 [Numpy Vectorization 락온] (High+Low+Close)/3.0 정통 퀀트 표준
                 tp = (df_session['high'].astype(float) + df_session['low'].astype(float) + df_session['close'].astype(float)) / 3.0
                 vol = df_session['volume'].astype(float)
                 vol_tp = tp * vol
@@ -268,28 +249,22 @@ class VAvwapHybridPlugin:
                 if c_vol > 0:
                     session_vwap = self._safe_float(vol_tp.sum() / c_vol)
                 else:
-                    # 🚨 NEW: [프리장 데이터 공백 패러독스 방어] Zero-Volume일 경우 TWAP(시간가중평균) 폴백 가동 (UI 동기화)
                     session_vwap = self._safe_float(tp.mean())
 
         if session_vwap <= 0.0:
             return _build_res('OBSERVING', f'{session_name} 실시간 VWAP 연산 대기중')
 
-        # 🚨 MODIFIED: [동적 타점 롤오버] 하드코딩 -2% 소각 및 entrance_rate 동적 연산 결속
-        buy_target_price = math.floor(session_vwap * (1.0 - (entrance_rate / 100.0)) * 100) / 100.0
-
         if avwap_qty > 0:
-            # 🚨 MODIFIED: [과욕 제어 매도 타점 동적 연산] 하드코딩 +2% 소각 및 exit_rate 동적 연산 결속
-            sell_target_price = math.ceil(avwap_avg_price * (1.0 + (exit_rate / 100.0)) * 100) / 100.0 if avwap_avg_price > 0 else 0.0
-            return _build_res('OBSERVING', f'{session_name} 교전 중 (+{exit_rate}% 전량 익절 대기)', tp=sell_target_price, session_vwap=session_vwap)
+            # 🚨 MODIFIED: [과욕 제어 매도 타점 동적 연산] 하드코딩 +1.0% 고정 익절 락온
+            sell_target_price = math.ceil(avwap_avg_price * 1.01 * 100) / 100.0 if avwap_avg_price > 0 else 0.0
+            return _build_res('OBSERVING', f'{session_name} 교전 중 (+1.0% 전량 익절 대기)', tp=sell_target_price, session_vwap=session_vwap)
         else:
-            # 무포지션 상태 (매수 대기)
             # 🚨 [퀀트 뇌관 하드 락온] 프리장 미진입 시 정규장 신규 진입 원천 차단 (조기 퇴근)
             if curr_t >= datetime.time(9, 30):
-                return _build_res('OBSERVING', '프리장 미진입으로 인한 진입 차단 (조기 퇴근)', tp=buy_target_price, session_vwap=session_vwap)
+                return _build_res('OBSERVING', '프리장 미진입으로 인한 진입 차단 (조기 퇴근)', tp=session_vwap, session_vwap=session_vwap)
 
-            if exec_curr_p <= buy_target_price:
-                # 🚨 MODIFIED: 텔레그램 브리핑 텍스트 동적 변수 팩트 교정
-                return _build_res('DEEP_BUY', f'{session_name} -{entrance_rate}% 타점(${buy_target_price:.2f}) 하향 관통! 1-Shot 1-Kill 격발 인가', tp=buy_target_price, session_vwap=session_vwap)
+            # 🚨 [돌파 팩트 교정] 현재가가 실시간 VWAP 상회 시 즉각 요격 인가 (BREAKOUT_BUY)
+            if exec_curr_p >= session_vwap:
+                return _build_res('BREAKOUT_BUY', f'{session_name} 실시간 VWAP(${session_vwap:.2f}) 상향 돌파 요격 인가', tp=session_vwap, session_vwap=session_vwap)
             else:
-                # 🚨 MODIFIED: 텔레그램 브리핑 텍스트 동적 변수 팩트 교정
-                return _build_res('OBSERVING', f'{session_name} -{entrance_rate}% 타점(${buy_target_price:.2f}) 감시 중', tp=buy_target_price, session_vwap=session_vwap)
+                return _build_res('OBSERVING', f'{session_name} 실시간 VWAP(${session_vwap:.2f}) 하회 중 (돌파 감시)', tp=session_vwap, session_vwap=session_vwap)

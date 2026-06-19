@@ -3,8 +3,7 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
 # 🚨 MODIFIED: [Indentation 붕괴 수술] set_seed, get_secret_mode, get_chat_id 등 내부의 13칸/17칸 들여쓰기 엇갈림 오차를 4칸 배수 표준으로 정밀 교정하여 파이썬 컴파일러 즉사 버그 완벽 차단.
-# 🚨 MODIFIED: [암살자 수동 타겟팅 뇌관 영구 소각] 순수 리버전 데이 트레이딩 아키텍처 이식에 따라, 암살자의 원화(KRW)/수익률(PCT) 수동 설정 스키마 및 관련 Getter/Setter 100% 영구 삭제.
-# 🚨 NEW: [암살자 동적 제어 해방] AVWAP_ENTRANCE_CFG 및 AVWAP_EXIT_CFG 파일 결속, 0.1% ~ 15.0% 클램핑 샌드박스 구축 완료.
+# 🚨 MODIFIED: [암살자 수동 타겟팅 뇌관 영구 소각] 순수 돌파/추종 데이 트레이딩 아키텍처 이식에 따라, 암살자의 진입률/익절률을 수동으로 입력받던 동적 타점 제어 스키마 및 관련 Getter/Setter를 100% 영구 삭제 (VWAP 돌파 & +1.0% 고정 익절 절대 락온).
 # 🚨 MODIFIED: [V-REV 슬라이싱 수학 무결성 락온] VWAP_PROFILES 누적 가중치(Cumulative, CDF) 100% 교정 유지.
 # 🚨 MODIFIED: [V54.03 JSON 락온(Mutex) 방어막 전면 이식] Thread-safe 한 로컬 파일 동기화 사수.
 # 🚨 MODIFIED: [Case 34] 락온 센티널 파일 고아화(Orphan Lock) 맹점 영구 소각 유지.
@@ -87,10 +86,7 @@ class ConfigManager:
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",     
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
-            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json",
-            # NEW: 암살자 진입/익절 동적 타점 제어용 상태 파일 배선
-            "AVWAP_ENTRANCE_CFG": "data/avwap_entrance.json",
-            "AVWAP_EXIT_CFG": "data/avwap_exit.json"
+            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json"
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -100,10 +96,6 @@ class ConfigManager:
         self.DEFAULT_COMPOUND = {"SOXL": 70.0, "TQQQ": 70.0}
         self.DEFAULT_SNIPER_MULTIPLIER = {"SOXL": 1.0, "TQQQ": 0.9}
         self.DEFAULT_FEE = {"SOXL": 0.07, "TQQQ": 0.07} 
-        
-        # NEW: 암살자 진입/익절 디폴트 설정 (2.0%)
-        self.DEFAULT_AVWAP_ENTRANCE = 2.0
-        self.DEFAULT_AVWAP_EXIT = 2.0
         
         self._locks_mutex = threading.Lock()
         self._io_lock = threading.RLock()
@@ -442,7 +434,7 @@ class ConfigManager:
     def calibrate_ledger_prices(self, ticker, target_date_str, exec_history):
         if not exec_history:
             return 0
-            
+           
         buy_qty = 0
         buy_amt = 0.0
         sell_qty = 0
@@ -928,25 +920,3 @@ class ConfigManager:
             d = self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {})
             d[ticker] = str(date_str)
             self._save_json(self.FILES["AVWAP_ANCHOR_CFG"], d)
-
-    # NEW: 암살자 진입률(%) 동적 제어 (0.1% ~ 15.0% 클램핑 팩트 락온)
-    def get_avwap_entrance_rate(self, ticker):
-        val = self._safe_float(self._load_json(self.FILES["AVWAP_ENTRANCE_CFG"], {}).get(ticker, self.DEFAULT_AVWAP_ENTRANCE))
-        return max(0.1, min(15.0, val))
-
-    def set_avwap_entrance_rate(self, ticker, v):
-        with self._io_lock:
-            d = self._load_json(self.FILES["AVWAP_ENTRANCE_CFG"], {})
-            d[ticker] = max(0.1, min(15.0, self._safe_float(v)))
-            self._save_json(self.FILES["AVWAP_ENTRANCE_CFG"], d)
-
-    # NEW: 암살자 익절률(%) 동적 제어 (0.1% ~ 15.0% 클램핑 팩트 락온)
-    def get_avwap_exit_rate(self, ticker):
-        val = self._safe_float(self._load_json(self.FILES["AVWAP_EXIT_CFG"], {}).get(ticker, self.DEFAULT_AVWAP_EXIT))
-        return max(0.1, min(15.0, val))
-
-    def set_avwap_exit_rate(self, ticker, v):
-        with self._io_lock:
-            d = self._load_json(self.FILES["AVWAP_EXIT_CFG"], {})
-            d[ticker] = max(0.1, min(15.0, self._safe_float(v)))
-            self._save_json(self.FILES["AVWAP_EXIT_CFG"], d)
