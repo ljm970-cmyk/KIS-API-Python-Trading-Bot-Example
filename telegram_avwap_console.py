@@ -3,8 +3,8 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료.
 # 🚨 MODIFIED: [관제탑 UI 전면 롤오버] 역추세 기반의 관제탑을 '순수 돌파/추종 데이 트레이딩 관제탑'으로 100% 팩트 교정 완료.
+# 🚨 MODIFIED: [중복 타점 데드 텍스트 소각] VWAP이 곧 타점이므로 중복해서 표출되던 '🔻 감시선/요격 타점' 렌더링 로직을 전면 파기하여 UI 직관성 극대화.
 # 🚨 MODIFIED: [암살자 동적 제어 뇌관 영구 소각] 수동으로 진입률/익절률을 조작하던 팻핑거 렌더링 텍스트와 하단 인라인 버튼을 시스템 전역에서 영구 삭제.
-# 🚨 MODIFIED: [타점 라벨 팩트 락온] 기존의 '하방 이격(-N%) 감시선' 텍스트를 '실시간 VWAP 돌파 요격 타점'으로 변경.
 # 🚨 MODIFIED: [1-Shot 1-Kill 수익 팩트 락온] 체결 평단가 기준 +1.0% 고정 익절 팩트를 UI에 하드코딩 렌더링.
 # 🚨 MODIFIED: [소프트웨어 트리거 안내 팩트 주입] 관제탑 경고창 및 상태창에 매도 1호가 즉각 요격(Software Trigger) 및 04:07 타임쉴드 내용을 100% 명시.
 # 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] 콜백 유입 시 1줄짜리 로딩 텍스트 중간 렌더링을 100% 소각하고 제자리 갱신(In-place Edit)만 수행하도록 팩트 락온.
@@ -126,7 +126,6 @@ class AvwapConsolePlugin:
         base_t = 'SOXX'
         base_t_clean = html.escape(str(base_t))
         
-        # 🚨 MODIFIED: [Case 17] 순수 돌파/추종 데이 트레이딩 관제탑 롤오버 락온
         msg = f"📡 <b>[ 순수 돌파/추종 데이트레이딩 관제탑 ]</b>\n{header_status}\n\n"
         keyboard = []
 
@@ -209,7 +208,6 @@ class AvwapConsolePlugin:
                     avwap_avg = self._safe_float(state_data.get('avg_price', 0.0))
                     avwap_inv_usd = avwap_qty * avwap_avg
                     
-                    # 🚨 MODIFIED: [순수 추종 +1.0% 고정 익절 팩트 락온]
                     target_usd = math.ceil(avwap_avg * 1.01 * 100) / 100.0
         except Exception:
             pass
@@ -217,15 +215,16 @@ class AvwapConsolePlugin:
         lev_amp_pct = base_amp5 * 3 * 100.0
         kis_gap_pct = ((curr_p - kis_avg) / kis_avg * 100.0) if kis_avg > 0 else 0.0
 
-        pre_vwap, pre_target, pre_high, pre_low, pre_amp = 0.0, 0.0, 0.0, 0.0, 0.0
-        reg_vwap, reg_target, reg_high, reg_low, reg_amp = 0.0, 0.0, 0.0, 0.0, 0.0
+        pre_vwap, pre_high, pre_low, pre_amp = 0.0, 0.0, 0.0, 0.0
+        reg_vwap, reg_high, reg_low, reg_amp = 0.0, 0.0, 0.0, 0.0
 
         if df_1m is not None and not df_1m.empty and 'time_est' in df_1m.columns:
             df_today = df_1m[df_1m.index.date == today_est_date].copy()
             
+            # 🚨 MODIFIED: [타점 이중 노출 소각] 불필요해진 s_target 산출 및 반환 로직 영구 삭제
             def _calc_session_metrics(df_session):
                 if df_session.empty:
-                    return 0.0, 0.0, 0.0, 0.0, 0.0
+                    return 0.0, 0.0, 0.0, 0.0
                 
                 df_session['high'] = df_session['high'].ffill().bfill()
                 df_session['low'] = df_session['low'].ffill().bfill()
@@ -247,16 +246,13 @@ class AvwapConsolePlugin:
                 else:
                     s_vwap = self._safe_float(df_session['tp'].mean())
                 
-                # 🚨 MODIFIED: [순수 돌파/추종 타점 락온] 타점은 실시간 VWAP과 100% 동일합니다.
-                s_target = s_vwap
-                
-                return s_vwap, s_target, s_high, s_low, s_amp
+                return s_vwap, s_high, s_low, s_amp
 
             df_pre = df_today[(df_today['time_est'] >= '040000') & (df_today['time_est'] <= '092959')].copy()
             df_reg = df_today[(df_today['time_est'] >= '093000') & (df_today['time_est'] <= '160000')].copy()
             
-            pre_vwap, pre_target, pre_high, pre_low, pre_amp = _calc_session_metrics(df_pre)
-            reg_vwap, reg_target, reg_high, reg_low, reg_amp = _calc_session_metrics(df_reg)
+            pre_vwap, pre_high, pre_low, pre_amp = _calc_session_metrics(df_pre)
+            reg_vwap, reg_high, reg_low, reg_amp = _calc_session_metrics(df_reg)
 
         msg += f"🎯 <b>[ {ticker_clean} 데이 트레이딩 관측소 ]</b>\n"
         msg += f"▫️ 현재가: <b>${curr_p:.2f}</b>\n\n"
@@ -272,34 +268,18 @@ class AvwapConsolePlugin:
         else:
             msg += f"▫️ 본진 물량 보유 없음 (관망)\n\n"
 
-        # 🚨 MODIFIED: [순수 돌파/추종 팩트 라벨 교정]
-        if is_avwap_hybrid:
-            if now_est.time() < datetime.time(4, 7):
-                pre_target_label = "04:07 타임쉴드 가동 중 (관망)"
-            else:
-                pre_target_label = "실시간 VWAP 돌파 요격 타점"
-            
-            if is_early_shutdown:
-                reg_target_label = "VWAP 감시선 (진입 차단됨)"
-            else:
-                reg_target_label = "실시간 VWAP 돌파 요격 타점"
-        else:
-            pre_target_label = "실시간 VWAP 감시선 (OFF)"
-            reg_target_label = "실시간 VWAP 감시선 (OFF)"
-
+        # 🚨 MODIFIED: [중복 타점 텍스트 소각] VWAP이 타점이므로 하단 🔻 렌더링 로직 전면 파기 완료
         msg += f"🌅 <b>[ 1세션 - 프리장 (04:00~09:29) ]</b>\n"
         if pre_vwap > 0 or pre_high > 0:
             msg += f"▫️ 고가: ${pre_high:.2f} / 저가: ${pre_low:.2f} (진폭 {pre_amp:.2f}%)\n"
-            msg += f"▫️ 누적 VWAP: <b>${pre_vwap:.2f}</b>\n"
-            msg += f"🔻 {pre_target_label}: <b>${pre_target:.2f}</b>\n\n"
+            msg += f"▫️ 누적 VWAP: <b>${pre_vwap:.2f}</b>\n\n"
         else:
             msg += "▫️ 데이터 집계 대기 중...\n\n"
 
         msg += f"🔥 <b>[ 2세션 - 정규장 (09:30~16:00) ]</b>\n"
         if reg_vwap > 0 or reg_high > 0:
             msg += f"▫️ 고가: ${reg_high:.2f} / 저가: ${reg_low:.2f} (진폭 {reg_amp:.2f}%)\n"
-            msg += f"▫️ 누적 VWAP: <b>${reg_vwap:.2f}</b>\n"
-            msg += f"🔻 {reg_target_label}: <b>${reg_target:.2f}</b>\n\n"
+            msg += f"▫️ 누적 VWAP: <b>${reg_vwap:.2f}</b>\n\n"
         else:
             msg += "▫️ 정규장 개장 대기 중...\n\n"
 
@@ -328,7 +308,6 @@ class AvwapConsolePlugin:
         if is_assassin_active:
             msg += f"▫️ 교전 상태: <b>ON (VWAP 상향 돌파 요격 및 진입 완료)</b>\n"
             msg += f"▫️ 투입 물량: <b>{avwap_qty}주</b> (진입 단가 ${avwap_avg:.2f} | 총 ${avwap_inv_usd:,.2f})\n"
-            # 🚨 MODIFIED: [+1.0% 고정 익절 팩트 락온]
             msg += f"▫️ 전량 익절: <b>목표가 ${target_usd:.2f}</b> (+1.0% 고정 지정가 락온)\n"
             msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 암살자 물량만 매수 1호가 스윕 덤핑 대기 중 (결측시 -5% 폴백 / 본진 100% 격리)</b>\n"
             msg += f"▫️ 본진 타격망: <b>⏳ 자본 잠김 감지 ➔ 애프터장 16:01 일괄 타격으로 이연 대기 중</b>\n"
@@ -387,7 +366,6 @@ class AvwapConsolePlugin:
     def get_avwap_warning_menu(self, ticker):
         safe_t = html.escape(str(ticker))
         
-        # 🚨 MODIFIED: [순수 돌파/추종 안내 팩트 락온]
         msg = f"👁️ <b>[{safe_t} 순수 돌파/추종 데이 트레이딩 관제탑 가동 승인]</b>\n\n"
         msg += "⚠️ <b>[ 수동 제어 및 팻핑거 뇌관 100% 소각 완료 ]</b>\n"
         msg += "과거의 복잡했던 휩소 방어(HA 컨펌) 및 수동 목표가/수익률 설정 로직은 시스템 전역에서 영구 소각되었습니다.\n\n"
@@ -439,14 +417,13 @@ class AvwapConsolePlugin:
             msg += f"{icon} <b>{safe_t} ({ver_display} 모드)</b>\n"
             
             if ver == "V_REV":
-                avwap_status = "🟢 ON (주문가능금액 100% 올인)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
+                avwap_status = "🟢 ON (주문가능금액 95% 올인)" if is_avwap_hybrid else "⚪ OFF (가동 대기)"
                 
                 msg += f"▫️ 본진 예산: 총 시드의 15% (고정 할당)\n▫️ 본진 목표: [가상1층]+0.6% / [상위층]+0.5%\n▫️ 자동복리: {comp_rate}% | 수수료: <b>{fee_rate}%</b>\n▫️ 갭 스위칭: <b>🤖 자율주행 (상승장 자동 가동)</b>\n"
                 msg += f"▫️ 암살자 타격망: <b>{avwap_status}</b>\n"
                 
                 if is_avwap_hybrid:
                     msg += f"▫️ 아키텍처: <b>본진(15%)과 암살자 100% 독립 병렬 가동 팩트 락온</b>\n"
-                    # 🚨 MODIFIED: [순수 돌파/추종 팩트 락온]
                     msg += f"▫️ 암살자 타점: <b>04:07 타임쉴드 해제 후 실시간 VWAP 상향 돌파 요격 (1-Shot 1-Kill)</b>\n"
                     msg += f"▫️ 암살자 익절: <b>+1.0% 지정가 전량 익절 (절대 락온)</b>\n"
                     msg += f"▫️ 자본 잠김 차단: <b>15:59 EST 전량 매수 1호가 스윕 덤핑</b>\n"
@@ -467,7 +444,6 @@ class AvwapConsolePlugin:
                     keyboard.append([InlineKeyboardButton(f"📡 {safe_t} 데이 트레이딩 관제탑 열기", callback_data=f"AVWAP:MENU:{t}")])
                     keyboard.append([InlineKeyboardButton("⚔️ 암살자 ON/OFF 토글", callback_data=f"CONFIG_AVWAP:TOGGLE:{t}")])
                     keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
-                    # 🚨 MODIFIED: [암살자 팻핑거 뇌관 영구 소각] 진입률/익절률 버튼을 시스템 전역에서 영구 삭제
                     keyboard.append([InlineKeyboardButton(f"✂️ {safe_t} 액면보정", callback_data=f"INPUT:STOCK_SPLIT:{t}")])
                 else:
                     keyboard.append([InlineKeyboardButton(f"💸 {safe_t} 복리", callback_data=f"INPUT:COMPOUND:{t}"), InlineKeyboardButton(f"💳 {safe_t} 수수료", callback_data=f"INPUT:FEE:{t}")])
@@ -844,3 +820,24 @@ class AvwapConsolePlugin:
                 except OSError: pass
             raise e
         return fname
+
+    def get_ticker_menu(self, current_tickers):
+        keyboard = [
+            [InlineKeyboardButton("🚀 오리지널 TQQQ 단독 운용", callback_data="TICKER:TQQQ")],
+            [InlineKeyboardButton("🔥 오리지널 SOXL 단독 운용", callback_data="TICKER:SOXL")],
+            [InlineKeyboardButton("💎 오리지널 TQQQ + SOXL 듀얼 콤보", callback_data="TICKER:ALL")]
+        ]
+        current_tickers = current_tickers or []
+        safe_tickers = [html.escape(str(t)) for t in current_tickers if isinstance(t, str)]
+        return f"🔄 <b>[ 운용 종목 선택 ]</b>\n현재 가동중: <b>{', '.join(safe_tickers)}</b>", InlineKeyboardMarkup(keyboard)
+
+    def format_log_report(self, error_logs):
+        error_logs = error_logs or []
+        chronological_logs = list(reversed(error_logs))
+        header = "🔍 <b>[ 시스템 원격 진단 리포트 (최근 50건) ]</b>\n\n<code>"
+        footer = "</code>\n\n✅ <b>[진단 완료]</b>"
+        body = ""
+        for line in chronological_logs: body += f"{html.escape(str(line))}\n"
+        if len(body) > (4000 - len(header) - len(footer)):
+             body = "… (글자 수 제한으로 이전 로그 생략) …\n" + body[-(3800 - len(header) - len(footer)):]
+        return header + body + footer
