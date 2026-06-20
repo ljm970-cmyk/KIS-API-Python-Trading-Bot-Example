@@ -2,12 +2,12 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
-# 🚨 MODIFIED: [Phase 4 암살자 장부 병렬 렌더링 락온] `_display_ledger` 호출 시 100% 독립된 `AssassinLedger`를 로드하여, 오버나이트 중인 암살자 물량과 평단가를 본진 장부 하단에 완벽히 분리 표출하도록 UI 브릿지 결속 완료.
-# 🚨 MODIFIED: [IndentationError 궁극 수술] 112번 라인 `if not schedule.empty:` 및 `await self._safe_send` 라인에 잔존하던 1칸의 스페이스 오차를 정밀 교정.
-# 🚨 MODIFIED: [NameError 런타임 붕괴 수술] _display_ledger 내부에서 사용하는 텔레그램 인라인 키보드 UI 컴포넌트(InlineKeyboardButton, InlineKeyboardMarkup)의 임포트 누락 교정.
-# 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가(actual_avg)를 0.0으로 오염시키던 else 구문을 전면 삭제하여 KIS 팩트 평단가를 100% 보존 락온.
-# 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False를 강제 래핑하여 스냅샷을 절대 덮어쓰지 않고 팩트 그대로 불러오도록 락온.
-# 🚨 MODIFIED: [제2헌법 단일 책임 수호] 뷰어 도메인(telegram_view.py)으로 완전히 이관된 `create_sync_report` 데드코드를 이 파일에서 100% 영구 삭제하여 프랑켄슈타인 덮어쓰기 사고를 차단.
+# 🚨 MODIFIED: [암살자 장부 상시 렌더링 락온] `_display_ledger` 호출 시 암살자 물량이 0주이더라도 "OFF (대기 중 / 0주)" 상태를 무조건 표출하여 사용자 심리적 안정감 및 가시성 100% 사수.
+# 🚨 MODIFIED: [Phase 4 암살자 장부 병렬 렌더링] 100% 독립된 `AssassinLedger`를 로드하여, 오버나이트 중인 암살자 물량과 평단가를 본진 장부 하단에 완벽히 분리 표출하는 브릿지 결속 유지.
+# 🚨 MODIFIED: [IndentationError 궁극 수술] 파이썬 컴파일러 즉사 버그 원천 차단.
+# 🚨 MODIFIED: [NameError 런타임 붕괴 수술] 텔레그램 인라인 키보드 UI 컴포넌트 임포트 누락 교정 완료.
+# 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가를 0.0으로 오염시키던 맹점 소각.
+# 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False 강제 래핑 락온.
 # ==========================================================
 import logging
 import datetime
@@ -153,7 +153,6 @@ class TelegramSyncEngine:
                  
                 max_check_qty = max(ledger_qty_for_check, vrev_ledger_qty_for_check)
 
-                # 🚨 NEW: [Phase 4] 암살자 독립 장부 수량 합산 팩트 교정
                 a_qty_for_check = 0
                 try:
                     from assassin_ledger import AssassinLedger
@@ -163,7 +162,6 @@ class TelegramSyncEngine:
                 except Exception as e:
                     logging.error(f"🚨 암살자 장부 수량 스캔 에러: {e}")
                 
-                # 🚨 본진 잔고가 없어도 암살자가 물려있으면 MOC 손절 내역을 스캔해야 하므로 max_check_qty에 병합
                 max_check_qty = max(max_check_qty, a_qty_for_check)
 
                 kis_search_start = (now_kst - datetime.timedelta(days=4)).strftime('%Y%m%d')
@@ -224,7 +222,6 @@ class TelegramSyncEngine:
                 ledger_qty = hold_res2[0] if isinstance(hold_res2, tuple) and len(hold_res2) > 0 else 0
                 avg_price = hold_res2[1] if isinstance(hold_res2, tuple) and len(hold_res2) > 1 else 0.0
                 
-                # 🚨 MODIFIED: [암살자 물량 본진 간섭 차단] 암살자가 점유 중인 KIS 물량은 본진 V-REV 오차 교정(Calibration)에서 완전히 배제
                 safe_actual_qty_for_vrev = max(0, actual_qty - a_qty_for_check)
                 diff = safe_actual_qty_for_vrev - ledger_qty
                 price_diff = abs(actual_avg - avg_price)
@@ -233,12 +230,9 @@ class TelegramSyncEngine:
                 ledger_today_buy = sum(r.get('qty', 0) for r in today_recs if r.get('side') == 'BUY')
                 ledger_today_sell = sum(r.get('qty', 0) for r in today_recs if r.get('side') == 'SELL')
                 
-                # 🚨 MODIFIED: [암살자 매매분 본진 간섭 차단] V-REV 장부 교정을 위한 체결 내역에서 암살자가 사고판 물량은 완벽히 제거
                 exec_today_buy = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "02")
                 exec_today_sell = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "01")
                 
-                # 만약 암살자가 오버나이트를 안하고 당일 샀다 팔았다면, 그 수량을 체결내역에서 뺌
-                # 암살자 상태 파일을 열어서 정확히 판단 가능하나, 오차 교정(Calibration) 로직의 복잡도를 낮추기 위해 여기서는 V-REV 큐와의 수량 차이(gap_qty)만으로 교정하도록 단순화 유지
                 needs_reconstruction = (diff != 0)
 
                 if not needs_reconstruction and price_diff >= 0.01:
@@ -550,7 +544,7 @@ class TelegramSyncEngine:
         report = ""
         
         if not recs:
-            report += f"📭 <b>[{html.escape(str(ticker))}]</b> 현재 진행 중인 사이클이 없습니다 (보유량 0주).\n\n"
+            report += f"📭 <b>[{html.escape(str(ticker))}]</b> 현재 진행 중인 본진 사이클이 없습니다 (보유량 0주).\n\n"
         else:
             from collections import OrderedDict
             agg_dict = OrderedDict()
@@ -611,7 +605,7 @@ class TelegramSyncEngine:
         t_val_safe = self._safe_float(t_val)
         split_safe = int(self._safe_float(split))
 
-        report += "📊 <b>[ 현재 진행 상황 요약 ]</b>\n"
+        report += "📊 <b>[ 현재 본진 진행 상황 요약 ]</b>\n"
         report += f"▪️ 현재 T값 : {t_val_safe:.4f} T ({split_safe}분할)\n"
         report += f"▪️ 보유 수량 : {actual_qty} 주 (평단 ${actual_avg:,.2f})\n"
         
@@ -619,21 +613,27 @@ class TelegramSyncEngine:
             report += f"▪️ 총 매수액 : ${total_buy:,.2f}\n"
             report += f"▪️ 총 매도액 : ${total_sell:,.2f}\n"
 
-        # 🚨 NEW: [Phase 4] 암살자 전용 장부(AssassinLedger) 병렬 렌더링 팩트 삽입
+        # 🚨 NEW: [Phase 4] 암살자 전용 장부(AssassinLedger) 무조건 병렬 렌더링 팩트 삽입 (0주 관망 상태 포함)
         try:
             from assassin_ledger import AssassinLedger
             a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
             a_data = await self._retry_api(a_ledger.get_ledger, ticker, default=[])
+            
+            report += f"\n🔫 <b>[ 암살자 (aVWAP) 독립 장부 상태 ]</b>\n"
             
             if a_data and isinstance(a_data, list) and len(a_data) > 0:
                 a_qty = sum(int(self._safe_float(r.get('qty'))) for r in a_data)
                 if a_qty > 0:
                     a_inv = sum(int(self._safe_float(r.get('qty'))) * self._safe_float(r.get('price')) for r in a_data)
                     a_avg = a_inv / a_qty if a_qty > 0 else 0.0
-                    report += f"\n🔫 <b>[ 암살자 (aVWAP) 독립 장부 상태 ]</b>\n"
-                    report += f"▪️ 진행 상태 : <b>ON (오버나이트 중)</b>\n"
+                    report += f"▪️ 진행 상태 : <b>ON (교전/오버나이트 중)</b>\n"
                     report += f"▪️ 락온 수량 : <b>{a_qty} 주</b>\n"
                     report += f"▪️ 진입 평단가: <b>${a_avg:,.2f}</b>\n"
+                else:
+                    report += f"▪️ 진행 상태 : <b>OFF (대기 중 / 0주)</b>\n"
+            else:
+                report += f"▪️ 진행 상태 : <b>OFF (대기 중 / 0주)</b>\n"
+                
         except Exception as e:
             logging.error(f"🚨 암살자 장부 UI 렌더링 실패: {e}")
 

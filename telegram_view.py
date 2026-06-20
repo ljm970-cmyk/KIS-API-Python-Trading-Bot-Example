@@ -2,9 +2,9 @@
 # FILE: telegram_view.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [Phase 4 암살자 장부 상시 렌더링 락온] `create_ledger_dashboard` 메서드 호출 시 암살자 데이터가 0주라도 무조건 "OFF (대기 중 / 0주)"를 표출하여 사용자 팩트 검증을 보조.
 # 🚨 MODIFIED: [Phase 4 암살자 지정 예산 렌더링] /settlement 호출 시 표출되는 설정 화면에 사용자가 지정한 '암살자 예산'과 '오버나이트 모드'를 100% 팩트로 표출.
 # 🚨 MODIFIED: [Phase 4 인라인 버튼 결속] 암살자 설정 메뉴(SETTLEMENT)에 "🔫 암살자 1회 타격 예산" 및 "🌙 오버나이트 토글" 버튼 주입 완료.
-# 🚨 MODIFIED: [Phase 4 암살자 독립 장부 병렬 렌더링] `create_ledger_dashboard` 메서드에 `assassin_data` 파라미터를 신설하여, 본진 장부 하단에 암살자의 현재 교전 상태(물린 수량/평단가)를 100% 물리적으로 격리하여 표출.
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
 # 🚨 MODIFIED: [Case 16 위반 교정] 이미지 렌더링(create_profit_image) 시 원자적 쓰기 실패에 따른 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 최상단 전진 배치.
 # ==========================================================
@@ -321,7 +321,7 @@ class TelegramView:
             is_avwap_hybrid = getattr(config, 'get_avwap_hybrid_mode', lambda x: False)(t)
             fee_rate = self._safe_float(getattr(config, 'get_fee', lambda x: 0.25)(t))
             
-            # 🚨 NEW: [Phase 4] 암살자 지정 예산 및 오버나이트 팩트 추출
+            # 🚨 NEW: [Phase 4] 암살자 지정 예산 및 오버나이트 정보 추출
             avwap_budget = self._safe_float(getattr(config, 'get_avwap_budget', lambda x: 10000.0)(t))
             is_overnight = bool(getattr(config, 'get_avwap_overnight_mode', lambda x: False)(t))
             
@@ -364,7 +364,6 @@ class TelegramView:
                 if t == "SOXL": 
                     keyboard.append([InlineKeyboardButton(f"📡 {safe_t} 데이 트레이딩 관제탑 열기", callback_data=f"AVWAP:MENU:{t}")])
                     keyboard.append([InlineKeyboardButton("⚔️ 암살자 ON/OFF 토글", callback_data=f"CONFIG_AVWAP:TOGGLE:{t}")])
-                    # 🚨 NEW: [Phase 4] 암살자 지정 예산 및 오버나이트 토글 락온
                     keyboard.append([
                         InlineKeyboardButton(f"🔫 {safe_t} 암살자 예산", callback_data=f"INPUT:AVWAP_BUDGET:{t}"),
                         InlineKeyboardButton(f"🌙 오버나이트 토글", callback_data=f"CONFIG_AVWAP:TOGGLE_OVERNIGHT:{t}")
@@ -618,7 +617,7 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 NEW: [Phase 4] 암살자 전용 장부(assassin_data) 병렬 렌더링 락온
+    # 🚨 MODIFIED: [Phase 4 암살자 장부 상시 렌더링 락온] 
     def create_ledger_dashboard(self, ticker, qty, avg, invested, sold, records, t_val, split, is_history=False, is_reverse=False, history_id=None, assassin_data=None):
         safe_t = html.escape(str(ticker))
         groups = {}
@@ -660,16 +659,19 @@ class TelegramView:
             report += f"▪️ <b>최종수익: {'+' if profit >= 0 else '-'}${abs(profit):,.2f} ({'+' if profit >= 0 else '-'}{abs(pct):.2f}%)</b>\n"
         report += f"▪️ 총 매수액 : ${invested:,.2f}\n▪️ 총 매도액 : ${sold:,.2f}\n"
 
-        # 🚨 [Phase 4] 암살자 전용 장부 병렬 렌더링 팩트 삽입
-        if assassin_data and isinstance(assassin_data, list) and len(assassin_data) > 0:
-            a_qty = sum(int(self._safe_float(r.get('qty'))) for r in assassin_data)
+        # 🚨 [Phase 4] 암살자 전용 장부 병렬 렌더링 팩트 삽입 (0주라도 표출하여 사용자 안심망 가동)
+        if not is_history and assassin_data is not None:
+            a_qty = sum(int(self._safe_float(r.get('qty'))) for r in (assassin_data or []))
+            a_inv = sum(int(self._safe_float(r.get('qty'))) * self._safe_float(r.get('price')) for r in (assassin_data or []))
+            a_avg = a_inv / a_qty if a_qty > 0 else 0.0
+            
+            report += f"\n🔫 <b>[ 암살자 (aVWAP) 독립 장부 상태 ]</b>\n"
             if a_qty > 0:
-                a_inv = sum(int(self._safe_float(r.get('qty'))) * self._safe_float(r.get('price')) for r in assassin_data)
-                a_avg = a_inv / a_qty if a_qty > 0 else 0.0
-                report += f"\n🔫 <b>[ 암살자 (aVWAP) 독립 장부 상태 ]</b>\n"
-                report += f"▪️ 진행 상태 : <b>ON (오버나이트 중)</b>\n"
+                report += f"▪️ 진행 상태 : <b>ON (교전/오버나이트 중)</b>\n"
                 report += f"▪️ 락온 수량 : <b>{a_qty} 주</b>\n"
-                report += f"▪️ 진입 평단가: <b>${a_avg:.2f}</b>\n"
+                report += f"▪️ 진입 평단가: <b>${a_avg:,.2f}</b>\n"
+            else:
+                report += f"▪️ 진행 상태 : <b>OFF (대기 중 / 0주)</b>\n"
 
         if not is_history:
             other = "TQQQ" if ticker == "SOXL" else "SOXL"
