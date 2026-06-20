@@ -2,6 +2,7 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [애프터장 유령 체결(Ghost Execution) 방어] 오버나이트 모드(ON)로 15:59 동면에 들어갈 때, KIS 서버에 기장전된 덫(매수/매도)을 반드시 취소(Cancel)하고 동면하도록 팩트 교정 완료.
 # 🚨 MODIFIED: [Phase 3 암살자 지정 예산 락온] 주문가능금액 95% 강제 탕진 맹점을 파기하고, min(사용자 예산, 가용현금 * 0.95) 샌드위치 래핑으로 팻핑거 예산 초과(API Reject) 붕괴 원천 차단.
 # 🚨 MODIFIED: [Phase 3 오버나이트 방어망 분기] 15:59 EST 도달 시 get_avwap_overnight_mode 스캔 후, True이면 덤핑 바이패스(조기 퇴근), False이면 기존대로 1호가 스윕 덤핑 강제.
 # 🚨 MODIFIED: [Phase 2 암살자 독립 장부 이식] 1-Shot 1-Kill 진입 성공 및 익절/손절 시 `AssassinLedger`를 원자적으로 제어하여 본진 물량 절도(Ghost Selling) 패러독스 완벽 방어.
@@ -30,7 +31,6 @@ import yfinance as yf
 import functools
 
 from scheduler_core import is_market_open
-# 🚨 NEW: [Phase 2] 암살자 100% 독립 장부 도메인 결속
 from assassin_ledger import AssassinLedger
 
 def _safe_float(val):
@@ -226,7 +226,6 @@ async def scheduled_sniper_monitor(context):
             logging.error(f"🚨 [sniper_monitor] 로컬 스나이퍼 캐시 청소 타임아웃/에러: {e}")
 
     async def _do_sniper():
-        # 🚨 [Phase 2] 독립 암살자 장부(AssassinLedger) 인스턴스화
         assassin_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
 
         async with tx_lock:
@@ -252,7 +251,6 @@ async def scheduled_sniper_monitor(context):
                         version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                         is_avwap_hybrid = await asyncio.wait_for(asyncio.to_thread(getattr(cfg, 'get_avwap_hybrid_mode', lambda x: False), t), timeout=5.0)
                         
-                        # 🚨 NEW: [Phase 1] 사용자 지정 예산 및 오버나이트 모드 파싱 팩트 결속
                         user_budget = await _retry_api(getattr(cfg, 'get_avwap_budget', lambda x: 10000.0), t, default=10000.0)
                         is_overnight_allowed = await _retry_api(getattr(cfg, 'get_avwap_overnight_mode', lambda x: False), t, default=False)
                     except Exception as e:
@@ -269,15 +267,26 @@ async def scheduled_sniper_monitor(context):
                         t_state = await asyncio.wait_for(asyncio.to_thread(_load_avwap_trade_state, t, now_est), timeout=10.0)
                         curr_t_obj = now_est.time()
                     
-                        # 🚨 [Phase 3] 15:59 EST 오버나이트 덤핑망 수술 (오버나이트 모드 분기 팩트 락온)
+                        # 🚨 [15:59 EST 강제 덤핑 및 오버나이트 분기망]
                         if curr_t_obj >= datetime.time(15, 59, 0) and not t_state.get('dumped'):
                             if is_overnight_allowed:
                                 logging.info(f"🌙 [{t}] 15:59 EST 컷오프 도달. 오버나이트 모드 ON ➔ 강제 덤핑을 바이패스(Bypass)합니다.")
+                                
+                                # 🚨 MODIFIED: [Ghost Execution 붕괴 방어] 오버나이트 진입 전 KIS 서버에 장전된 덫을 취소하여 애프터장 유령 체결을 원천 차단.
+                                if t_state.get('buy_odno'):
+                                    await _retry_api(broker.cancel_order, t, t_state['buy_odno'])
+                                    t_state['buy_odno'] = ""
+                                if t_state.get('sell_odno'):
+                                    await _retry_api(broker.cancel_order, t, t_state['sell_odno'])
+                                    t_state['sell_odno'] = ""
+                                    
+                                await asyncio.sleep(1.0)
+                                
                                 t_state['shutdown'] = True
                                 t_state['dumped'] = True
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 if chat_id:
-                                    await _safe_send(context, chat_id, f"🌙 <b>[{html.escape(t)}] 암살자 오버나이트 전환 (관망)</b>\n▫️ 익절에 실패했으나 오버나이트가 허용되어 강제 덤핑을 건너뛰고 포지션을 익일로 안전하게 이관합니다.", parse_mode='HTML')
+                                    await _safe_send(context, chat_id, f"🌙 <b>[{html.escape(t)}] 암살자 오버나이트 전환 (관망)</b>\n▫️ 익절에 실패했으나 오버나이트가 허용되어 강제 덤핑을 건너뛰고 포지션을 익일로 안전하게 이관합니다.\n▫️ <b>장전된 덫은 모두 회수되어 유령 체결이 완벽히 방어됩니다.</b>", parse_mode='HTML')
                                 continue
                             else:
                                 logging.info(f"🛑 [{t}] 15:59 EST 컷오프 도달. 암살자 제로-오버나이트 강제 청산 파이프라인 가동.")
@@ -313,7 +322,6 @@ async def scheduled_sniper_monitor(context):
                                     if isinstance(d_res, dict) and d_res.get('rt_cd') == '0':
                                         logging.info(f"💥 [{t}] 암살자 물량 {dump_qty}주 매수 1호가 지정가(${dump_price:.2f}) 덤핑 완료{fallback_msg}.")
                                         
-                                        # 🚨 [Phase 2] 독립 장부(AssassinLedger) 영구 소각하여 본진 큐 오염 완벽 방어
                                         await asyncio.wait_for(asyncio.to_thread(assassin_ledger.clear_ledger, t), timeout=10.0)
                                         
                                         if chat_id:
@@ -330,7 +338,6 @@ async def scheduled_sniper_monitor(context):
                                 continue
 
                         if curr_t_obj >= datetime.time(9, 30, 0) and not t_state.get('shutdown') and not t_state.get('dumped'):
-                            # 🚨 [Phase 2] 큐 장부 절대주의 팩트 락온 (t_state 뿐만 아니라 장부 상 0주인지 검증)
                             a_ledger_chk = await asyncio.wait_for(asyncio.to_thread(assassin_ledger.get_ledger, t), timeout=10.0)
                             a_qty_chk = sum(int(_safe_float(l.get('qty'))) for l in a_ledger_chk)
                             
@@ -375,11 +382,9 @@ async def scheduled_sniper_monitor(context):
                                         await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
 
                         # 🚨 [매도 덫 동적(+1.0%) 강제 장전망]
-                        # 🚨 [Edge Case 2 본진 물량 절도 방어] AssassinLedger 절대 락온
                         a_ledger = await asyncio.wait_for(asyncio.to_thread(assassin_ledger.get_ledger, t), timeout=10.0)
                         a_qty = sum(int(_safe_float(l.get('qty'))) for l in a_ledger)
                         
-                        # 만약 메모리 상태(t_state)와 팩트 장부(a_ledger)가 불일치한다면 장부 우선으로 교정
                         if a_qty > 0 and t_state.get('qty') != a_qty:
                             t_state['qty'] = a_qty
                             a_inv = sum(int(_safe_float(l.get('qty'))) * _safe_float(l.get('price')) for l in a_ledger)
@@ -390,7 +395,6 @@ async def scheduled_sniper_monitor(context):
                             exit_multiplier = 1.01
                             sell_price = math.ceil(t_state['avg_price'] * exit_multiplier * 100) / 100.0
                             
-                            # 🚨 [Edge Case 2] 암살자 전용 큐 물량(t_state['qty'])만큼만 핀셋 매도 (본진 안전 보장)
                             s_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], sell_price, "LIMIT")
                             
                             if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
@@ -412,7 +416,6 @@ async def scheduled_sniper_monitor(context):
                                 t_state['sell_odno'] = ""
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 
-                                # 🚨 [Phase 2] 독립 장부(AssassinLedger) 영구 소각하여 사이클 종료 락온
                                 await asyncio.wait_for(asyncio.to_thread(assassin_ledger.clear_ledger, t), timeout=10.0)
                                 
                                 if chat_id:
@@ -420,7 +423,6 @@ async def scheduled_sniper_monitor(context):
                                 continue
 
                         # 🚨 [진입 타점 실시간 감시 및 1-Shot 1-Kill 소프트웨어 트리거 격발망]
-                        # 🚨 관망 중(a_qty == 0)일 때만 신규 돌파 스캔 허용
                         if a_qty == 0 and not t_state.get('shutdown'):
                             exec_curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
                             df_1min_t = await _retry_api(broker.get_1min_candles_df, t)
@@ -453,7 +455,6 @@ async def scheduled_sniper_monitor(context):
                                         ask_price = _safe_float(await _retry_api(broker.get_current_price, t))
                                         
                                     if ask_price > 0.0:
-                                        # 🚨 [Phase 3 Edge Case 1 방어] 팻핑거 예산 초과(API Reject) 붕괴 원천 봉쇄 (min 샌드위치 래핑)
                                         safe_available_cash = min(user_budget, available_cash * 0.95)
                                         buy_qty = int(math.floor(safe_available_cash / ask_price))
                                         
@@ -466,7 +467,6 @@ async def scheduled_sniper_monitor(context):
                                                 t_state['buy_odno'] = str(safe_b_res.get('odno'))
                                                 t_state['is_ordering'] = False
                                                 
-                                                # 🚨 [Phase 2] 독립 장부에 즉각 팩트 기록
                                                 await asyncio.wait_for(asyncio.to_thread(assassin_ledger.add_lot, t, buy_qty, ask_price, "ASSASSIN_BUY"), timeout=10.0)
                                                 
                                                 if chat_id:

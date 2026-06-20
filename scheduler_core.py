@@ -2,6 +2,7 @@
 # FILE: scheduler_core.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [본진 졸업 마비 패러독스 수술] 암살자가 오버나이트를 수행하여 계좌에 물량이 남아있더라도, `process_realtime_graduation`에서 KIS 잔고에서 암살자 장부(`AssassinLedger`) 수량을 차감하여 본진 물량만을 정확히 추출, 0주 새출발 졸업망이 정상 가동되도록 팩트 락온.
 # 🚨 MODIFIED: [Phase 4 정산 파이프라인 팩트 롤오버] 순수 리버전 데이 트레이딩 아키텍처에 따라 오버나이트(이연) 개념을 100% 파기했습니다.
 # 🚨 MODIFIED: [애프터 정산망 영구 소각] 20:05 EST 애프터 정산을 담당하던 scheduled_aftermarket_sync 스케줄러 데드코드를 전면 영구 소각했습니다.
 # 🚨 MODIFIED: [16:05 정규 정산망 단일화] scheduled_auto_sync 내 암살자 물량 보유 시 정산을 20:05로 미루던(Skip) 디커플링 로직을 전면 소각하여 15:59 덤핑 후 무조건 당일 100% 정산되도록 팩트 락온했습니다.
@@ -391,7 +392,19 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
         safe_holdings_t = holdings.get(ticker) if isinstance(holdings.get(ticker), dict) else {}
         kis_qty = int(_safe_float(safe_holdings_t.get('qty', 0)))
         
-        if kis_qty == 0:
+        # 🚨 MODIFIED: [본진 졸업 마비 패러독스 수술] 암살자 오버나이트 물량을 KIS 총잔고에서 차감하여 순수 본진(V-REV) 물량 도출
+        a_qty = 0
+        try:
+            from assassin_ledger import AssassinLedger
+            a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
+            a_data = await async_retry(a_ledger.get_ledger, ticker, default=[])
+            a_qty = sum(int(_safe_float(l.get('qty'))) for l in (a_data or []))
+        except Exception as e:
+            logging.error(f"🚨 [{ticker}] 조기 졸업 스캔 중 암살자 장부 로드 에러: {e}")
+            
+        pure_vrev_qty = max(0, kis_qty - a_qty)
+        
+        if pure_vrev_qty == 0:
             try:
                 ledger = []
                 try: ledger = await asyncio.wait_for(asyncio.to_thread(cfg.get_ledger), timeout=10.0)
