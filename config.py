@@ -15,6 +15,7 @@
 # 🚨 MODIFIED: [제2헌법 절대 준수] get_chat_id 내부에 잔존하던 ValueError 의존성을 _safe_float 캐스팅으로 100% 영구 소각.
 # 🚨 MODIFIED: [Gap Hijack 타점 오버라이드] get_vrev_gap_threshold 및 get_avwap_gap_threshold의 디폴트 반환값을 -0.67에서 -2.0으로 100% 상향 팩트 교정 완료.
 # 🚨 MODIFIED: [State Mismatch 붕괴 수술] get_avwap_anchor_date 결측 시 디폴트 반환값을 "당월 1일"에서 "AUTO"로 팩트 교정하여 자율주행(Auto-Anchoring) 엔진이 정상 격발되도록 락온.
+# 🚨 NEW: [Phase 1 암살자 예산 락온] 암살자 고정 예산(get_avwap_budget) 및 오버나이트 허용(get_avwap_overnight_mode) 락온 배선 100% 이식 완료.
 # ==========================================================
 
 import json
@@ -86,7 +87,9 @@ class ConfigManager:
             "VREV_GAP_SWITCH_CFG": "data/vrev_gap_switch.json",     
             "VREV_GAP_THRESH_CFG": "data/vrev_gap_thresh.json",
             "AVWAP_GAP_THRESH_CFG": "data/avwap_gap_thresh.json",
-            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json"
+            "AVWAP_ANCHOR_CFG": "data/avwap_anchor.json",
+            "AVWAP_BUDGET_CFG": "data/avwap_budget.json",         # 🚨 NEW: 암살자 1회 타격 예산
+            "AVWAP_OVERNIGHT_CFG": "data/avwap_overnight.json"      # 🚨 NEW: 암살자 오버나이트 모드
         }
         
         self.DEFAULT_SEED = {"SOXL": 6720.0, "TQQQ": 6720.0}
@@ -920,3 +923,23 @@ class ConfigManager:
             d = self._load_json(self.FILES["AVWAP_ANCHOR_CFG"], {})
             d[ticker] = str(date_str)
             self._save_json(self.FILES["AVWAP_ANCHOR_CFG"], d)
+            
+    # 🚨 NEW: 암살자 1회 고정 타격 예산 (User-defined Budget) 락온
+    def get_avwap_budget(self, ticker):
+        return self._safe_float(self._load_json(self.FILES["AVWAP_BUDGET_CFG"], {}).get(ticker, 10000.0))
+
+    def set_avwap_budget(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_BUDGET_CFG"], {})
+            d[ticker] = self._safe_float(v)
+            self._save_json(self.FILES["AVWAP_BUDGET_CFG"], d)
+            
+    # 🚨 NEW: 암살자 오버나이트 허용 (당일 MOC 덤핑 바이패스) 락온
+    def get_avwap_overnight_mode(self, ticker):
+        return bool(self._load_json(self.FILES["AVWAP_OVERNIGHT_CFG"], {}).get(ticker, False))
+        
+    def set_avwap_overnight_mode(self, ticker, v):
+        with self._io_lock:
+            d = self._load_json(self.FILES["AVWAP_OVERNIGHT_CFG"], {})
+            d[ticker] = bool(v)
+            self._save_json(self.FILES["AVWAP_OVERNIGHT_CFG"], d)

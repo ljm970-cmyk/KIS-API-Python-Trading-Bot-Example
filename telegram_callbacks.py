@@ -65,9 +65,9 @@ class TelegramCallbacks:
             # 3️⃣ [AVWAP 순수 관제탑 도메인 라우팅]
             elif action in ["AVWAP", "MODE", "AVWAP_SET"]:
                 await self.avwap_handler.handle(update, context, controller, action, sub, data)
-            
+             
             # 4️⃣ [환경설정, 뷰어, 히스토리, 범용 도메인 라우팅]
-            # 🚨 MODIFIED: [중앙 라우터 무결성 사수] 암살자 팻핑거 설정이 소각됨에 따라, 순수 시스템 설정 팩트만 config_handler로 바이패스
+            # 🚨 MODIFIED: [중앙 라우터 무결성 사수] 암살자 설정값(INPUT, CONFIG_AVWAP)을 config_handler로 100% 바이패스
             elif action in ["UPDATE", "VERSION", "RESET", "REC", "HIST", "TICKER", "SEED", "INPUT", "SET_VER", "SET_VER_CONFIRM", "CONFIG_AVWAP"]:
                 await self.config_handler.handle(update, context, controller, action, sub, data)
             
@@ -78,7 +78,7 @@ class TelegramCallbacks:
                     await asyncio.wait_for(query.answer("⚠️ 등록되지 않은 버튼입니다.", show_alert=True), timeout=5.0)
                 except Exception: 
                     pass
-                 
+                  
                 safe_data = html.escape(str(query.data))
                 try:
                     await asyncio.wait_for(context.bot.send_message(chat_id, f"⚠️ <b>[알 수 없는 콜백 라우팅]</b> <code>{safe_data}</code>", parse_mode='HTML'), timeout=10.0)

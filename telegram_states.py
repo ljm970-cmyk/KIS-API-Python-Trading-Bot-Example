@@ -2,19 +2,13 @@
 # FILE: telegram_states.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [Phase 5 예산 락온] CONF_AVWAP_BUDGET 분기를 신설하여 사용자가 입력한 예산값(float)을 필터링하고 시스템 전역 변수에 원자적(Atomic)으로 덮어씌웁니다.
 # 🚨 MODIFIED: [암살자 팻핑거 뇌관 영구 소각] 순수 돌파/추종 아키텍처 이식에 따라, 암살자의 진입률/익절률을 수동으로 입력받던 CONF_AVWAP_ENTRANCE 및 CONF_AVWAP_EXIT 분기망을 100% 영구 삭제 완료.
 # 🚨 MODIFIED: [Scope Mismatch 파싱 버그 궁극 수술] CONF_STOCK_SPLIT 등 처리 시 언더바(_) 개수 초과로 인한 인덱스 밀림(IndexError 및 오염) 현상을 parts[-1] 매핑으로 100% 원천 차단.
-# 🚨 MODIFIED: [Thread-Safety 락온] 내부 헬퍼 함수가 클로저 외부 변수(self)에 의존하지 않도록 명시적 파라미터(cfg_obj, t, v) 주입으로 스레드 오염 원천 차단.
-# 🚨 MODIFIED: [보안 무결성 팩트 교정] 관리자 검증 코루틴 호출 시 await 누락으로 인한 보안망 우회 맹점 완벽 수술.
+# 🚨 MODIFIED: [Thread-Safety 락온] 내부 헬퍼 함수가 클로저 외부 변수(self)에 의존하지 않도록 명시적 파라미터 주입으로 스레드 오염 원천 차단.
 # 🚨 MODIFIED: [명령어 우회 라우팅 최신화] '관제탑', '로그' 등 한글 메뉴 클릭 시 상태(State) 락에 갇히지 않고 정상적으로 cmd_avwap, cmd_log 로 우회하도록 라우팅 팩트 결속.
-# 🚨 MODIFIED: [이벤트 루프 교착 방어] 큐 장부 지층 수동 수정(EDIT_Q) 시 발생하는 직접적인 파일 I/O 작업을 비동기 래핑.
-# 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어를 위한 html.escape 쉴드 전역 강제 주입.
-# 🚨 MODIFIED: [Case 32 & 33 절대 규칙] 팻핑거 스캔 시 TPS 캡핑(0.06s) 및 3단 지수 백오프, 타임아웃(10s) 샌드위치 락온.
-# 🚨 MODIFIED: [NoneType 붕괴 원천 봉쇄] update.message 다이렉트 참조 소각 및 update.effective_message 단락 평가 락온.
-# 🚨 MODIFIED: [Case 37 UX 무결성 사수] 모든 설정 입력 완료 시, 즉각 cmd_settlement를 호출하여 최신 관제탑 화면으로 복귀하도록 팩트 락온.
-# 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] 제자리 렌더링 호출 시 발생하는 텔레그램 BadRequest(Message is not modified) 에러를 흡수하는 샌드박스 정밀 래핑.
-# 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 메세지 발송(reply_text) 및 파일 I/O 스레드 전역에 asyncio.wait_for(timeout=10.0) 족쇄 래핑 완료 (Deadlock 원천 봉쇄).
-# 🚨 MODIFIED: [Insight 14 & 25] 클래스 내부에 _safe_float 래퍼를 전격 이식하여 NaN/Inf 맹독성 데이터 유입 시 즉각 0.0 폴백 방어막 가동.
+# 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] 제자리 렌더링 호출 시 발생하는 텔레그램 BadRequest 에러를 흡수하는 샌드박스 정밀 래핑.
+# 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 메세지 발송 및 파일 I/O 스레드 전역에 asyncio.wait_for(timeout=10.0) 족쇄 래핑 완료 (Deadlock 원천 봉쇄).
 # ==========================================================
 
 import logging
@@ -298,6 +292,29 @@ class TelegramStates:
                 except Exception as e: logging.error(f"🚨 분할 날짜 기록 에러: {e}")
                  
                 try: await asyncio.wait_for(update.effective_message.reply_text(f"✅ [{safe_ticker}] 수동 액면 보정 완료\n▫️ 모든 장부 기록이 {val}배 비율로 정밀하게 소급 조정되었습니다."), timeout=10.0)
+                except Exception: pass
+                
+                if hasattr(controller, 'cmd_settlement'):
+                    try:
+                        await controller.cmd_settlement(update, context)
+                    except BadRequest as e:
+                        if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                    except Exception: pass
+
+            # 🚨 NEW: [Phase 5 지정 예산 락온] 사용자가 입력한 예산을 파싱 및 EAFP 필터링 후 시스템 전역 락온
+            elif state.startswith("CONF_AVWAP_BUDGET"):
+                if val <= 0.0:
+                    try: await asyncio.wait_for(update.effective_message.reply_text("🚨 <b>오입력 차단:</b> 암살자 예산은 0보다 커야 합니다.", parse_mode='HTML'), timeout=10.0)
+                    except Exception: pass
+                    return
+                    
+                ticker = parts[-1]
+                safe_ticker = html.escape(str(ticker))
+                
+                try: await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_budget, ticker, val), timeout=10.0)
+                except Exception as e: logging.error(f"🚨 암살자 예산 설정 에러: {e}")
+                
+                try: await asyncio.wait_for(update.effective_message.reply_text(f"🔫 <b>[{safe_ticker}] 암살자 1회 타격 예산: ${val:,.2f} 락온 완료!</b>\n▫️ 다음 소프트웨어 트리거 요격 시부터 해당 예산이 최대치로 캡핑 적용됩니다.", parse_mode='HTML'), timeout=10.0)
                 except Exception: pass
                 
                 if hasattr(controller, 'cmd_settlement'):

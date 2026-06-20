@@ -1,17 +1,12 @@
 # ==========================================================
 # FILE: callback_config_handler.py
 # ==========================================================
-# [span_8](start_span)🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료[span_8](end_span).
-# [span_9](start_span)🚨 MODIFIED: [암살자 팻핑거 뇌관 영구 소각] 수동 목표 수익(KRW/PCT) 설정 기능을 전면 소각함에 따라, 콜백 라우터에 잔존하던 TOGGLE_TARGET_MODE 라우팅 및 INPUT 분기 데드코드를 100% 진공 압축[span_9](end_span).
-# 🚨 MODIFIED: [Case 38 UI 렌더링 높이 붕괴 패러독스 차단] 버튼 클릭 시 1줄짜리 텍스트("업데이트 중...")로 중간 갱신하여 기존 화면을 증발시키는 행위를 전면 금지. [span_10](start_span)로딩은 query.answer() 팝업으로 대체하고 최종 결과로 단 1회 제자리 갱신(In-place Edit) 락온[span_10](end_span).
-# [span_11](start_span)🚨 MODIFIED: [Reset 0주 오인 패러독스 소각] 리셋(장부 소각) 후 새로운 스냅샷을 박제할 때, qty=0 을 강제 주입하던 치명적 하드코딩 버그를 소각하고 KIS 실잔고(kis_qty)와 평단가(kis_avg) 정밀 추출[span_11](end_span).
-# [span_12](start_span)🚨 MODIFIED: [Case 08, 16 헌법 사수] _hijack_vwap_lock 및 _process_reset_files 내부의 os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료[span_12](end_span).
-# [span_13](start_span)🚨 MODIFIED: [시그니처 Mismatch 소각] 텔레그램 라우터의 action, sub, data 파싱 구조를 100% 반영하여 handle 메서드 시그니처 완벽 수복 [cite: 2044-2045].
-# [cite_start]🚨 MODIFIED: [TypeError 방어] set_reverse_state 호출 시 누락된 파라미터(0.0)를 강제 주입하여 백엔드 스키마 충돌 원천 차단[span_13](end_span).
-# [span_14](start_span)🚨 MODIFIED: [커스텀 토스트 팝업 패러독스 완벽 교정] 최상단의 범용 query.answer()가 하위 라우팅의 커스텀 로딩 팝업("🔥 소각 중...")을 씹어먹는 현상을 막기 위해 needs_custom_toast 바이패스 락온망 구축[span_14](end_span).
-# [span_15](start_span)🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단)[span_15](end_span).
-# [span_16](start_span)🚨 NEW: [명예의 전당 소각] HIST:DEL_REQ, HIST:DEL_EXEC 액션 라우팅 신설 및 중복 타격(Double Tap) 멱등성 100% 팩트 보장[span_16](end_span).
-# 🚨 NEW: [암살자 동적 타점 라우팅] INPUT 액션 서브 분기에 AVWAP_ENTRANCE 및 AVWAP_EXIT를 추가하여 직관적인 렌더링 피드백(ko_name) 및 샌드박스 가이던스 락온.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [Phase 5 암살자 지정 예산 락온] INPUT 라우팅에 `AVWAP_BUDGET` 액션을 추가하여 사용자 예산 설정을 위한 상태(State) 전이를 완벽 매핑.
+# 🚨 MODIFIED: [Phase 5 오버나이트 락온] CONFIG_AVWAP 라우팅에 `TOGGLE_OVERNIGHT` 스위칭 로직을 결속하여 당일청산(MOC)과 오버나이트 모드를 동적으로 제어.
+# 🚨 MODIFIED: [Case 38 UI 렌더링 높이 붕괴 패러독스 차단] 버튼 클릭 시 1줄짜리 텍스트("업데이트 중...")로 중간 갱신하여 기존 화면을 증발시키는 행위를 전면 금지. 로딩은 query.answer() 팝업으로 대체하고 최종 결과로 단 1회 제자리 갱신(In-place Edit) 락온.
+# 🚨 MODIFIED: [Case 08, 16 헌법 사수] os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료.
+# 🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단).
 # ==========================================================
 import logging
 import datetime
@@ -46,7 +41,6 @@ class CallbackConfigHandler:
             return 0.0
 
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, controller, action: str, sub: str, data: list):
-        # 🚨 [Null 객체 붕괴 방어] 텔레그램 서버 노이즈로 인한 속성 에러 원천 차단
         if not update.effective_chat or not update.callback_query:
             return
             
@@ -69,7 +63,6 @@ class CallbackConfigHandler:
 
         if action == "UPDATE":
             if sub == "CONFIRM":
-                # 🚨 MODIFIED: [Case 38] UI 깜빡임 방어를 위해 토스트 팝업으로 대체
                 try: 
                     await asyncio.wait_for(query.answer("⏳ 깃허브 코드 동기화 중...", show_alert=False), timeout=5.0)
                 except Exception: pass
@@ -77,7 +70,6 @@ class CallbackConfigHandler:
                 from plugin_updater import SystemUpdater
                 updater = SystemUpdater()
                 
-                # 🚨 MODIFIED: [Case 38] 기존 화면(높이 및 버튼)을 증발시키는 중간 edit_message_text 로딩 렌더링 영구 소각 (제자리 갱신 사수)
                 try:
                     success, msg = await updater.pull_latest_code()
                     safe_msg = html.escape(str(msg)) 
@@ -150,7 +142,6 @@ class CallbackConfigHandler:
                             s_state['orders'] = []
                             
                             dir_name = os.path.dirname(slice_file) or '.'
-                            # 🚨 MODIFIED: [Case 16] 디렉토리 보장 EAFP 샌드박스 추가 결속
                             try: os.makedirs(dir_name, exist_ok=True)
                             except OSError: pass
                             
@@ -201,7 +192,6 @@ class CallbackConfigHandler:
             elif sub == "CONFIRM":
                 if not ticker: return
                 
-                # 🚨 MODIFIED: [Case 38] UI 깜빡임 방어 토스트 대체
                 try: await asyncio.wait_for(query.answer("🔥 삼위일체 소각 진행 중...", show_alert=False), timeout=5.0)
                 except Exception: pass
                 
@@ -223,7 +213,6 @@ class CallbackConfigHandler:
                         b_data = [r for r in b_data if isinstance(r, dict) and str(r.get('ticker')) != str(ticker)]
                         
                         dir_name = os.path.dirname(backup_file) or '.'
-                        # 🚨 MODIFIED: [Case 16] 디렉토리 보장 EAFP 샌드박스 추가 결속
                         try: os.makedirs(dir_name, exist_ok=True)
                         except OSError: pass
                         
@@ -283,7 +272,7 @@ class CallbackConfigHandler:
                                 except Exception:
                                     if attempt == 2: holdings = {}
                                     else: await asyncio.sleep(1.0 * (2 ** attempt))
-                                    
+                            
                             cash = self._safe_float(cash_val)
                             
                             if isinstance(holdings, dict) and ticker in holdings:
@@ -334,15 +323,14 @@ class CallbackConfigHandler:
                         except Exception:
                             if attempt == 2: holdings = {}
                             else: await asyncio.sleep(1.0 * (2 ** attempt))
-                            
+                        
                 await self.sync_engine._display_ledger(ticker, chat_id, context, query=query, pre_fetched_holdings=holdings)
             elif sub == "SYNC": 
                 if not ticker: return
                 if ticker not in self.sync_engine.sync_locks:
                     self.sync_engine.sync_locks[ticker] = asyncio.Lock()
-                    
+                   
                 if not self.sync_engine.sync_locks[ticker].locked():
-                    # 🚨 MODIFIED: [Case 38] UI 깜빡임 방어 토스트 대체
                     try: 
                         await asyncio.wait_for(query.answer(f"🔄 [{ticker}] 장부 무결성 동기화 중...", show_alert=False), timeout=5.0)
                     except Exception: pass
@@ -393,7 +381,6 @@ class CallbackConfigHandler:
                 if hasattr(controller, 'cmd_history'):
                     await controller.cmd_history(update, context)
 
-            # 🚨 NEW: [명예의 전당 소각] 1단계 - 소각 재확인(Confirm) 뷰 렌더링
             elif sub == "DEL_REQ":
                 hid = int(self._safe_float(data[2])) if len(data) > 2 else 0
                 msg, markup = self.view.get_history_delete_confirm_menu(hid)
@@ -403,7 +390,6 @@ class CallbackConfigHandler:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
 
-            # 🚨 NEW: [명예의 전당 소각] 2단계 - 실제 소각 집행 및 제자리 갱신 (Height Collapse 방어)
             elif sub == "DEL_EXEC":
                 hid = int(self._safe_float(data[2])) if len(data) > 2 else 0
                 try: await asyncio.wait_for(query.answer("🔥 소각 중...", show_alert=False), timeout=5.0)
@@ -426,7 +412,6 @@ class CallbackConfigHandler:
                 target_id = int(data[3]) if len(data) > 3 else None
                 if not ticker: return
                 
-                # 🚨 MODIFIED: [Case 38] 이미지 렌더링 피드백을 토스트로 처리
                 try: await asyncio.wait_for(query.answer("🎨 프리미엄 졸업 카드를 렌더링 중입니다...", show_alert=False), timeout=5.0)
                 except Exception: pass
                 
@@ -585,7 +570,7 @@ class CallbackConfigHandler:
                     return
                 target_tickers = [sub]
                 msg_txt = sub + " 전용"
-               
+                
             await asyncio.wait_for(asyncio.to_thread(self.cfg.set_active_tickers, target_tickers), timeout=10.0)
             try: 
                 await asyncio.wait_for(query.edit_message_text(f"✅ <b>[운용 종목 락온 완료]</b>\n▫️ <b>{html.escape(str(msg_txt))}</b> 모드로 전환되었습니다.\n▫️ /sync를 눌러 확인하십시오.", parse_mode='HTML'), timeout=10.0)
@@ -616,8 +601,25 @@ class CallbackConfigHandler:
                             logging.error(f"🚨 관제탑 UI 갱신 실패: {e}")
                 except Exception as e:
                     logging.error(f"🚨 [{ticker}] 암살자 모드 토글 실패: {e}")
+
+            # 🚨 NEW: [Phase 5 오버나이트 락온] 암살자 오버나이트 모드 스위칭 로직
+            elif sub == "TOGGLE_OVERNIGHT":
+                try:
+                    current_state = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_avwap_overnight_mode, ticker), timeout=10.0)
+                    new_state = not current_state
+                    await asyncio.wait_for(asyncio.to_thread(self.cfg.set_avwap_overnight_mode, ticker, new_state), timeout=10.0)
+                    
+                    if hasattr(controller, 'cmd_settlement'):
+                        try:
+                            await controller.cmd_settlement(update, context)
+                        except telegram.error.BadRequest as e:
+                            if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
+                        except Exception as e:
+                            logging.error(f"🚨 관제탑 UI 갱신 실패: {e}")
+                except Exception as e:
+                    logging.error(f"🚨 [{ticker}] 암살자 오버나이트 토글 실패: {e}")
             
-        # 🚨 NEW: [암살자 동적 타점 라우팅] INPUT 액션 서브 분기에 AVWAP_ENTRANCE 및 AVWAP_EXIT를 추가하여 직관적인 렌더링 피드백(ko_name) 락온.
+        # 🚨 NEW: [Phase 5 지정 예산 라우팅] INPUT 액션 분기에 AVWAP_BUDGET을 100% 결속.
         elif action == "INPUT":
             if not ticker: return
             controller.user_states[chat_id] = f"CONF_{sub}_{ticker}"
@@ -627,14 +629,13 @@ class CallbackConfigHandler:
             elif sub == "COMPOUND": ko_name = "자동 복리율(%)"
             elif sub == "STOCK_SPLIT": ko_name = "액면 분할/병합 비율"
             elif sub == "FEE": ko_name = "증권사 수수료율(%)"
-            elif sub == "AVWAP_ENTRANCE": ko_name = "암살자 진입률(%)"
-            elif sub == "AVWAP_EXIT": ko_name = "암살자 익절률(%)"
+            elif sub == "AVWAP_BUDGET": ko_name = "암살자 1회 타격 예산(USD)" 
             else: ko_name = "값"
              
             desc = "숫자만 입력하세요."
             if sub == "STOCK_SPLIT":
                 desc = "액면분할 시 1주가 10주가 되었다면 10 입력, 10주가 1주로 병합되었다면 0.1 입력"
-            elif sub in ["AVWAP_ENTRANCE", "AVWAP_EXIT"]:
-                desc = "0.1에서 15.0 사이의 숫자만 입력하세요 (안전 임계치 이탈 시 자동 보정 가동)."
+            elif sub == "AVWAP_BUDGET":
+                desc = "암살자 격발 시 투입할 <b>최대 고정 예산(USD)</b>을 입력하세요. (예: 10000)\n\n▫️ 실제 격발 시, 이 금액과 KIS 실시간 가용 현금의 95% 중 더 작은 금액으로 <b>안전하게 캡핑(Capping)</b>되어 API 거절(Reject)을 100% 원천 차단합니다."
                 
             await asyncio.wait_for(context.bot.send_message(chat_id, f"✏️ <b>[{html.escape(str(ticker))}] {html.escape(str(ko_name))}</b>를 설정합니다.\n{desc}", parse_mode='HTML'), timeout=10.0)

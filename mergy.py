@@ -42,7 +42,8 @@ TARGET_FILES = [
     "callback_order_handler.py",
     "callback_avwap_handler.py",
     "callback_config_handler.py",
-    "short_squeeze_engine.py"
+    "short_squeeze_engine.py",
+    "assassin_ledger.py"
 ]
 
 with open(output_filename, 'w', encoding='utf-8') as outfile:
