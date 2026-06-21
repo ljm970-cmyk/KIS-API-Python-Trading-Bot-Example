@@ -2,9 +2,9 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [애프터장 유령 체결(Ghost Execution) 방어] 오버나이트 모드(ON)로 15:59 동면에 들어갈 때, KIS 서버에 기장전된 덫(매수/매도)을 반드시 취소(Cancel)하고 동면하도록 팩트 교정 완료.
+# 🚨 MODIFIED: [애프터장 수익 실현망 팩트 수복] 오버나이트 모드(ON)로 전환 시, 기장전된 +1.0% 익절 덫을 취소하지 않고 살려두어 애프터마켓 슈팅 시 즉각 수익을 실현하도록 아키텍처 롤백. (사용자 인사이트 반영)
+# 🚨 MODIFIED: [오버나이트 동면 방지] 15:59 오버나이트 진입 시 `shutdown=True`를 차단하여, 20:00 EST까지 봇이 애프터장 체결 여부를 끝까지 추적 및 장부 소각을 수행하도록 팩트 락온.
 # 🚨 MODIFIED: [Phase 3 암살자 지정 예산 락온] 주문가능금액 95% 강제 탕진 맹점을 파기하고, min(사용자 예산, 가용현금 * 0.95) 샌드위치 래핑으로 팻핑거 예산 초과(API Reject) 붕괴 원천 차단.
-# 🚨 MODIFIED: [Phase 3 오버나이트 방어망 분기] 15:59 EST 도달 시 get_avwap_overnight_mode 스캔 후, True이면 덤핑 바이패스(조기 퇴근), False이면 기존대로 1호가 스윕 덤핑 강제.
 # 🚨 MODIFIED: [Phase 2 암살자 독립 장부 이식] 1-Shot 1-Kill 진입 성공 및 익절/손절 시 `AssassinLedger`를 원자적으로 제어하여 본진 물량 절도(Ghost Selling) 패러독스 완벽 방어.
 # 🚨 NEW: [추적형 물리적 선제 장전 영구 소각 및 Software Trigger 락온] 1분마다 밑에다 덫을 까는 낡은 Limit-Trap 로직을 전면 파기하고, VWAP 돌파 순간 메모리에서 API를 격발하는 '소프트웨어 트리거' 아키텍처로 100% 교체 완료. (Case 37)
 # 🚨 NEW: [Case 42 Double Fire 절대 방어망 결속] 가격 감시 중 돌파 포착 시 메모리 락(is_ordering=True)을 즉시 걸어 중복 매수 대참사 원천 차단.
@@ -270,23 +270,20 @@ async def scheduled_sniper_monitor(context):
                         # 🚨 [15:59 EST 강제 덤핑 및 오버나이트 분기망]
                         if curr_t_obj >= datetime.time(15, 59, 0) and not t_state.get('dumped'):
                             if is_overnight_allowed:
-                                logging.info(f"🌙 [{t}] 15:59 EST 컷오프 도달. 오버나이트 모드 ON ➔ 강제 덤핑을 바이패스(Bypass)합니다.")
+                                logging.info(f"🌙 [{t}] 15:59 EST 컷오프 도달. 오버나이트 모드 ON ➔ 애프터장 감시망을 보존합니다.")
                                 
-                                # 🚨 MODIFIED: [Ghost Execution 붕괴 방어] 오버나이트 진입 전 KIS 서버에 장전된 덫을 취소하여 애프터장 유령 체결을 원천 차단.
+                                # 🚨 MODIFIED: [애프터장 덫 유지 락온] 매도 덫(sell_odno)은 살려두어 수익을 실현하고, 불필요한 매수 덫만 취소합니다.
                                 if t_state.get('buy_odno'):
                                     await _retry_api(broker.cancel_order, t, t_state['buy_odno'])
                                     t_state['buy_odno'] = ""
-                                if t_state.get('sell_odno'):
-                                    await _retry_api(broker.cancel_order, t, t_state['sell_odno'])
-                                    t_state['sell_odno'] = ""
                                     
                                 await asyncio.sleep(1.0)
                                 
-                                t_state['shutdown'] = True
+                                # 🚨 셧다운을 걸지 않아 20:00 EST(애프터장 종료)까지 체결 여부를 지속 추적합니다.
                                 t_state['dumped'] = True
                                 await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                 if chat_id:
-                                    await _safe_send(context, chat_id, f"🌙 <b>[{html.escape(t)}] 암살자 오버나이트 전환 (관망)</b>\n▫️ 익절에 실패했으나 오버나이트가 허용되어 강제 덤핑을 건너뛰고 포지션을 익일로 안전하게 이관합니다.\n▫️ <b>장전된 덫은 모두 회수되어 유령 체결이 완벽히 방어됩니다.</b>", parse_mode='HTML')
+                                    await _safe_send(context, chat_id, f"🌙 <b>[{html.escape(t)}] 암살자 오버나이트 전환 (관망)</b>\n▫️ 익절에 실패했으나 오버나이트가 허용되어 강제 덤핑을 건너뛰고 포지션을 안전하게 이관합니다.\n▫️ <b>애프터장 수익 실현을 위해 +1.0% 지정가 덫은 취소하지 않고 계속 감시합니다.</b>", parse_mode='HTML')
                                 continue
                             else:
                                 logging.info(f"🛑 [{t}] 15:59 EST 컷오프 도달. 암살자 제로-오버나이트 강제 청산 파이프라인 가동.")
@@ -403,7 +400,7 @@ async def scheduled_sniper_monitor(context):
                                 if chat_id:
                                     await _safe_send(context, chat_id, f"🕸️ <b>[{html.escape(t)}] +1.0% 고정 익절망 장전 완료</b>\n▫️ 목표 지정가: ${sell_price:.2f} (독립 장부 수량 {t_state['qty']}주)", parse_mode='HTML')
 
-                        # 🚨 [매도 덫 동적 익절 체결 감시망] (당일 셧다운)
+                        # 🚨 [매도 덫 동적 익절 체결 감시망] (당일 또는 애프터장 셧다운)
                         if t_state.get('sell_odno') and t_state.get('qty') > 0:
                             exec_hist = await _retry_api(broker.get_execution_history, t, today_kst_str, today_kst_str)
                             safe_exec = exec_hist if isinstance(exec_hist, list) else []
