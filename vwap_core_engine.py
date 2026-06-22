@@ -16,6 +16,7 @@
 # 🚨 MODIFIED: [Time Paradox 팩트 교정] 자체 슬라이싱 체결 검증을 위한 KIS 원장 조회 시 KST 팩트 주입 완료.
 # 🚨 NEW: [Scope Mismatch 궁극 방어] 파일 I/O 스레드로 위임되는 `_sync_ledger_atomic` 함수에 명시적 파라미터를 주입하여 클로저 오염으로 인한 `UnboundLocalError` 원천 봉쇄.
 # 🚨 MODIFIED: [큐 장부 절대주의 헌법 수복] 자율주행 하이재킹 엔진이 KIS 실잔고를 오인하여 0주 상태에서 V14 물량을 유령 매도(Ghost Selling)하던 월권행위를 큐 장부 한도 캡핑(vrev_q_qty)으로 원천 차단.
+# 🚨 MODIFIED: [메시지 폭탄 소각 팩트 결속] 1분 단위 Slicing 체결 시마다 텔레그램을 타전하던 Spaming 뇌관을 전면 소각하고, 16:05 EST 일괄 정산망으로 100% 팩트 위임 완료.
 # ==========================================================
 import logging
 import asyncio
@@ -45,7 +46,7 @@ async def _retry_api(func, *args, timeout=15.0, default=None, **kwargs):
         try:
             await asyncio.sleep(0.06)
             if asyncio.iscoroutinefunction(func):
-                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
+                 return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
             else:
                 p_func = functools.partial(func, *args, **kwargs)
                 return await asyncio.wait_for(asyncio.to_thread(p_func), timeout=timeout)
@@ -526,8 +527,9 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                             processed_odnos.remove(last_odno) # 롤백 처리
                                             logging.error(f"🚨 [{t}] 자체 슬라이싱 체결 장부 동기화 실패 (캐시 롤백): {e}")
                                         
+                                        # 🚨 MODIFIED: [메시지 폭탄 소각] 1분 단위 Slicing 체결마다 텔레그램을 타전하는 Spaming 뇌관을 전면 소각하고, 16:05 EST 일괄 정산망으로 100% 위임합니다.
                                         msg_side = "매수" if side == "BUY" else "매도"
-                                        await _safe_send(context, chat_id, f"⚡ <b>[{html.escape(str(t))}] V-REV 섀도 엔진 체결 팩트 장부 동기화!</b>\n▫️ {msg_side}: {ccld_qty_this_tick}주 @ ${real_exec_price:.2f}", parse_mode='HTML')
+                                        logging.info(f"⚡ [{t}] V-REV 섀도 엔진 체결 팩트 장부 동기화 완료: {msg_side} {ccld_qty_this_tick}주 @ ${real_exec_price:.2f} (텔레그램 타전 바이패스)")
 
                                 filled_qty += ccld_qty_this_tick
                                 o['filled_qty'] = filled_qty
@@ -573,7 +575,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                     continue # 목표가 미충족 시 1주도 사지 않고 철저한 관망세 (Bypass)
                                     
                             if qty_to_send <= 0: continue
-                                     
+                                      
                             if exec_price > 0:
                                 # 🚨 NEW: [Ghost-Dumping 붕괴 방어] 1분 슬라이싱 매도 타격 직전에 KIS 실잔고를 스캔하여 매도 수량을 캡핑.
                                 if side == "SELL" and qty_to_send > 0:
