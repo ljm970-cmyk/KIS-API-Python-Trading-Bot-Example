@@ -5,6 +5,7 @@
 # 🚨 MODIFIED: [제2헌법 단일 책임 수호] 파일 내에 잘못 병합되었던 글로벌 UI 렌더링 메서드를 100% 영구 소각하고, 오직 '데이 트레이딩 레이더 스캔' 본연의 기능으로 진공 압축 완료.
 # 🚨 MODIFIED: [관제탑 UI 팩트 롤오버] 암살자 지정 예산($) 및 오버나이트 허용 상태를 관제탑 대시보드에 100% 팩트로 표출.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어를 위한 html.escape 쉴드 전역 강제 주입.
+# 🚨 MODIFIED: [AVWAP 당일 기점 UI 팩트 롤오버] 초단기 당일 앵커링(04:00 EST) 아키텍처에 맞추어 관제탑의 AVWAP 표출 텍스트를 직관적으로 100% 팩트 교정 완료.
 # ==========================================================
 import logging
 import datetime
@@ -158,12 +159,13 @@ class AvwapConsolePlugin:
             anchor_date = await _get_with_retry(getattr(self.cfg, 'get_avwap_anchor_date', lambda x: "AUTO"), t)
             tier_reason = "수동 지정"
             
+            # 🚨 MODIFIED: [초단기 당일 AVWAP 롤오버] 당일 프리장 개장(04:00 EST) 팩트 기반 표출 적용
             if not anchor_date or str(anchor_date).upper() == "AUTO":
-                anchor_res = await _get_with_retry(getattr(self.broker, 'get_auto_anchor_date', lambda x: (now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)")), t)
+                anchor_res = await _get_with_retry(getattr(self.broker, 'get_auto_anchor_date', lambda x: (now_est.strftime('%Y-%m-%d'), "당일 프리장 개장 (04:00 EST)")), t)
                 if isinstance(anchor_res, tuple) and len(anchor_res) == 2:
                     anchor_date, tier_reason = anchor_res
                 else:
-                    anchor_date, tier_reason = now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)"
+                    anchor_date, tier_reason = now_est.strftime('%Y-%m-%d'), "당일 프리장 개장 (04:00 EST)"
                 
             anchored_vwap_val = await _get_with_retry(getattr(self.broker, 'get_anchored_vwap', lambda x, y: 0.0), t, anchor_date)
             anchored_vwap = self._safe_float(anchored_vwap_val)
@@ -177,7 +179,7 @@ class AvwapConsolePlugin:
         except Exception as e:
             logging.error(f"🚨 [{t}] 퀀트 관측망 데이터 추출 실패: {e}")
             curr_p, base_amp5, df_1m, sq_metrics, kis_avg = 0.0, 0.0, None, {}, 0.0
-            anchor_date, tier_reason, anchored_vwap = now_est.replace(day=1).strftime('%Y-%m-%d'), "당월 1일 폴백 (Tier 3)", 0.0
+            anchor_date, tier_reason, anchored_vwap = now_est.strftime('%Y-%m-%d'), "당일 프리장 개장 (04:00 EST)", 0.0
             is_avwap_hybrid = False
             avwap_budget, is_overnight = 10000.0, False
 
@@ -281,12 +283,12 @@ class AvwapConsolePlugin:
         else:
             msg += "▫️ 정규장 개장 대기 중...\n\n"
 
-        msg += f"⚓ <b>[ 고정형 VWAP (Anchored VWAP) ]</b>\n"
+        # 🚨 MODIFIED: [AVWAP 당일 기점 표출] UI 포맷 팩트 교정 완료
+        msg += f"⚓ <b>[ 초단기 당일 누적 VWAP ]</b>\n"
         if anchored_vwap > 0:
-            formatted_date = str(anchor_date)[2:].replace('-', '.')
-            msg += f"▫️ 기점({formatted_date}): <b>${anchored_vwap:.2f}</b> ({html.escape(tier_reason)})\n\n"
+            msg += f"▫️ 기점(04:00 EST): <b>${anchored_vwap:.2f}</b> ({html.escape(tier_reason)})\n\n"
         else:
-            msg += "▫️ 고정형 VWAP: 데이터 집계 중...\n\n"
+            msg += "▫️ 기점(04:00 EST): 데이터 집계 중...\n\n"
 
         msg += f"🔥 <b>[ 기초자산({base_t_clean}) 숏 스퀴즈 감시망 ]</b>\n"
         si_float = self._safe_float(sq_metrics.get("SI_Float", 0.0))
