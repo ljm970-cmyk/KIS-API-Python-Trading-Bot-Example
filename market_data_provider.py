@@ -16,6 +16,7 @@
 # 🚨 NEW: [고정형 VWAP 엔진] 1일봉(1d) 기반의 순수 팩트 지표(AVWAP) 추출 파이프라인 결속 완료. (Timeout 붕괴 방어)
 # 🚨 NEW: [초단기 당일 앵커드 VWAP 롤오버] 다중 기점(Rolling 3-Day 등)을 영구 소각하고, 당일 프리장 개장(04:00 EST) 기점 100% 팩트 락온 완료.
 # 🚨 NEW: [관측 전용 고해상도 엔진 이식] AVWAP 연산 시 장외 유동성을 100% 포함하도록 prepost=True 및 1m 캔들 고정 해상도 락온.
+# 🚨 NEW: [프리장 Zero-Volume 붕괴 패러독스 방어] 거래량이 0일 때 즉사하는 현상을 막기 위한 TWAP 벡터화 연산 락온 및 Fallback 쉴드 결속.
 # ==========================================================
 
 import time
@@ -59,6 +60,7 @@ class MarketDataProvider(KisApiClient):
                     if attempt == 2: return 0.0, 0.0
                     time.sleep(1.0 * (2 ** attempt))
                     continue
+             
                 df = _flatten_columns(df)
                 est = ZoneInfo('America/New_York') 
                 if df.index.tz is None: df.index = df.index.tz_localize('UTC').tz_convert(est)
@@ -67,6 +69,7 @@ class MarketDataProvider(KisApiClient):
                 regular_market = df.between_time('09:30', '15:59').copy()
         
                 if regular_market.empty: return 0.0, 0.0
+      
                 regular_market['Typical_Price'] = (regular_market['High'] + regular_market['Low'] + regular_market['Close']) / 3.0
                 regular_market['Vol_x_Price'] = regular_market['Typical_Price'] * regular_market['Volume']
         
@@ -81,12 +84,14 @@ class MarketDataProvider(KisApiClient):
                 if len(daily_stats) >= 2:
                     return round(self._safe_float(daily_stats['VWAP'].iloc[-2]), 4), round(self._safe_float(daily_stats['VWAP'].iloc[-1]), 4)
                 elif len(daily_stats) == 1:
+        
                     return 0.0, round(self._safe_float(daily_stats['VWAP'].iloc[-1]), 4)
                 return 0.0, 0.0
             except Exception as e:
                 if attempt == 2:
                     logging.error(f"⚠️ [Broker] 일별 VWAP 파싱 실패 ({ticker}): {e}")
                     return 0.0, 0.0
+      
                 time.sleep(1.0 * (2 ** attempt))
         return 0.0, 0.0
 
@@ -104,6 +109,7 @@ class MarketDataProvider(KisApiClient):
                     time.sleep(1.0 * (2 ** attempt))
                     continue
                 df = _flatten_columns(df)
+            
                 est = ZoneInfo('America/New_York')
                 if df.index.tz is None: df.index = df.index.tz_localize('UTC').tz_convert(est)
                 else: df.index = df.index.tz_convert(est)
@@ -119,7 +125,7 @@ class MarketDataProvider(KisApiClient):
                 regular_market = regular_market.dropna(subset=['Volume', 'High', 'Low', 'Close'])
       
                 typical_price = (regular_market['High'] + regular_market['Low'] + regular_market['Close']) / 3.0
-            
+          
                 vol_price = typical_price * regular_market['Volume']
                 cum_vol_price = vol_price.cumsum()
                 cum_vol = regular_market['Volume'].cumsum()
@@ -134,6 +140,7 @@ class MarketDataProvider(KisApiClient):
                 if pd.isna(current_vwap) or current_vwap == 0.0: current_vwap = 0.0
  
                 resampled = regular_market.resample('5min', label='left', closed='left').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
+ 
                 if resampled.empty: return None
          
                 resampled['Vol_MA10'] = resampled['Volume'].rolling(10, min_periods=1).mean()
@@ -147,12 +154,14 @@ class MarketDataProvider(KisApiClient):
                     'high': self._safe_float(last_candle['High']), 
                     'low': self._safe_float(last_candle['Low']), 
                     'close': self._safe_float(latest_1m['Close']), 
+         
                     'volume': self._safe_float(last_candle['Volume']), 
                     'vol_ma10': self._safe_float(last_candle.get('Vol_MA10', last_candle['Volume'])),
                     'vol_ma20': self._safe_float(last_candle.get('Vol_MA20', last_candle['Volume'])),
                     'vwap': self._safe_float(current_vwap)
                 }
             except Exception as e:
+             
                 logging.debug(f"⚠️ [Broker] 실시간 5분봉 조회 실패 (시도 {attempt+1}/3): {e}")
                 if attempt == 2: return None
     
@@ -163,6 +172,7 @@ class MarketDataProvider(KisApiClient):
         for attempt in range(3):
             try:
                 time.sleep(0.06)
+           
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="1d", interval="1m", prepost=True, timeout=5)
             
@@ -180,7 +190,6 @@ class MarketDataProvider(KisApiClient):
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
                 
-              
                 # 🚨 MODIFIED: [AttributeError 붕괴 방어] 명시적 None 및 문자열 오염 차단
                 if res.get('rt_cd') == '0':
                     out = res.get('output') or {}
@@ -191,6 +200,7 @@ class MarketDataProvider(KisApiClient):
             except Exception:
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
+  
         return 0.0
 
     def get_ask_price(self, ticker):
@@ -200,7 +210,7 @@ class MarketDataProvider(KisApiClient):
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200100", "/uapi/overseas-price/v1/quotations/inquire-asking-price", "GET", params=params)
-         
+       
                 # 🚨 MODIFIED: [AttributeError 붕괴 방어]
                 if res.get('rt_cd') == '0':
                     o2 = res.get('output2') or []
@@ -214,6 +224,7 @@ class MarketDataProvider(KisApiClient):
                 break
             except Exception:
                 if attempt == 2: pass
+   
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0
 
@@ -223,6 +234,7 @@ class MarketDataProvider(KisApiClient):
                
                 time.sleep(0.06)
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
+                
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200100", "/uapi/overseas-price/v1/quotations/inquire-asking-price", "GET", params=params)
       
@@ -230,12 +242,14 @@ class MarketDataProvider(KisApiClient):
                 if res.get('rt_cd') == '0':
             
                     o2 = res.get('output2') or []
+            
                     if isinstance(o2, dict): o2 = [o2]
                     if not isinstance(o2, list) or len(o2) == 0: return 0.0
                     item = o2[0]
                     if not isinstance(item, dict): return 0.0
          
                     return self._safe_float(item.get('pbid1', 0.0))
+  
                 break
             except Exception:
                 if attempt == 2: pass
@@ -245,13 +259,13 @@ class MarketDataProvider(KisApiClient):
     # 🚨 MODIFIED: [스냅샷 오염 전이 절대 방어] YF 1d 캔들 롤오버 지연 맹점을 파기하고 1m 기반 D-1 공식 종가 핀셋 추출 락온
     def get_previous_close(self, ticker):
         for attempt in range(3):
+  
             try:
                 time.sleep(0.06)
                 stock = yf.Ticker(ticker)
                 # 🚨 MODIFIED: interval="1d" 의존성 소각 및 interval="1m", period="5d" 로 교체
                 hist = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
               
-  
                 if not hist.empty:
                     hist = _flatten_columns(hist)
                     est = ZoneInfo('America/New_York')
@@ -263,21 +277,22 @@ class MarketDataProvider(KisApiClient):
                  
                     if hist.index.tzinfo is None: 
                         hist.index = hist.index.tz_localize('UTC').tz_convert(est)
+                
                     else: 
                         hist.index = hist.index.tz_convert(est)
                     
                     # 🚨 MODIFIED: 미래 참조 데이터 절단 및 D-1일 공식 MOC 종가 추출
                     past_hist = hist[hist.index.date <= cutoff_date].copy()
-                    
+               
                     if not past_hist.empty:
                         # 🚨 MODIFIED: [Case 35] 결측치 전이 방어
                         past_hist['Close'] = past_hist['Close'].ffill().bfill()
                         regular_past = past_hist.between_time('09:30', '15:59')
-                        
-            
+           
                         if not regular_past.empty:
                             return self._safe_float(regular_past['Close'].iloc[-1])
                         else:
+                  
                             return self._safe_float(past_hist['Close'].iloc[-1])
                 break
           
@@ -293,13 +308,13 @@ class MarketDataProvider(KisApiClient):
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
-             
-    
+            
                 # 🚨 MODIFIED: [AttributeError 붕괴 방어]
                 if res.get('rt_cd') == '0': 
                 
                     out = res.get('output') or {}
                     if not isinstance(out, dict): out = {}
+          
                     return self._safe_float(out.get('base', 0.0))
                 break
             except Exception:
@@ -316,29 +331,30 @@ class MarketDataProvider(KisApiClient):
                 stock = yf.Ticker(ticker)
               
                 hist = stock.history(period="15d", timeout=5) 
+    
                 if not hist.empty:
                     est = ZoneInfo('America/New_York')
                     now_est = datetime.datetime.now(est)
                     cutoff_date = now_est.date()
                     
-            
                     if now_est.time() <= datetime.time(16, 0, 30): 
                         cutoff_date -= datetime.timedelta(days=1)
                         
                     if hist.index.tzinfo is None: 
                         hist.index = hist.index.tz_localize('UTC').tz_convert(est)
-        
+      
                     else: 
                         hist.index = hist.index.tz_convert(est)
                         
                     # 🚨 VERIFIED: [Case 35 절대 방어망] 공휴일 및 조기 폐장일 결측치 방어를 위한 ffill 강제 주입
+             
                     hist['Close'] = hist['Close'].ffill()
  
-                    
                     past_hist = hist[hist.index.date <= cutoff_date]
                     if len(past_hist) >= 5:
                         ma_val = past_hist['Close'].dropna().tail(5).mean()
-                        if not pd.isna(ma_val): return self._safe_float(ma_val)
+                   
+                    if not pd.isna(ma_val): return self._safe_float(ma_val)
   
                 break
             except Exception:
@@ -347,6 +363,7 @@ class MarketDataProvider(KisApiClient):
             
         for attempt in range(3):
             try:
+       
                 time.sleep(0.06)
     
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
@@ -354,6 +371,7 @@ class MarketDataProvider(KisApiClient):
                 res = self._call_api("HHDFS76240000", "/uapi/overseas-price/v1/quotations/dailyprice", "GET", params=params)
                 
                 if res.get('rt_cd') == '0':
+     
                     o2 = res.get('output2') or []
                     if isinstance(o2, dict): o2 = [o2]
                     if isinstance(o2, list) and len(o2) >= 5:
@@ -361,14 +379,13 @@ class MarketDataProvider(KisApiClient):
                         est = ZoneInfo('America/New_York')
                         now_est = datetime.datetime.now(est)
                 
-     
                         # 🚨 MODIFIED: [KIS API 폴백 오염 차단] 장 마감 이전이면 당일 라이브 주가 스킵
                         skip_today = 1 if now_est.time() <= datetime.time(16, 0, 30) else 0
                         
-                      
                         valid_items = [x for x in o2[skip_today:skip_today+10] if isinstance(x, dict)]
                         if len(valid_items) > 0:
                             closes = [self._safe_float(x.get('clos', 0)) for x in valid_items]
+         
                             # 🚨 VERIFIED: [Case 35 절대 방어망] KIS API 폴백 시에도 0값 필터링으로 무결성 보장
        
                             valid_closes = [c for c in closes if c > 0]
@@ -378,6 +395,7 @@ class MarketDataProvider(KisApiClient):
   
                             elif len(valid_closes) > 0:
                                 return self._safe_float(sum(valid_closes) / len(valid_closes))
+         
                 break
             except Exception:
                 if attempt == 2: pass
@@ -388,18 +406,21 @@ class MarketDataProvider(KisApiClient):
     def get_1min_candles_df(self, ticker):
         """ 🚨 [제5경고] 하이킨아시 연산을 위한 open 컬럼 강제 보존 리턴 """
         for attempt in range(3):
+       
             try:
                 time.sleep(0.06)
                 stock = yf.Ticker(ticker)
                 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] YF 1d 롤오버 지연 버그 원천 차단을 위해 period="1d" -> "5d" 상향 락온
                 df = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
                 if df.empty: 
+        
                     if attempt == 2: return None
                     time.sleep(1.0 * (2 ** attempt))
                  
                     continue
                     
                 df = _flatten_columns(df)
+      
                 est = ZoneInfo('America/New_York')
                 
                 if df.index.tz is None: df.index = df.index.tz_localize('UTC').tz_convert(est)
@@ -407,17 +428,19 @@ class MarketDataProvider(KisApiClient):
       
                 df = df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'})
                 df['time_est'] = df.index.strftime('%H%M00')
-                
+  
                 try:
                     # 🚨 MODIFIED: [5d 롤오버 교정 연계 State 방어] 5일 치 데이터 중 당일(Today) 팩트만 정밀 필터링하여 당일 고/저점 캐싱 오염 원천 차단
          
                     today_est_date = datetime.datetime.now(est).date()
+                   
                     df_today = df[df.index.date == today_est_date]
                     
                     if not df_today.empty:
                         # 🚨 MODIFIED: [Float 붕괴 방어] max(), min() 결과에 _safe_float 래핑 강제 적용
        
                         max_high, min_low = self._safe_float(df_today['high'].max()), self._safe_float(df_today['low'].min())
+    
                         time_high_idx, time_low_idx = df_today['high'].astype(float).idxmax(), df_today['low'].astype(float).idxmin()
                         
                         time_high_raw = df_today.loc[time_high_idx, 'time_est'] if not pd.isna(time_high_idx) else ""
@@ -427,22 +450,21 @@ class MarketDataProvider(KisApiClient):
                         time_low_raw = df_today.loc[time_low_idx, 'time_est'] if not pd.isna(time_low_idx) else ""
                         time_low_str = str(time_low_raw.iloc[0] if isinstance(time_low_raw, pd.Series) else time_low_raw)
             
-         
                         cache_file = "data/avwap_cache.json"
                         cache_data = {}
         
                         # 🚨 MODIFIED: [Case 08] TOCTOU 레이스 컨디션 차단 os.path.exists 소각 및 EAFP 적용
                         try:
-          
+         
                             with open(cache_file, 'r', encoding='utf-8') as f: 
                                 cache_data = json.load(f)
                         except OSError: pass
                         except json.JSONDecodeError: pass
 
-            
                         cache_data[ticker] = {'day_high': max_high, 'day_low': min_low, 'time_high': time_high_str, 'time_low': time_low_str, 'date': datetime.datetime.now(est).strftime("%Y-%m-%d")}
                         
                         # 🚨 MODIFIED: [Case 16] 디렉토리 파싱 무결성 강화 및 스토리지 고갈 방어 락온
+               
                         dir_name = os.path.dirname(cache_file) or '.'
                         try: os.makedirs(dir_name, exist_ok=True)
        
@@ -450,15 +472,16 @@ class MarketDataProvider(KisApiClient):
                 
                         fd = None
                         tmp_path = None
-                
-                   
+     
                         try:
                             fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
                             with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
+   
                                 fd = None
                   
                                 json.dump(cache_data, f_out, ensure_ascii=False, indent=4)
                                 f_out.flush()
+      
                                 os.fsync(f_out.fileno())
                             os.replace(tmp_path, cache_file)
             
@@ -468,6 +491,7 @@ class MarketDataProvider(KisApiClient):
                                 try: os.close(fd)
             
                                 except OSError: pass
+         
                             if tmp_path:
                                 try: os.remove(tmp_path)
                                 except OSError: pass
@@ -479,6 +503,7 @@ class MarketDataProvider(KisApiClient):
             except Exception:
          
                 if attempt == 2: return None
+      
                 time.sleep(1.0 * (2 ** attempt))
 
     def get_recent_stock_split(self, ticker, last_date_str):
@@ -510,12 +535,13 @@ class MarketDataProvider(KisApiClient):
                 ret = TargetFloat(td)
                 ret.metric_val, ret.weight, ret.base_amp, ret.metric_name, ret.metric_base = hv, w, ba, "SOXX HV", round(self._safe_float(hv)/safe_w, 2) if safe_w>0 else 25.0
             else:
-                
+         
                 vxn, w, td, ba = ve.get_tqqq_target_drop_full()
                 safe_w = self._safe_float(w)
                 ret = TargetFloat(td)
                 ret.metric_val, ret.weight, ret.base_amp, ret.metric_name, ret.metric_base = vxn, w, ba, "실시간 VXN", round(self._safe_float(vxn)/safe_w, 2) if safe_w>0 else 20.0
             ret.is_panic, ret.gap_pct = False, 0.0
+          
             return ret
         except:
             
@@ -526,6 +552,7 @@ class MarketDataProvider(KisApiClient):
             return ret
 
     def get_day_high_low(self, ticker):
+  
         for attempt in range(3):
             try:
               
@@ -533,6 +560,7 @@ class MarketDataProvider(KisApiClient):
                 hist = yf.Ticker(ticker).history(period="1d", interval="1m", prepost=True, timeout=5)
                 if not hist.empty:
                     hist = _flatten_columns(hist)
+          
                     # 🚨 MODIFIED: [Float 오염 방어] _safe_float 래핑
                     return self._safe_float(hist['High'].max()), self._safe_float(hist['Low'].min())
           
@@ -546,6 +574,7 @@ class MarketDataProvider(KisApiClient):
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params={"AUTH": "", "EXCD": self._get_exchange_code(ticker, target_api="PRICE"), "SYMB": ticker})
                 
                 # 🚨 MODIFIED: [AttributeError 붕괴 방어] output 객체 추출 시 안전 단락 평가
+                
                 if res.get('rt_cd') == '0':
                     out = res.get('output') or {}
                     if not isinstance(out, dict): out = {}
@@ -553,6 +582,7 @@ class MarketDataProvider(KisApiClient):
                     return self._safe_float(out.get('high', 0.0)), self._safe_float(out.get('low', 0.0))
                 break
             except Exception:
+          
                 if attempt == 2: pass
                 else: time.sleep(1.0 * (2 ** attempt))
         return 0.0, 0.0
@@ -563,6 +593,7 @@ class MarketDataProvider(KisApiClient):
         for attempt in range(3):
             try:
                 time.sleep(0.06)
+            
                 hist = yf.Ticker(ticker).history(period="30d", prepost=False, timeout=5)
                 if hist.empty:
                     if attempt == 2: return 0.0, 0.0
@@ -575,8 +606,8 @@ class MarketDataProvider(KisApiClient):
                 now_est = datetime.datetime.now(est)
                 cutoff_date = now_est.date()
 
-               
                 if now_est.time() <= datetime.time(16, 0, 30):
+                  
                     cutoff_date -= datetime.timedelta(days=1)
 
                 if hist.index.tzinfo is None:
@@ -584,7 +615,6 @@ class MarketDataProvider(KisApiClient):
                 else:
                     hist.index = hist.index.tz_convert(est)
 
-               
                 # 🚨 MODIFIED: [결측치 방어 전역 확장] ffill 결속
                 hist['Close'] = hist['Close'].ffill()
                 hist['High'] = hist['High'].ffill()
@@ -607,6 +637,7 @@ class MarketDataProvider(KisApiClient):
                 tr3 = (hist['Low'] - hist['Prev_Close']).abs()
                 
                 hist['TR'] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+               
                 hist['ATR5'] = hist['TR'].rolling(window=5).mean()
       
                 hist['ATR14'] = hist['TR'].rolling(window=14).mean()
@@ -615,6 +646,7 @@ class MarketDataProvider(KisApiClient):
                 # 🚨 MODIFIED: [Float 오염 방어] _safe_float 래핑 (NaN 자동 폴백)
                 atr5_val = self._safe_float(last['ATR5'])
                 atr14_val = self._safe_float(last['ATR14'])
+               
                 close_val = self._safe_float(last['Close'])
 
             
@@ -640,12 +672,14 @@ class MarketDataProvider(KisApiClient):
 
                 # 🚨 EST 기준 타임존 맵핑 및 D-1 팩트 절단
                 est = ZoneInfo('America/New_York')
+    
                 now_est = datetime.datetime.now(est)
              
                 cutoff_date = now_est.date()
                 
                 # 정규장 마감(16:00) 직전/중 또는 프리장일 경우 당일 캔들을 배제하고 전일(D-1) 기준 확정 데이터로 락온
                 if now_est.time() <= datetime.time(16, 0, 30): 
+         
                     cutoff_date -= datetime.timedelta(days=1)
                     
        
@@ -676,7 +710,7 @@ class MarketDataProvider(KisApiClient):
                 
                 hist['Amp'] = (hist['High'] - hist['Low']) / hist['Prev_Close']
                 hist['Amp_5d'] = hist['Amp'].rolling(window=5).mean()
-                
+       
                 last = hist.iloc[-1]
                 # 🚨 MODIFIED: [Float 오염 방어] _safe_float 래핑 (NaN 자동 폴백)
            
@@ -689,6 +723,7 @@ class MarketDataProvider(KisApiClient):
                     logging.error(f"⚠️ [Broker] Amp 5MA 파싱 에러 ({ticker}): {e}")
                     break
                 time.sleep(1.0 * (2 ** attempt))
+    
         return 0.0
 
     # 🚨 MODIFIED: [초단기 당일 앵커드 VWAP 롤오버] 다중 기점을 영구 소각하고, '당일 프리장 개장(04:00 EST)'을 절대 앵커로 100% 팩트 락온합니다.
@@ -717,49 +752,58 @@ class MarketDataProvider(KisApiClient):
                 est = ZoneInfo('America/New_York')
                 
                 stock = yf.Ticker(ticker)
+               
                 # 🚨 MODIFIED: [초단기 당일 누적] 1m 해상도 고정 및 prepost=True (프리장 포함) 팩트 락온
                 df = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
                 
                 if df.empty:
                     if attempt == 2: return 0.0
                     time.sleep(1.0 * (2 ** attempt))
+    
                     continue
                     
                 df = _flatten_columns(df)
                 
                 if df.index.tz is None:
                     df.index = df.index.tz_localize('UTC').tz_convert(est)
+           
                 else:
                     df.index = df.index.tz_convert(est)
                     
                 # 🚨 [Time Paradox 방어] 기점(anchor_date) 당일의 04:00 EST 이후 캔들만 핀셋 추출
                 target_date = datetime.datetime.strptime(anchor_date, "%Y-%m-%d").date()
                 df = df[df.index.date == target_date]
-                
+        
                 # 04:00부터 누적
                 df = df.between_time('04:00', '19:59')
                 
                 if df.empty:
                     return 0.0
                 
+       
                 # 🚨 NEW: [Case 35 절대 방어망 결속] 결측치(NaN) 전이 방어
                 df['High'] = df['High'].ffill().bfill()
                 df['Low'] = df['Low'].ffill().bfill()
                 df['Close'] = df['Close'].ffill().bfill()
                 df['Volume'] = df['Volume'].ffill().bfill().fillna(0)
                 
+               
                 # 🚨 NEW: 정통 퀀트 표준 Typical Price 팩트 주입
                 df['Typical_Price'] = (df['High'].astype(float) + df['Low'].astype(float) + df['Close'].astype(float)) / 3.0
                 df['Vol_x_Price'] = df['Typical_Price'] * df['Volume'].astype(float)
+                
+                # 🚨 NEW: [프리장 Zero-Volume 붕괴 패러독스 방어] 거래량 0일 때 즉사하는 맹점을 막기 위한 TWAP 벡터화 연산 락온
+                df['TWAP'] = df['Typical_Price'].expanding().mean()
                 
                 # 🚨 NEW: [벡터화 강제 헌법 준수] For 루프 전면 소각 및 순수 벡터화 연산 락온
                 df['Cum_Vol_Price'] = df['Vol_x_Price'].cumsum()
                 df['Cum_Volume'] = df['Volume'].astype(float).cumsum()
                 
-                # 🚨 NEW: ZeroDivision 붕괴 방어
-                df['AVWAP'] = np.where(df['Cum_Volume'] > 0, df['Cum_Vol_Price'] / df['Cum_Volume'], 0.0)
+                # 🚨 MODIFIED: [결측치 강제 롤오버 방어] 누적 거래량이 0일 때 0.0 대신 TWAP으로 우회(Fallback)하여 관제탑 UI 마비 원천 차단
+                df['AVWAP'] = np.where(df['Cum_Volume'] > 0, df['Cum_Vol_Price'] / df['Cum_Volume'], df['TWAP'])
                 
                 latest_avwap = self._safe_float(df['AVWAP'].iloc[-1])
+            
                 return round(latest_avwap, 2)
                 
             except Exception as e:
