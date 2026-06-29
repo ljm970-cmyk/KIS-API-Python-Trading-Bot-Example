@@ -8,7 +8,10 @@
 # 🚨 MODIFIED: [NameError 런타임 붕괴 수술] 텔레그램 인라인 키보드 UI 컴포넌트 임포트 누락 교정 완료.
 # 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가를 0.0으로 오염시키던 맹점 소각.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False 강제 래핑 락온.
+# 🚨 MODIFIED: [수술 2 - 큐 장부 절대주의 락온] V-REV 모드 시 KIS 실잔고(Ghost Balance)를 무시하고 오직 큐 장부의 수량을 UI에 덮어씌워 렌더링 모순(Paradox) 완벽 차단.
+# 🚨 MODIFIED: [개인 물량 격리 보호] KIS 실잔고가 큐 장부보다 많을 때 강제 편입(MANUAL_BUY)하던 로직을 영구 소각하여 개인 장기 투자 물량을 100% 안전하게 보호.
 # ==========================================================
+
 import logging
 import datetime
 from zoneinfo import ZoneInfo
@@ -78,7 +81,7 @@ class TelegramSyncEngine:
     async def process_auto_sync(self, ticker, chat_id, context, silent_ledger=False):
         if ticker not in self.sync_locks:
             self.sync_locks[ticker] = asyncio.Lock()
-             
+            
         if self.sync_locks[ticker].locked(): return "LOCKED"
             
         async with self.sync_locks[ticker]:
@@ -345,7 +348,7 @@ class TelegramSyncEngine:
                                             iq = int(self._safe_float(item.get("qty")))
                                             q_today_qty += iq
                                             q_today_amt += iq * self._safe_float(item.get("price"))
-                                      
+                                       
                                     pure_manual_q = b_tot_q - q_today_qty
                                     pure_manual_amt = b_tot_amt - q_today_amt
                                     if pure_manual_q >= missing_qty and pure_manual_q > 0 and pure_manual_amt > 0:
@@ -391,7 +394,7 @@ class TelegramSyncEngine:
                                  
                         if getattr(self, 'queue_ledger', None):
                             await self._retry_api(self.queue_ledger.sync_with_broker, ticker, 0, timeout=10.0)
-                           
+                            
                         if _vrev_snap_ok:
                             msg = f"🎉 <b>[{html.escape(str(ticker))} V-REV 잭팟 스윕(전량 익절) 감지!]</b>\n▫️ 잔고가 0주가 되어 LIFO 큐 지층을 100% 소각(초기화)했습니다."
                             if added_seed > 0: msg += f"\n💸 <b>자동 복리 +${added_seed:,.0f}</b> 이 다음 운용 시드에 완벽하게 추가되었습니다!"
@@ -474,23 +477,10 @@ class TelegramSyncEngine:
                           
                     elif safe_actual_qty_for_vrev > 0 and safe_actual_qty_for_vrev > vrev_ledger_qty:
                         gap_qty = safe_actual_qty_for_vrev - vrev_ledger_qty
-                        real_buy_price = actual_avg
-                        buy_execs = [ex for ex in (target_execs or []) if ex.get('sll_buy_dvsn_cd') == "02"]
-                        if buy_execs:
-                            b_tot_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in buy_execs)
-                            b_tot_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in buy_execs)
-                            if b_tot_q > 0: real_buy_price = round(b_tot_amt / b_tot_q, 4)
-
-                        if real_buy_price <= 0.0:
-                            curr_p = await self._retry_api(self.broker.get_current_price, ticker, timeout=15.0, default=0.0)
-                            q_data_temp = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
-                            last_price = self._safe_float(q_data_temp[-1].get('price')) if q_data_temp and isinstance(q_data_temp[-1], dict) else 0.0
-                            real_buy_price = curr_p if curr_p > 0 else (last_price if last_price > 0 else 1.0)
-              
-                        q_data = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
-                        q_data.append({"date": now_est.strftime('%Y-%m-%d %H:%M:%S'), "qty": gap_qty, "price": real_buy_price, "exec_id": f"MANUAL_BUY_{int(time.time())}"})
-                        await self._retry_api(self.queue_ledger.overwrite_queue, ticker, q_data, timeout=10.0)
-                        await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 수동 매수 편입 완료!</b>\n▫️ KIS 실잔고에 맞춰 신규 지층(<b>{gap_qty}주</b>, 추정단가 ${real_buy_price})을 정밀 추가했습니다.", parse_mode='HTML')
+                        
+                        # 🚨 MODIFIED: [수술 2: 큐 장부 수량 절대주의 락온] 개인 물량 강제 편입(MANUAL_BUY) 데드코드 영구 소각
+                        logging.info(f"🛡️ [{ticker}] V-REV 큐 장부 절대주의 가동: KIS 실잔고 초과분({gap_qty}주)을 개인 물량으로 간주하여 편입 차단.")
+                        await self._safe_send(context, chat_id, f"🛡️ <b>[{html.escape(str(ticker))}] 개인 장기 물량 격리 보호 (Ghost Balance 차단)</b>\n▫️ KIS 실잔고가 로컬 큐 장부보다 <b>{gap_qty}주</b> 많습니다.\n▫️ 봇 관리를 벗어난 개인 장기 투자 물량으로 간주하여 V-REV 장부에 강제 편입(MANUAL_BUY)하지 않고 안전하게 100% 격리했습니다.\n▫️ 만약 봇 운용을 위해 수동 매수한 물량이라면 <code>/add_q</code> 명령어로 직접 지층을 주입하십시오.", parse_mode='HTML')
                 
                 if not is_rev:
                     sold_today_v14 = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in target_execs if ex.get('sll_buy_dvsn_cd') == "01") if target_execs else 0
@@ -564,7 +554,7 @@ class TelegramSyncEngine:
             
                 agg_dict[key]['qty'] += int(self._safe_float(rec.get('qty')))
                 agg_dict[key]['amt'] += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
-                
+            
                 if rec.get('side') == 'BUY': total_buy += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
                 elif rec.get('side') == 'SELL': total_sell += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
             
@@ -577,7 +567,7 @@ class TelegramSyncEngine:
                 avg_prc = data['amt'] / tot_qty if tot_qty != 0 else 0.0
                 report += f"{idx:<3} {date} {side} ${avg_prc:<6.2f} {tot_qty}주\n"
                 idx += 1
-                
+                 
             report += "-"*30 + "</code>\n\n"
              
         safe_holdings = pre_fetched_holdings if isinstance(pre_fetched_holdings, dict) else {}
@@ -595,6 +585,10 @@ class TelegramSyncEngine:
                 q_data_ui = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
                 vrev_inv_ui = sum(int(self._safe_float(item.get('qty'))) * self._safe_float(item.get('price')) for item in q_data_ui if isinstance(item, dict))
                 vrev_q_ui = sum(int(self._safe_float(item.get('qty'))) for item in q_data_ui if isinstance(item, dict))
+                
+                # 🚨 MODIFIED: [수술 2] 큐 장부 수량 절대주의 락온 (KIS 실잔고 무시 및 오버라이드)
+                actual_qty = vrev_q_ui
+                
                 if vrev_q_ui > 0: actual_avg = round(vrev_inv_ui / vrev_q_ui, 4)
                 else: actual_avg = 0.0
 
