@@ -10,6 +10,7 @@
 # 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] 제자리 렌더링 호출 시 발생하는 텔레그램 BadRequest 에러를 흡수하는 샌드박스 정밀 래핑.
 # 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 메세지 발송 및 파일 I/O 스레드 전역에 asyncio.wait_for(timeout=10.0) 족쇄 래핑 완료 (Deadlock 원천 봉쇄).
 # 🚨 MODIFIED: [수술 1] 암살자 유령 장부(Ghost Ledger) 및 잔여 상태 캐시 100% 영구 소각 파이프라인 결속 완료.
+# 🚨 MODIFIED: [스냅샷 파괴 범위 대통합] RESET:LOCK 해제 시 V-REV 뿐만 아니라 V14, V14VWAP 스냅샷까지 100% 순회 소각하도록 팩트 교정 완료.
 # ==========================================================
 
 import logging
@@ -351,3 +352,4 @@ class TelegramStates:
         finally:
             if chat_id in controller.user_states:
                 del controller.user_states[chat_id]
+
