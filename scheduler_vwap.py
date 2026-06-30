@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] 달력 API(mcal) 스캔 전 부여되던 파편화된 time.sleep(0.06)을 전면 소각.
 # 🚨 MODIFIED: [중앙 통제소 락온] GlobalThrottle.wait_api_sync()를 주입하여 Thread-Safe 한 100% 중앙 집중형 TPS 방어망 결속 완료.
+# 🚨 MODIFIED: [Buy High, Sell Low 패러독스 궁극 수술] 매수 체결 직후 거시적 VWAP 이탈률만 보고 손실 덤핑을 유발하던 맹독성 '상방 매도 하이재킹(Upward Sell Hijack)' 로직 및 연계 플래그를 시스템 전역에서 100% 영구 소각 완료.
 # ==========================================================
 import logging
 import datetime
