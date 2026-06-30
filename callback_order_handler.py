@@ -4,11 +4,9 @@
 # 🚨 MODIFIED: [주문 통신 전담 도메인] KIS API 수동 주문, 수동 취소, 비상 수혈 로직 100% 분리 락온
 # 🚨 MODIFIED: [스냅샷 붕괴 방어망 결속] EXEC 수동 명령 격발 시 발생하는 get_plan() 타임아웃/에러를 흡수하기 위해 try-except 샌드박스를 강제 래핑하여 봇의 치명적 마비(Silent Death)를 완벽 차단.
 # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감(16:00 EST) 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단(Cut-off)하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
-# 🚨 MODIFIED: [스냅샷 절대주의 사수] EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
+# 🚨 MODIFIED: [스냅샷 절대주의 사수] EXEC 수동명령어 호출 시 기존 스냅샷을 파기하는 `_nuke_old_snapshot` 로직을 영구 소각하고 `is_snapshot_mode=False`를 강제 래핑하여 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정 완료.
 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
-# 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프, TPS 캡핑, wait_for(10.0) 래핑, yfinance 타임아웃(timeout=5) 방어막 유지
-# 🚨 MODIFIED: [Insight 26] KIS 서버 타입 불일치(Reject) 원천 차단을 위한 수량(int), 가격(float) 강제 캐스팅 유지
 # ==========================================================
 import logging
 import datetime
@@ -37,7 +35,6 @@ class CallbackOrderHandler:
 
         if action == "EMERGENCY_REQ":
             ticker = sub
-            # 🚨 MODIFIED: [경로 A 수술] TelegramController에서 분리된 commands_handler로 _get_market_status 호출 라우팅 팩트 변경
             status_code, _ = await controller.commands_handler._get_market_status()
             if status_code not in ["PRE", "REG"]:
                 await query.answer("❌ [격발 차단] 현재 장운영시간(정규장/프리장)이 아닙니다.", show_alert=True)
@@ -71,7 +68,6 @@ class CallbackOrderHandler:
 
         elif action == "EMERGENCY_EXEC":
             ticker = sub
-            # 🚨 MODIFIED: [경로 A 수술] TelegramController에서 분리된 commands_handler로 _get_market_status 호출 라우팅 팩트 변경
             status_code, _ = await controller.commands_handler._get_market_status()
             
             if status_code not in ["PRE", "REG"]:
@@ -108,7 +104,7 @@ class CallbackOrderHandler:
                         logging.error(f"🚨 긴급수혈 통신 에러/타임아웃: {e}")
                         res = None
                     
-                if isinstance(res, dict) and str(res.get('rt_cd', '')) == '0':
+                    if isinstance(res, dict) and str(res.get('rt_cd', '')) == '0':
                         await asyncio.to_thread(self.queue_ledger.pop_lots, ticker, emergency_qty)
                         msg = f"🚨 <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 (Emergency MOC) 격발 완료!</b>\n"
                         msg += f"▫️ 포트폴리오 매니저의 승인 하에 최근 로트 <b>{emergency_qty}주</b>를 시장가(MOC)로 강제 청산했습니다.\n"
@@ -121,11 +117,11 @@ class CallbackOrderHandler:
                         except Exception:
                             pass
                 else:
-                        err_msg = html.escape(str(res.get('msg1') or '알 수 없는 에러')) if isinstance(res, dict) else '응답 없음/통신 장애'
-                        try:
-                            await query.edit_message_text(f"❌ <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 실패:</b> {err_msg}", parse_mode='HTML')
-                        except Exception:
-                            pass
+                    err_msg = html.escape(str(res.get('msg1') or '알 수 없는 에러')) if isinstance(res, dict) else '응답 없음/통신 장애'
+                    try:
+                        await query.edit_message_text(f"❌ <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 실패:</b> {err_msg}", parse_mode='HTML')
+                    except Exception:
+                        pass
 
         elif action == "EXEC":
             t = sub
@@ -157,23 +153,8 @@ class CallbackOrderHandler:
                     pass
                 return
 
-            def _nuke_old_snapshot():
-                est = ZoneInfo('America/New_York')
-                now_est = datetime.datetime.now(est)
-                if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
-                    target_date = now_est - datetime.timedelta(days=1)
-                else:
-                    target_date = now_est
-                today_str = target_date.strftime("%Y-%m-%d")
-                
-                for prefix in ["REV", "V14VWAP", "V14"]:
-                    fpath = f"data/daily_snapshot_{prefix}_{today_str}_{t}.json"
-                    try:
-                        os.remove(fpath)
-                    except OSError:
-                        pass
-            
-            await asyncio.to_thread(_nuke_old_snapshot)
+            # 🚨 MODIFIED: [스냅샷 절대주의 사수] 수동명령(EXEC) 시 기존에 락온된 스냅샷 파일(JSON)을 파기하는 맹독성 덤핑 로직 영구 소각.
+            # (def _nuke_old_snapshot() 및 await asyncio.to_thread(_nuke_old_snapshot) 삭제 완료)
 
             try:
                 from scheduler_core import get_budget_allocation
@@ -210,11 +191,9 @@ class CallbackOrderHandler:
             safe_avg = float(str(h.get('avg') or 0.0).replace(',', '')) 
             safe_qty = max(0, int(float(str(h.get('qty') or 0).replace(',', ''))))
             
-            # 🚨 MODIFIED: [경로 A 수술] TelegramController에서 분리된 commands_handler로 _get_market_status 호출 라우팅 팩트 변경
             status_code, _ = await controller.commands_handler._get_market_status()
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 try:
-                    # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 호출 시 라이브 캔들을 절단하고 공식 MOC 종가만 추출.
                     def get_exact_prev_close(ticker_name):
                         time.sleep(0.06)
                         df = yf.Ticker(ticker_name).history(period="5d", interval="1d", timeout=5)
@@ -222,7 +201,6 @@ class CallbackOrderHandler:
                             tz_est = ZoneInfo('America/New_York')
                             tz_now = datetime.datetime.now(tz_est)
                             cutoff_date = tz_now.date()
-                            # 정규장 마감 이전이면 당일 캔들을 배제
                             if tz_now.time() <= datetime.time(16, 0, 30):
                                 cutoff_date -= datetime.timedelta(days=1)
                             
@@ -246,13 +224,11 @@ class CallbackOrderHandler:
                             if attempt == 2: pass
                             else: await asyncio.sleep(1.0 * (2 ** attempt))
                     
-                    # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
                     if yf_close and yf_close > 0:
                         prev_c = yf_close
                 except Exception as e:
                     logging.debug(f"YF 정규장 종가 롤오버 스캔 실패 ({t}): {e}")
                 
-                # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
                 if status_code == "CLOSE":
                     curr_p = prev_c
           
@@ -269,10 +245,9 @@ class CallbackOrderHandler:
                     
             is_manual_vwap = await asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t)
             
-            # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함. (단, EXEC 모드이므로 새로 생성해야 함)
-            # 🚨 MODIFIED: [스냅샷 붕괴 방어망 결속] EXEC 수동 명령 시 발생하는 get_plan 에러를 샌드박스로 완벽 격리.
+            # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함.
             try:
-                plan = await asyncio.to_thread(self.strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=allocated_budget, is_simulation=True, is_snapshot_mode=True)
+                plan = await asyncio.to_thread(self.strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=allocated_budget, is_simulation=True, is_snapshot_mode=False)
             except Exception as e:
                 logging.error(f"🚨 [{t}] 수동 전송 플랜 생성 에러 (샌드박스 방어): {e}")
                 plan = {}
@@ -365,7 +340,7 @@ class CallbackOrderHandler:
                 except Exception as e:
                     logging.error(f"🚨 V14/VREV 2차 보너스 덫 장전 통신 에러/타임아웃: {e}")
                     res = None
-                 
+        
                 is_success = isinstance(res, dict) and str(res.get('rt_cd', '')) == '0'
                 err_msg = html.escape(str(res.get('msg1') or '잔금패스')) if isinstance(res, dict) else '응답 없음/통신 장애'
                 status_icon = '✅' if is_success else f'❌({err_msg})'

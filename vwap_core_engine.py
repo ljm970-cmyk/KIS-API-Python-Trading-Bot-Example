@@ -176,13 +176,13 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 # 🚨 [A. 하방 매수 하이재킹 격발망]
                                 # ----------------------------------------------------
                                 if gap_pct <= gap_thresh:
-                                    # 🚨 NEW: 당일 지시서에 BUY(매수) 플랜이 있는지 원자적 스캔
+                                    # 🚨 NEW: 당일 지시서에 BUY(매수) 플랜이 있는지 원자적 스캔하여 팻핑거/논리 모순 원천 차단
                                     slice_state_check = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
                                     has_buy_plan = any(isinstance(o, dict) and str(o.get('side')) == 'BUY' for o in slice_state_check.get('orders', []))
                                     
                                     if not has_buy_plan:
                                         if not vwap_cache.get(f"REV_{t}_gap_hijack_blocked_log", False):
-                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 조건 도달({gap_pct:.2f}%) ➔ 🛑 금일 통합지시서에 매수(BUY) 플랜이 없어 스윕 덤핑을 전면 차단(Bypass)합니다.")
+                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 조건 도달({gap_pct:.2f}%) ➔ 🛑 금일 통합지시서에 매수(BUY) 플랜이 없어 스윕 매수를 전면 차단(Bypass)합니다.")
                                             vwap_cache[f"REV_{t}_gap_hijack_blocked_log"] = True
                                         
                                         # 플래그 락온을 통해 추가 연산 오버헤드를 막고 슬라이싱 엔진(SELL 유지)으로 자연스럽게 흘려보냅니다.
@@ -446,6 +446,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                             if exec_price <= 0.0:
                                 exec_price = _safe_float(await _retry_api(broker.get_current_price, t))
                                          
+                            # 🚨 MODIFIED: [순수 슬라이싱 아키텍처 팩트 수복] 스윕 로직 영구 소각, 무조건 1분 할당량 분할 타격
                             if target_price > 0.0:
                                 is_target_hit = False
                                 if side == "BUY" and exec_price <= target_price:
@@ -454,12 +455,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                     is_target_hit = True
 
                                 if is_target_hit:
-                                    if side == "BUY" and target_price > exec_price * 1.02:
-                                        qty_to_send = target_cum_qty - filled_qty
-                                    elif side == "SELL" and target_price < exec_price * 0.98:
-                                        qty_to_send = target_cum_qty - filled_qty
-                                    else:
-                                        qty_to_send = total_qty - filled_qty 
+                                    qty_to_send = target_cum_qty - filled_qty
                                 else:
                                     continue 
                                     

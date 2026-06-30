@@ -2,24 +2,10 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [NameError 즉사 수술] cmd_sync 내부 최상단에 `chat_id = update.effective_chat.id` 선언을 명시적으로 결속하여, `_safe_send` 호출 시 발생하던 NameError 런타임 붕괴를 100% 원천 차단.
-# 🚨 MODIFIED: [침묵의 마비(Silent Death) 원천 봉쇄] cmd_record 내부에 locked_tickers 및 error_tickers 추적망을 신설하여, 백그라운드 락 점유 시 무한 로딩에 빠지지 않고 즉각 피드백하도록 팩트 교정 완료.
-# 🚨 MODIFIED: [다중 종목 렌더링 누락 수술] cmd_record 내부 단일 종목 렌더링 맹점을 소각하고, 모든 가동 종목이 출력되도록 순회 루프(enumerate) 및 분할 타전망 팩트 락온.
-# 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] 전일 종가가 0.0일 때 실시간 현재가로 덮어씌워 타점 연산을 오염시키던 맹독성 조건문을 시스템 전역에서 100% 삭제 완료.
-# 🚨 MODIFIED: [UI 렌더링 텍스트 조합 뇌관 영구 소각] cmd_sync 내부에서 현재가(curr)를 참조해 타점을 역산하던 맹독성 `v_rev_guidance` 생성 로직을 100% 삭제. UI 렌더링은 오직 뷰어 도메인으로 전면 위임.
-# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] YF 1d 캔들 호출 지연 버그를 파기하고, 1m 기반 D-1일 공식 MOC 종가만을 100% 핀셋 추출하도록 전면 수술 완료.
-# 🚨 MODIFIED: [스냅샷 절대주의 사수] cmd_sync 및 EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
-# 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
-# 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
-# 🚨 MODIFIED: [Phase 1 명령어 도메인 독립] 기존 telegram_bot.py 의 God Object 안티패턴을 뜯어내어 명령어 제어 로직을 전담하는 순수 도메인 클래스 분리 락온.
-# 🚨 MODIFIED: [Phase 3 통신 데드락 붕괴 영구 소각] 무한 반복되던 asyncio.wait_for 및 to_thread 보일러플레이트를 _retry_api, _safe_reply, _safe_edit 헬퍼로 통합 압축 (DRY 원칙).
-# 🚨 MODIFIED: [Case 32 & 33 절대 규칙] _retry_api 헬퍼 내부에 TPS 캡핑(0.06s) 및 3단 지수 백오프를 중앙 집중화하여 Rate Limit 밴 원천 차단.
-# 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] _safe_edit 헬퍼 내부에 BadRequest(Message is not modified) 예외 흡수 샌드박스를 내재화하여 UI 갱신 파괴 버그 소각.
-# 🚨 MODIFIED: [Insight 14 & 25] NaN, Infinity 및 String-Float 콤마 맹독성 런타임 붕괴 완벽 차단용 _safe_float 전역 결속.
-# 🚨 MODIFIED: [Case 26] 텔레그램 HTML 파서 붕괴 방어용 html.escape 쉴드 100% 전면 유지.
-# 🚨 NEW: [런타임 호환성 확보] _retry_api 내 asyncio.to_thread 에 kwargs 전달 시 발생 가능한 TypeError 방어를 위해 functools.partial 래핑 강제 주입.
-# 🚨 NEW: [Thread-Safety 락온] 내부 헬퍼 함수(_fetch_schedule, get_yf_close 등)가 클로저(Closure) 외부 변수에 의존하지 않고 명시적 파라미터를 받도록 교정하여 Thread Context 오염 원천 차단.
-# 🚨 MODIFIED: [UI 높이 붕괴 패러독스 수술] 콜백 유입 시 1줄짜리 로딩 텍스트 중간 렌더링을 100% 전면 소각하여, 기존 화면(높이 및 버튼)을 그대로 유지하다가 최종 데이터로 제자리 갱신(In-place Edit)만 수행하도록 팩트 락온.
+# 🚨 MODIFIED: [스냅샷 유령 현상 방어] 16:05 EST 이후 장마감(CLOSE) 및 애프터장(AFTER) 상태일 때 스냅샷 로딩을 강제로 묵살하던 `force_realtime` 맹독성 로직을 100% 영구 소각하여, 언제든 D+1 락온 스냅샷이 최우선 렌더링되도록 팩트 교정 완료.
+# 🚨 MODIFIED: [NameError 즉사 수술] cmd_sync 내부 최상단에 `chat_id = update.effective_chat.id` 선언을 명시적으로 결속.
+# 🚨 MODIFIED: [침묵의 마비(Silent Death) 원천 봉쇄] cmd_record 내부에 locked_tickers 및 error_tickers 추적망 신설.
+# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] YF 1d 캔들 호출 지연 버그를 파기하고 1m 기반 D-1일 공식 MOC 종가 핀셋 추출 락온.
 # ==========================================================
 import logging
 import datetime
@@ -51,10 +37,6 @@ class TelegramCommands:
         self.view = view
         self.tx_lock = tx_lock
 
-    # ==========================================================
-    # 🛡️ [DRY Helper] 절대 방어 헬퍼 메서드 모음
-    # ==========================================================
-    
     def _safe_float(self, val):
         try:
             f_val = float(str(val or 0.0).replace(',', ''))
@@ -65,14 +47,11 @@ class TelegramCommands:
             return 0.0
 
     async def _retry_api(self, func, *args, timeout=15.0, default=None, **kwargs):
-        """ 🚨 [Case 32, 33] 중앙 집중형 TPS 캡핑 및 지수 백오프 비동기 래퍼 (+ 런타임 호환성 partial 결속) """
         for attempt in range(3):
             try:
-                # 🚨 MODIFIED: 파편화된 sleep 소각 (GlobalThrottle 위임)
                 if asyncio.iscoroutinefunction(func):
                     return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
                 else:
-                    # 🚨 NEW: [런타임 호환성 락온] older python 버전의 to_thread kwargs 에러 원천 차단
                     p_func = functools.partial(func, *args, **kwargs)
                     return await asyncio.wait_for(asyncio.to_thread(p_func), timeout=timeout)
             except Exception as e:
@@ -121,9 +100,7 @@ class TelegramCommands:
         est = ZoneInfo('America/New_York')
         now = datetime.datetime.now(est)
         
-        # 🚨 MODIFIED: [Thread-Safety 락온] 외부 스코프 의존성 제거
         def _fetch_schedule(target_now):
-            # 🚨 MODIFIED: 파편화된 sleep 소각
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=target_now.date(), end_date=target_now.date())
 
@@ -143,9 +120,6 @@ class TelegramCommands:
         elif market_close <= now < after_end: return "AFTER", "🌙 애프터마켓"
         else: return "CLOSE", "⛔ 장마감"
 
-    # ==========================================================
-    # 🕹️ [Commands] 명령어 핸들러
-    # ==========================================================
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_hour, season_icon = self._get_dst_info()
         latest_version = await self._retry_api(self.cfg.get_latest_version) or "V14.x"
@@ -153,10 +127,8 @@ class TelegramCommands:
         await self._safe_reply(update.effective_message, msg, parse_mode='HTML')
 
     async def cmd_sync(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # 🚨 NEW: [NameError 즉사 방어] 텔레그램 컨텍스트에서 chat_id 명시적 추출 락온
         chat_id = update.effective_chat.id
         
-        # 🚨 MODIFIED: [UI 렌더링 맹점 수술] 콜백 유입 시 1줄 로딩 텍스트 전면 소각 (Height Collapse 방어)
         is_callback = update.callback_query is not None
         status_msg = update.effective_message if is_callback else None
         
@@ -198,9 +170,7 @@ class TelegramCommands:
         est = ZoneInfo('America/New_York')
         now_est = datetime.datetime.now(est)
         
-        # 🚨 MODIFIED: [Thread-Safety 락온] 명시적 파라미터 전달
         def _check_schedule(target_now):
-            # 🚨 MODIFIED: 파편화된 sleep 소각
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=target_now.date(), end_date=target_now.date())
 
@@ -231,15 +201,12 @@ class TelegramCommands:
             safe_prev_close = prev_close
             
             if status_code in ["AFTER", "CLOSE", "PRE"]:
-                # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] interval="1m" 팩트 추출로 전면 교체
                 def get_exact_prev_close(ticker_name):
-                    # 🚨 MODIFIED: 파편화된 sleep 소각
                     df = yf.Ticker(ticker_name).history(period="5d", interval="1m", prepost=True, timeout=5)
                     if not df.empty and 'Close' in df.columns:
                         tz_est = ZoneInfo('America/New_York')
                         tz_now = datetime.datetime.now(tz_est)
                         cutoff_date = tz_now.date()
-                        # 정규장 마감 이전이면 당일 캔들을 배제
                         if tz_now.time() <= datetime.time(16, 0, 30):
                             cutoff_date -= datetime.timedelta(days=1)
                         
@@ -250,7 +217,6 @@ class TelegramCommands:
                             
                         past_df = df[df.index.date <= cutoff_date].copy()
                         if not past_df.empty:
-                            # 🚨 MODIFIED: [Case 35] 결측치 방어막 강제 주입
                             past_df['Close'] = past_df['Close'].ffill().bfill()
                             regular_past = past_df.between_time('09:30', '15:59')
                             if not regular_past.empty:
@@ -260,7 +226,6 @@ class TelegramCommands:
                             return val if not math.isnan(val) else None
                     return None
         
-                # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰기
                 yf_close = None
                 for attempt in range(3):
                     try:
@@ -275,9 +240,7 @@ class TelegramCommands:
                     prev_close = safe_prev_close
 
             if status_code == "CLOSE": 
-                # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
                 curr = safe_prev_close
-            # 🚨 MODIFIED: [현재가 전염 뇌관 영구 소각] (elif curr > 0 and prev_close == 0.0: prev_close = curr) 맹독성 덮어쓰기 로직 100% 영구 삭제
 
             idx_ticker = "SOXX" if t == "SOXL" else "QQQ"
             dynamic_pct_obj = await self._retry_api(self.broker.get_dynamic_sniper_target, idx_ticker)
@@ -296,16 +259,15 @@ class TelegramCommands:
             ver = await self._retry_api(self.cfg.get_version, t) or "V14"
             is_manual_vwap = await self._retry_api(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t, default=False)
             
-            force_realtime = status_code in ["CLOSE", "AFTER"]
+            # 🚨 MODIFIED: [스냅샷 유령 현상 방어] 맹독성 force_realtime 플래그 영구 소각.
+            # 장마감(CLOSE) 및 애프터장(AFTER)에도 무조건 D+1 락온 스냅샷을 100% 로드하도록 팩트 교정 완료.
             cached_snap = None
-            
-            if not force_realtime:
-                if ver == "V_REV":
-                    cached_snap = await self._retry_api(self.strategy.v_rev_plugin.load_daily_snapshot, t)
-                elif ver == "V14":
-                    if is_manual_vwap: cached_snap = await self._retry_api(self.strategy.v14_vwap_plugin.load_daily_snapshot, t)
-                    elif hasattr(self.strategy, 'v14_plugin') and hasattr(self.strategy.v14_plugin, 'load_daily_snapshot'):
-                        cached_snap = await self._retry_api(self.strategy.v14_plugin.load_daily_snapshot, t)
+            if ver == "V_REV":
+                cached_snap = await self._retry_api(self.strategy.v_rev_plugin.load_daily_snapshot, t)
+            elif ver == "V14":
+                if is_manual_vwap: cached_snap = await self._retry_api(self.strategy.v14_vwap_plugin.load_daily_snapshot, t)
+                elif hasattr(self.strategy, 'v14_plugin') and hasattr(self.strategy.v14_plugin, 'load_daily_snapshot'):
+                    cached_snap = await self._retry_api(self.strategy.v14_plugin.load_daily_snapshot, t)
             
             if not isinstance(cached_snap, dict): cached_snap = None
             
@@ -329,7 +291,6 @@ class TelegramCommands:
             job_data = jobs[0].data if jobs and len(jobs) > 0 and jobs[0].data is not None else {}
             regime_data = job_data.get('regime_data') if isinstance(job_data, dict) else None
 
-            # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함.
             plan = await self._retry_api(
                 self.strategy.get_plan, t, curr, actual_avg, logic_qty, safe_prev_close, ma_5day=ma_5day,
                 market_type="REG", available_cash=allocated_cash.get(t, 0.0),
@@ -347,10 +308,8 @@ class TelegramCommands:
             if ver == "V_REV":
                 q_list = await self._retry_api(self.queue_ledger.get_queue, t, default=[]) if getattr(self, 'queue_ledger', None) else []
                 q_list = q_list if isinstance(q_list, list) else []
-             
                 v_rev_q_lots = len(q_list)
                 v_rev_q_qty = sum(int(self._safe_float(item.get('qty', 0))) for item in q_list if isinstance(item, dict))
-            
                 one_portion_cash = safe_seed * 0.15
                 plan['one_portion'] = one_portion_cash
 
@@ -420,7 +379,6 @@ class TelegramCommands:
         rp_amount = surplus * 0.95 if surplus > 0 else 0
         
         def get_exchange_rate():
-            # 🚨 MODIFIED: 파편화된 sleep 소각
             df = yf.Ticker("KRW=X").history(period="1d", timeout=5.0)
             if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
                 val = self._safe_float(df['Close'].iloc[-1])
@@ -654,7 +612,7 @@ class TelegramCommands:
         if qty <= 0 or price <= 0.0:
             await self._safe_reply(update.effective_message, "❌ 수량과 평단가는 0보다 큰 숫자여야 합니다. (혹은 형식 오류)", parse_mode='HTML')
             return
-           
+            
         curr_p_val = await self._retry_api(self.broker.get_current_price, ticker)
         curr_p = self._safe_float(curr_p_val)
                 
@@ -662,7 +620,7 @@ class TelegramCommands:
             if price < curr_p * 0.4 or price > curr_p * 1.6:
                 await self._safe_reply(update.effective_message, f"🚨 <b>오입력 차단:</b> 입력하신 평단가(<b>${price:.2f}</b>)가 현재가 대비 ±60%를 벗어납니다. 오타를 확인하세요!", parse_mode='HTML')
                 return
-    
+            
         if not getattr(self, 'queue_ledger', None):
             from queue_ledger import QueueLedger
             self.queue_ledger = await asyncio.to_thread(QueueLedger)
@@ -694,7 +652,7 @@ class TelegramCommands:
         if not getattr(self, 'queue_ledger', None):
             from queue_ledger import QueueLedger
             self.queue_ledger = await asyncio.to_thread(QueueLedger)
-             
+            
         await self._retry_api(self.queue_ledger.clear_queue, ticker)
         chat_id = update.effective_chat.id
         if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
@@ -713,7 +671,7 @@ class TelegramCommands:
         
         if not is_callback:
              status_msg = await self._safe_reply(update.effective_message, "⏳ <b>[시스템 업데이트]</b> 깃허브 원격 서버와 통신을 시작합니다...", parse_mode='HTML')
-         
+        
         success, msg = await updater.pull_latest_code()
         safe_msg = html.escape(str(msg)) 
         if success:
