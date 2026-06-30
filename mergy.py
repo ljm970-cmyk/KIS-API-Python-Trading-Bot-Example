@@ -22,6 +22,7 @@ TARGET_FILES = [
     "state_io_manager.py",
     "scheduler_sniper.py",
     "scheduler_vwap.py",
+    "global_throttle.py",
     "vwap_core_engine.py",
     "vwap_aftermarket_engine.py",
     "strategy.py",
