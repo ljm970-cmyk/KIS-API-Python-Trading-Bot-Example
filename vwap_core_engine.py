@@ -5,7 +5,8 @@
 # 🚨 MODIFIED: [중앙 통제소 위임] 모든 API 지연을 GlobalThrottle(중앙 통제소)로 100% 위임하여 이벤트 루프 교착 상태 완벽 방어.
 # 🚨 MODIFIED: [순수 슬라이싱 아키텍처 팩트 수복] 슬라이싱 엔진 내부에서 목표가 2% 이내 접근 시 강제로 스윕(Sweep)해버리는 기형적인 조건문을 영구 소각하고, 오직 정밀한 1분 단위 분할(Slicing) 타격만 집행하도록 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [하방 매수 하이재킹 팩트 교정] 거시 지표(VWAP -2%) 달성 시 무조건 매수하던 맹점을 파기하고, 당일 통합지시서상에 '매수(BUY)' 플랜이 존재하는 날에만 하방 갭 하이재킹이 격발되도록 안전 방어막 100% 결속.
-# 🚨 MODIFIED: [상방 매도 하이재킹 부활 및 조건부 락온 (V93.80)] 삭제되었던 상방 매도 하이재킹(VWAP +2%)을 복구하되, 당일 통합지시서상에 '매도(SELL)' 플랜이 존재하는 날에만 격발되도록 조건을 강화. 이를 통해 방금 매수한 물량을 덤핑하는 자해(Buy High, Sell Low)를 원천 차단하고 급등 시 고점 전량 익절이라는 본연의 기능 완벽 수복.
+# 🚨 MODIFIED: [상방 매도 하이재킹 부활 및 조건부 락온 (V93.80)] 삭제되었던 상방 매도 하이재킹(VWAP +2%)을 복구하되, 당일 통합지시서상에 '매도(SELL)' 플랜이 존재하는 날에만 격발되도록 조건을 강화.
+# 🚨 MODIFIED: [추격 매수 차단 뇌관 영구 소각 (NEW)] 당일이 매수(BUY)하는 날일 경우, 지수가 상방 갭(+2%)을 돌파하더라도 인위적으로 매수를 멈추는 '스마트 보호' 맹독성 플래그(is_upward_hijacked_now = True)를 100% 파기. 무한매수 원칙에 따라 고점이라도 슬라이싱 매수를 끝까지 집행하도록 팩트 락온.
 # ==========================================================
 import logging
 import asyncio
@@ -141,7 +142,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                     # [ 1. Gap Hijack (상/하방 갭 하이재킹 전용) 모니터링 ]
                     # ======================================================
                     is_downward_hijacked_now = vwap_cache.get(f"REV_{t}_gap_hijack_fired", False)
-                    # 🚨 NEW: 상방 매도 하이재킹 플래그 확인
+                    # 🚨 상방 매도 하이재킹 플래그 확인
                     is_upward_hijacked_now = vwap_cache.get(f"REV_{t}_upward_hijack_fired", False)
                     
                     if (version == "V_REV" or (version == "V14" and is_manual_vwap)) and not (is_downward_hijacked_now or is_upward_hijacked_now):
@@ -310,18 +311,16 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 # 🚨 [B. 상방 매도 하이재킹 (Upward Sell Hijack) 격발망]
                                 # ----------------------------------------------------
                                 elif gap_pct >= 2.0:
-                                    # 🚨 NEW: 당일 지시서에 SELL(매도) 플랜이 있는지 원자적 스캔하여 팻핑거 원천 차단
                                     slice_state_check = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
                                     has_sell_plan = any(isinstance(o, dict) and str(o.get('side')) == 'SELL' for o in slice_state_check.get('orders', []))
                                     
                                     if not has_sell_plan:
                                         if not vwap_cache.get(f"REV_{t}_upward_hijack_blocked_log", False):
-                                            logging.info(f"⚡ [{t}] 상방 Gap Hijack 조건 도달({gap_pct:+.2f}%) ➔ 🛑 금일 통합지시서에 매도(SELL) 플랜이 없어 스윕 익절 덤핑을 전면 차단(Bypass)합니다.")
+                                            # 🚨 MODIFIED: 매도 플랜이 없는 경우(즉, 매수일인 경우) 추격 매수 차단 로직(스마트 보호)을 영구 소각하고 무한매수 원칙에 따라 Slicing이 지속되도록 팩트 처리.
+                                            logging.info(f"⚡ [{t}] 상방 Gap Hijack 조건 도달({gap_pct:+.2f}%) ➔ 🛑 매도(SELL) 플랜 없음. 스마트 보호(추격매수 차단)를 영구 소각하고 무한매수 원칙에 따라 정상 슬라이싱 매수를 지속합니다.")
                                             vwap_cache[f"REV_{t}_upward_hijack_blocked_log"] = True
                                         
-                                        # 플래그 락온 (추격 매수는 차단하되 엔진 흐름 유지)
-                                        vwap_cache[f"REV_{t}_upward_hijack_fired"] = True
-                                        is_upward_hijacked_now = True
+                                        # 🚨 MODIFIED: is_upward_hijacked_now 플래그를 건드리지 않음으로써 로컬 1분 슬라이싱 엔진이 고점에서도 기계적 매수를 완수하도록 원천 보장.
                                     else:
                                         can_upward_hijack = False
                                         target_sell_qty = 0
