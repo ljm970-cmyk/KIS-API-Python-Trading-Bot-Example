@@ -1,6 +1,7 @@
 # ==========================================================
 # FILE: strategy_v14.py
 # ==========================================================
+# 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 'descriptor time... int object' 에러를 막기 위해, 순수 정수 연산인 `now_est.hour >= 16`으로 100% 팩트 교체 완료.
 # 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 100% 소각 및 EAFP 원자적 접근 강제
 # 🚨 MODIFIED: [Case 21] 후반전 별값 매수 예산 통합 100% 팩트 이식
 # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍 5단 폭포수 덫 공식 진공 압축 팩트 이식 완료
@@ -46,7 +47,7 @@ class V14Strategy:
         
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
-        elif now_est.time() >= datetime.time(16, 0):
+        elif now_est.hour >= 16: # 🚨 MODIFIED: [TypeError 즉사 방어] datetime.time 충돌 소각
             target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est

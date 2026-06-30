@@ -1,11 +1,12 @@
 # ==========================================================
 # FILE: strategy_reversion.py
 # ==========================================================
+# 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 에러를 막기 위해, `now_est.hour >= 16`으로 100% 팩트 교체 완료.
 # 🚨 MODIFIED: [스냅샷 오염 전이 절대 방어 소각] 실잔고(actual_qty) 강제 평가 데드코드를 전면 소각하고 스냅샷 절대주의로 회귀.
 # 🚨 MODIFIED: [스냅샷 절대주의 락온] 예산 결측(0.0) 시 스냅샷 지시서가 통째로 증발하는 맹점을 막기 위해 1일 고정 예산(daily_limit) 강제 주입 팩트 결속.
 # 🚨 MODIFIED: [0주 스냅샷 팩트 리앵커링 (Fact Override)] get_dynamic_plan 진입 시, 스냅샷 오염이 감지되면 YF 무결성 종가(prev_c)로 타점을 자가 치유(Self-Healing)하여 덮어씌웁니다.
 # 🚨 VERIFIED: [큐 장부 절대주의 헌법 수복] 타점 연산 및 새 사이클(0주) 판별 시 KIS 실잔고(actual_qty) 및 평단가(actual_avg)의 개입을 100% 영구 소각하고, 오직 로컬 큐(Queue) 장부 데이터만을 Single Source of Truth로 맹신하도록 팩트 교정 완료.
-# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술. (주말 건너뛰기 보정 포함)
+# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술.
 # ==========================================================
 import math
 import os
@@ -35,7 +36,7 @@ class ReversionStrategy:
         
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
-        elif now_est.time() >= datetime.time(16, 0):
+        elif now_est.hour >= 16: # 🚨 MODIFIED: [TypeError 즉사 방어] datetime.time 충돌 소각
             target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est

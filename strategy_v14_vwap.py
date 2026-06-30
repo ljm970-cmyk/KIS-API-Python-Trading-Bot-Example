@@ -1,6 +1,7 @@
 # ==========================================================
 # FILE: strategy_v14_vwap.py
 # ==========================================================
+# 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 에러를 막기 위해, `now_est.hour >= 16`으로 100% 팩트 교체 완료.
 # 🚨 VERIFIED: [원샷 딥다이브] 파일 I/O 스레드 분리 락온, JSON 오염 객 단락 평가 방어, Float 정밀도 예외 원천 차단 무결성 검증 완료
 # 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
 # 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 락온
@@ -47,7 +48,7 @@ class V14VwapStrategy:
         
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
-        elif now_est.time() >= datetime.time(16, 0):
+        elif now_est.hour >= 16: # 🚨 MODIFIED: [TypeError 즉사 방어] datetime.time 충돌 소각
             target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est
@@ -255,7 +256,7 @@ class V14VwapStrategy:
                     if min_s > 0 and self._safe_float(new_o.get('price')) >= min_s:
                         new_o['price'] = round(min_s - 0.01, 2)
                     if "🛡️" not in new_o.get('desc', ''): 
-                            new_o['desc'] = f"🛡️교정_{new_o.get('desc', '').replace('🧹', '')}"
+                        new_o['desc'] = f"🛡️교정_{new_o.get('desc', '').replace('🧹', '')}"
                     new_o['price'] = max(0.01, self._safe_float(new_o.get('price')))
                 res.append(new_o)
             return res

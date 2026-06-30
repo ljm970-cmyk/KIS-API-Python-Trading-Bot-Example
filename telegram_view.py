@@ -7,6 +7,7 @@
 # 🚨 MODIFIED: [Phase 4 인라인 버튼 결속] 암살자 설정 메뉴(SETTLEMENT)에 "🔫 암살자 1회 타격 예산" 및 "🌙 오버나이트 토글" 버튼 주입 완료.
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
 # 🚨 MODIFIED: [Case 16 위반 교정] 이미지 렌더링(create_profit_image) 시 원자적 쓰기 실패에 따른 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 최상단 전진 배치.
+# 🚨 MODIFIED: [V14 LOC 전용 수동 제어망 결속] 통합 지시서(create_sync_report) 렌더링 시 V-REV 및 VWAP 모드를 배제하고 오직 V14 LOC 모드에만 수동 전송/취소 버튼이 스위칭 렌더링되도록 팩트 락온.
 # ==========================================================
 import os
 import math
@@ -164,7 +165,7 @@ class TelegramView:
         msg += f"▫️ 총 장전 수량 : {total_q} 주\n"
         msg += f"▫️ 지층 통합 평단가 : ${avg_p:.2f}\n\n"
         msg += "<b>[ LIFO 지층별 상세 (최근 매수 = 1지층) ]</b>\n"
-        msg += "<code>지층 일자         수량   평단가\n"
+        msg += "<code>지층 일자          수량   평단가\n"
         msg += "-"*30 + "\n"
         
         keyboard = []
@@ -565,8 +566,16 @@ class TelegramView:
                     body_msg += "  💤 주문 없음 (관망/예산소진)\n"
 
             if is_trade_active:
-                if t_info.get('is_locked', False):
+                is_locked = t_info.get('is_locked', False)
+                if is_locked:
                     body_msg += " (✅ 금일 주문 완료/잠금)\n"
+                
+                # 🚨 MODIFIED: [V14 LOC 전용 수동 제어망 결속] V-REV 및 자체 VWAP 슬라이싱 모드를 배제하고, 오직 V14 LOC 모드일 때만 수동 전송/취소 버튼 렌더링 락온.
+                if v_mode != "V_REV" and not is_manual_vwap:
+                    if is_locked:
+                        keyboard.append([InlineKeyboardButton(f"🛑 {t} 수동 매매 취소", callback_data=f"CANCEL_EXEC:{t}")])
+                    else:
+                        keyboard.append([InlineKeyboardButton(f"🚀 {t} 수동 강제 전송", callback_data=f"EXEC:{t}")])
             
         final_msg = header_msg + body_msg.strip()
         
