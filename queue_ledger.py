@@ -2,6 +2,7 @@
 # FILE: queue_ledger.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [Lost Update 궁극 방어] 인스턴스 레벨 Lock 소각 및 시스템 전역 파일 Mutex(GlobalThrottle) 락온
 # 🚨 MODIFIED: [오버나이트 병합 로직 영구 소각] 제로-오버나이트 아키텍처(15:59 MOC 덤핑) 도입에 따라, 익일 04:00에 이월된 물량을 강제 병합하던 `unify_to_single_layer` (L1 대통합) 헬퍼 메서드 및 관련 데드코드를 100% 영구 삭제 완료.
 # 🚨 MODIFIED: [수수료 트랩 원천 차단] 1층 매도 총액(Gross)에서 왕복 수수료 및 슬리피지 버퍼(0.6%)를 선차감한 '순수 회수금(Net Cash)'만을 원가 차감에 반영하여 전체 사이클 마진 붕괴 패러독스 방어 유지.
 # 🚨 MODIFIED: [하위 지층 단가 상승 패러독스 원천 차단] 잔여 지층이 2개 이상일 때는 개별 평단가를 100% 보존하며, 오직 잔여 지층이 단 1개(len(q)==1) 남았을 때만 전체 투자금 기반 원가 차감(리앵커링)이 격발되도록 팩트 교정 유지.
@@ -17,17 +18,17 @@ import os
 import json
 import time
 import math
-import threading
 import shutil
 import tempfile
 from zoneinfo import ZoneInfo
 from datetime import datetime
 import logging
+from global_throttle import GlobalThrottle # 🚨 전역 락 엔진
 
 class QueueLedger:
     def __init__(self, file_path="data/queue_ledger.json"):
         self.file_path = file_path
-        self._lock = threading.Lock()
+        # 🚨 인스턴스 락(self._lock) 영구 소각, get_file_lock 기반의 전역 파일 뮤텍스로 통제
         self._ensure_file()
 
     def _safe_float(self, value):
@@ -40,30 +41,26 @@ class QueueLedger:
             return 0.0
 
     def _ensure_file(self):
-        try:
-            dir_name = os.path.dirname(self.file_path) or '.'
-            os.makedirs(dir_name, exist_ok=True)
-        except OSError:
-            pass
-
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
+            try:
+                dir_name = os.path.dirname(self.file_path) or '.'
+                os.makedirs(dir_name, exist_ok=True)
+            except OSError:
                 pass
-        except FileNotFoundError:
-            with self._lock:
-                try:
-                    with open(self.file_path, 'r', encoding='utf-8') as f:
-                        pass
-                except FileNotFoundError:
-                    self._save_unsafe({})
-        except Exception:
-            pass
+            try:
+                with open(self.file_path, 'r', encoding='utf-8') as f:
+                    pass
+            except FileNotFoundError:
+                # 안전하게 빈 장부 생성
+                self._save_unsafe_no_lock({}) 
 
     def _get_trading_date_str(self):
         est = ZoneInfo('America/New_York')
         return datetime.now(est).strftime("%Y-%m-%d")
 
     def _load_unsafe(self):
+        """ 🚨 호출부에서 GlobalThrottle Lock을 잡고 진입하므로 순수 읽기만 수행 """
         last_exc = None
         for attempt in range(3):
             try:
@@ -88,7 +85,7 @@ class QueueLedger:
                 data = json.load(f)
                 logging.warning(f"🚨 [QueueLedger] JSON 손상 감지. 백업 파일({backup_path}) 복원 완료. 손상된 메인 장부를 즉시 자가 치유합니다.")
                 try:
-                    self._save_unsafe(data)
+                    self._save_unsafe_no_lock(data)
                 except Exception as heal_e:
                     logging.error(f"🚨 [QueueLedger] 자가 치유 I/O 통신 에러: {heal_e}")
                 return data
@@ -99,16 +96,11 @@ class QueueLedger:
         
         raise RuntimeError(f"🚨 [FATAL ERROR] {self.file_path} 장부 파일 읽기 실패. 데이터 유실 방지를 위해 시스템을 중단합니다. 원인: {last_exc}")
 
-    def _save_unsafe(self, data):
+    def _save_unsafe_no_lock(self, data):
+        """ 🚨 호출부에서 GlobalThrottle Lock을 잡고 진입하므로 순수 쓰기만 수행 """
         dir_name = os.path.dirname(self.file_path) or '.'
-        try:
-            os.makedirs(dir_name, exist_ok=True)
-        except OSError:
-            pass
-
         for attempt in range(3):
-            fd = None
-            tmp_path = None
+            fd = None; tmp_path = None
             try:
                 fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
                 with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -119,7 +111,7 @@ class QueueLedger:
                 os.replace(tmp_path, self.file_path)
                 tmp_path = None
                 
-                # 🚨 MODIFIED: [제4헌법 결속] 백업본(.bak) 생성 시에도 임시 파일을 통한 원자적 교체(Atomic Copy)를 강제하여 파일 손상 원천 봉쇄
+                # 🚨 MODIFIED: [제4헌법 결속] 백업본(.bak) 생성 시에도 임시 파일을 통한 원자적 교체(Atomic Copy) 강제
                 bak_path = self.file_path + ".bak"
                 bak_tmp_path = bak_path + ".tmp"
                 try: 
@@ -144,7 +136,8 @@ class QueueLedger:
 
     def apply_stock_split(self, ticker, ratio):
         if ratio <= 0: return
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             changed = False
@@ -161,10 +154,11 @@ class QueueLedger:
                 changed = True
             if changed:
                 data[ticker] = q
-                self._save_unsafe(data)
+                self._save_unsafe_no_lock(data)
 
     def get_queue(self, ticker):
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             return [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0]
@@ -178,7 +172,9 @@ class QueueLedger:
             logging.error(f"🚨 [QueueLedger] add_lot 중단: {ticker} — 유효하지 않은 매수 가격 (price={price}). 로트 추가 취소.")
             return
             
-        with self._lock:
+        # 🚨 전역 파일 Mutex로 진입
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             q = [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0] 
@@ -204,14 +200,15 @@ class QueueLedger:
                 })
             
             data[ticker] = q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
 
     def pop_lots(self, ticker, target_qty, sold_price=0.0):
         original_target = int(self._safe_float(target_qty))
         target_qty = original_target
         if target_qty <= 0: return 0
         
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             q = [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0] 
@@ -244,7 +241,7 @@ class QueueLedger:
                     popped_total += target_qty
                     realized_cash += target_qty * cp
                     target_qty = 0
-                    
+            
             remaining_qty = sum(int(self._safe_float(item.get('qty'))) for item in q)
             if remaining_qty > 0 and popped_total > 0:
                 # 🚨 MODIFIED: [단일 지층 Net Cash 차감] 0.6% 수수료/슬리피지 버퍼를 선차감하여 잔여 자본금(Capital Base) 과소 계상 차단
@@ -258,11 +255,12 @@ class QueueLedger:
                 logging.error(f"🚨 [QueueLedger] pop_lots 미달: {ticker} — 요청 {original_target}주 중 {popped_total}주만 차감. 즉시 sync_with_broker 실행 권고.")
 
             data[ticker] = q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
             return popped_total
 
     def sync_with_broker(self, ticker, actual_qty, actual_avg=0.0, clear_price=0.0):
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             q = [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0] 
@@ -285,7 +283,7 @@ class QueueLedger:
                 if calib_price <= 0.0:
                     logging.error(f"🚨 [QueueLedger] sync_with_broker CALIB_ADD 중단: {ticker} — 실제 평단가 불명 (actual_avg={actual_avg}). $0 로트 주입 방지.")
                     data[ticker] = q
-                    self._save_unsafe(data)
+                    self._save_unsafe_no_lock(data)
                     return True
                 
                 if q and str(q[-1].get("date", "")).startswith(today_str):
@@ -346,21 +344,23 @@ class QueueLedger:
                 logging.warning(f"⚠️ [QueueLedger] sync_with_broker CALIB_SUB 미달: {ticker} 큐 물량이 브로커보다 {diff}주 부족합니다. 큐가 초기화되었습니다.")
 
             data[ticker] = q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
             return True
 
     def delete_lot(self, ticker, target_date):
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             new_q = [lot for lot in q if str(lot.get('date', '')) != str(target_date)]
             data[ticker] = new_q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
 
     def edit_lot(self, ticker, target_date, qty, price):
         qty_int = int(self._safe_float(qty))
         price_f = self._safe_float(price)
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             q = data.get(ticker, [])
             for lot in q:
@@ -369,17 +369,19 @@ class QueueLedger:
                     lot['price'] = round(price_f, 4)
                     break
             data[ticker] = q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
 
     def clear_queue(self, ticker):
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             data[ticker] = []
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
 
     def overwrite_queue(self, ticker, q_data):
-        with self._lock:
+        lock = GlobalThrottle.get_file_lock(self.file_path)
+        with lock:
             data = self._load_unsafe()
             sorted_q = sorted(q_data, key=lambda x: str(x.get('date', '0000-00-00')))
             data[ticker] = sorted_q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
