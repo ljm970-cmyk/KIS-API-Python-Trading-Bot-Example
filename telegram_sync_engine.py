@@ -2,6 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [Thundering Herd 영구 소각] `await asyncio.sleep(0.06)` 파편화 코드를 전면 삭제하고 `GlobalThrottle` 기반의 `18 TPS` 통제소로 비동기 딜레이를 100% 위임하여 이벤트 루프 교착 완벽 방어.
 # 🚨 MODIFIED: [암살자 장부 상시 렌더링 락온] `_display_ledger` 호출 시 암살자 물량이 0주이더라도 "OFF (대기 중 / 0주)" 상태를 무조건 표출하여 사용자 심리적 안정감 및 가시성 100% 사수.
 # 🚨 MODIFIED: [Phase 4 암살자 장부 병렬 렌더링] 100% 독립된 `AssassinLedger`를 로드하여, 오버나이트 중인 암살자 물량과 평단가를 본진 장부 하단에 완벽히 분리 표출하는 브릿지 결속 유지.
 # 🚨 MODIFIED: [IndentationError 궁극 수술] 파이썬 컴파일러 즉사 버그 원천 차단.
@@ -52,9 +53,10 @@ class TelegramSyncEngine:
         except Exception: return 0.0
 
     async def _retry_api(self, func, *args, timeout=15.0, default=None, **kwargs):
+        """ 🚨 [Case 32, 33] 지수 백오프 비동기 래퍼 (+ 런타임 호환성 partial 결속) """
         for attempt in range(3):
             try:
-                await asyncio.sleep(0.06)
+                # 🚨 MODIFIED: 파편화된 sleep 소각 (GlobalThrottle 위임)
                 if asyncio.iscoroutinefunction(func):
                     return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
                 else:
@@ -116,7 +118,7 @@ class TelegramSyncEngine:
                     await self._safe_send(context, chat_id, f"✂️ <b>[{html.escape(str(ticker))}] 야후 파이낸스 {split_type} 자동 감지!</b>\n▫️ 감지된 비율: <b>{split_ratio}배</b> (발생일: {html.escape(str(split_date))})\n▫️ 봇이 기존 V14 장부, V-REV 큐 장부, 암살자 장부, AVWAP 상태 캐시의 수량과 평단가를 100% 무인 자동 소급 조정 완료했습니다.", parse_mode='HTML')
              
                 def _get_last_trade_date(target_est):
-                    time.sleep(0.06)
+                    # 🚨 MODIFIED: 파편화된 sleep 소각
                     nyse = mcal.get_calendar('NYSE')
                     return nyse.schedule(start_date=(target_est - datetime.timedelta(days=10)).date(), end_date=target_est.date())
 
@@ -205,6 +207,7 @@ class TelegramSyncEngine:
                                 stable_cnt += 1
                                 if stable_cnt >= 1: break
                         else: stable_cnt = 0
+                        
                         prev_sold_today = sold_today
                         
                         if attempt < max_retries - 1:
@@ -267,7 +270,7 @@ class TelegramSyncEngine:
                             rec_item = {'date': target_ledger_str, 'side': "BUY" if side_cd == "02" else "SELL", 'qty': exec_qty, 'price': exec_price, 'avg_price': temp_sim_avg}
                             if is_rev: rec_item['is_reverse'] = True
                             new_target_records.append(rec_item)
-                             
+                            
                     gap_qty = safe_actual_qty_for_vrev - temp_sim_qty
                     if gap_qty != 0:
                         calib_side = "BUY" if gap_qty > 0 else "SELL"
@@ -389,6 +392,7 @@ class TelegramSyncEngine:
                                 "invested": self._safe_float(total_invested), "revenue": self._safe_float(total_invested + realized_pnl),
                                 "profit": realized_pnl, "yield": yield_pct, "trades": q_data_before 
                             }
+            
                             hist_data.append(new_hist)
                             await self._retry_api(self.cfg._save_json, self.cfg.FILES["HISTORY"], hist_data, timeout=10.0)
                             _vrev_snap_ok = True
@@ -529,13 +533,12 @@ class TelegramSyncEngine:
                 # 🚨 NEW: [스냅샷 락온 타임라인 이동] 16:05 EST 장부 정산이 완벽히 끝난 직후, 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)
                 if now_est.time() >= datetime.time(16, 0):
                     try:
-                        await asyncio.sleep(0.06)
                         curr_p_val = await self._retry_api(self.broker.get_current_price, ticker, timeout=10.0)
                         curr_p = self._safe_float(curr_p_val)
                         
                         prev_c_val = await self._retry_api(self.broker.get_previous_close, ticker, timeout=10.0)
                         prev_c = self._safe_float(prev_c_val)
-                        
+                    
                         ma_5day_val = await self._retry_api(self.broker.get_5day_ma, ticker, timeout=10.0)
                         ma_5day = self._safe_float(ma_5day_val)
                         
@@ -553,11 +556,11 @@ class TelegramSyncEngine:
                         
                         final_qty = hold_res_final[0] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 0 else 0
                         final_avg = hold_res_final[1] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 1 else 0.0
-                        
+                    
                         # 🚨 0주 새출발 패러독스 방어: 16:05의 현재가는 오염되었을 수 있으므로 0주 상태일 때 YF 공식 종가(prev_c)로 락온하도록 0.0 주입
                         if final_qty == 0:
                             curr_p = 0.0
-                        
+                         
                         await asyncio.wait_for(asyncio.to_thread(
                             self.strategy.get_plan, ticker, curr_p, final_avg, final_qty, prev_c, ma_5day=ma_5day,
                             market_type="REG", available_cash=avail_cash, is_simulation=True, is_snapshot_mode=True

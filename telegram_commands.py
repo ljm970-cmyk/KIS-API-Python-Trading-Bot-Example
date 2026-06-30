@@ -68,7 +68,7 @@ class TelegramCommands:
         """ 🚨 [Case 32, 33] 중앙 집중형 TPS 캡핑 및 지수 백오프 비동기 래퍼 (+ 런타임 호환성 partial 결속) """
         for attempt in range(3):
             try:
-                await asyncio.sleep(0.06)
+                # 🚨 MODIFIED: 파편화된 sleep 소각 (GlobalThrottle 위임)
                 if asyncio.iscoroutinefunction(func):
                     return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
                 else:
@@ -123,7 +123,7 @@ class TelegramCommands:
         
         # 🚨 MODIFIED: [Thread-Safety 락온] 외부 스코프 의존성 제거
         def _fetch_schedule(target_now):
-            time.sleep(0.06) 
+            # 🚨 MODIFIED: 파편화된 sleep 소각
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=target_now.date(), end_date=target_now.date())
 
@@ -200,7 +200,7 @@ class TelegramCommands:
         
         # 🚨 MODIFIED: [Thread-Safety 락온] 명시적 파라미터 전달
         def _check_schedule(target_now):
-            time.sleep(0.06)
+            # 🚨 MODIFIED: 파편화된 sleep 소각
             nyse = mcal.get_calendar('NYSE')
             return nyse.schedule(start_date=target_now.date(), end_date=target_now.date())
 
@@ -233,7 +233,7 @@ class TelegramCommands:
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] interval="1m" 팩트 추출로 전면 교체
                 def get_exact_prev_close(ticker_name):
-                    time.sleep(0.06)
+                    # 🚨 MODIFIED: 파편화된 sleep 소각
                     df = yf.Ticker(ticker_name).history(period="5d", interval="1m", prepost=True, timeout=5)
                     if not df.empty and 'Close' in df.columns:
                         tz_est = ZoneInfo('America/New_York')
@@ -420,7 +420,7 @@ class TelegramCommands:
         rp_amount = surplus * 0.95 if surplus > 0 else 0
         
         def get_exchange_rate():
-            time.sleep(0.06)
+            # 🚨 MODIFIED: 파편화된 sleep 소각
             df = yf.Ticker("KRW=X").history(period="1d", timeout=5.0)
             if not df.empty and 'Close' in df.columns and len(df['Close']) > 0:
                 val = self._safe_float(df['Close'].iloc[-1])
@@ -456,7 +456,7 @@ class TelegramCommands:
             try:
                 if status_msg:
                     await self._safe_edit(status_msg, f"🛡️ <b>[{t}] 장부 무결성 검증 진행 중... (최대 1~2분 소요될 수 있습니다)</b>", parse_mode='HTML')
-                await asyncio.sleep(0.06)
+                
                 res = await self.sync_engine.process_auto_sync(t, chat_id, context, silent_ledger=True)
                 if res == "SUCCESS": success_tickers.append(t)
                 elif res == "LOCKED": locked_tickers.append(t)

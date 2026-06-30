@@ -2,6 +2,7 @@
 # FILE: callback_order_handler.py
 # ==========================================================
 # 🚨 MODIFIED: [주문 통신 전담 도메인] KIS API 수동 주문, 수동 취소, 비상 수혈 로직 100% 분리 락온
+# 🚨 MODIFIED: [스냅샷 붕괴 방어망 결속] EXEC 수동 명령 격발 시 발생하는 get_plan() 타임아웃/에러를 흡수하기 위해 try-except 샌드박스를 강제 래핑하여 봇의 치명적 마비(Silent Death)를 완벽 차단.
 # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 캔들 호출 시, 장마감(16:00 EST) 이전이라면 오늘 생성 중인 라이브 캔들(현재가)을 칼같이 절단(Cut-off)하고 D-1일 공식 MOC 종가만을 100% 핀셋 추출하여 갭상승 캔들 누수 원천 차단.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] EXEC 수동명령어 호출 시 is_snapshot_mode=False를 강제 래핑하여 04:00 AM에 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정.
 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
@@ -251,8 +252,6 @@ class CallbackOrderHandler:
                 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
                 if status_code == "CLOSE":
                     curr_p = prev_c
-                elif curr_p > 0 and prev_c == 0.0:
-                    prev_c = curr_p
          
             ma_5day = 0.0
             for attempt in range(3):
@@ -268,8 +267,12 @@ class CallbackOrderHandler:
             is_manual_vwap = await asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t)
             
             # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함. (단, EXEC 모드이므로 새로 생성해야 함)
-            # EXEC 모드는 "수동 강제 전송"이므로 스냅샷을 덮어쓰는 is_snapshot_mode=True 가 유지되어야 합니다.
-            plan = await asyncio.to_thread(self.strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=allocated_budget, is_simulation=True, is_snapshot_mode=True)
+            # 🚨 MODIFIED: [스냅샷 붕괴 방어망 결속] EXEC 수동 명령 시 발생하는 get_plan 에러를 샌드박스로 완벽 격리.
+            try:
+                plan = await asyncio.to_thread(self.strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=allocated_budget, is_simulation=True, is_snapshot_mode=True)
+            except Exception as e:
+                logging.error(f"🚨 [{t}] 수동 전송 플랜 생성 에러 (샌드박스 방어): {e}")
+                plan = {}
             
             if not isinstance(plan, dict):
                 plan = {}

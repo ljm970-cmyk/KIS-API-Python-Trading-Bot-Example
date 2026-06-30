@@ -2,22 +2,7 @@
 # FILE: strategy_v14_vwap.py
 # ==========================================================
 # 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 에러를 막기 위해, `now_est.hour >= 16`으로 100% 팩트 교체 완료.
-# 🚨 VERIFIED: [원샷 딥다이브] 파일 I/O 스레드 분리 락온, JSON 오염 객 단락 평가 방어, Float 정밀도 예외 원천 차단 무결성 검증 완료
-# 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 소각
-# 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 락온
-# 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기 실패 시 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 전진 배치
-# 🚨 MODIFIED: [TOCTOU 레이스 컨디션 수술] 임시 파일 정리 시 잔존하는 os.path.exists 마저 전면 소각하고 EAFP 패턴으로 100% 락온
-# 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식 및 alloc_cash 쉴드 확장
-# 🚨 MODIFIED: [Insight 06/07] JSON 이중 get() 호출 시 발생하는 AttributeError 붕괴 방어용 `(dict or {})` 단락 평가 쉴드 주입
-# 🚨 MODIFIED: [Insight 12] JSON 오염 객체(리스트/문자열) 유입 시 AttributeError를 막기 위한 `isinstance` 필터링 락온
-# 🚨 MODIFIED: [V14 코어 무결성 동기화] 후반전 도달 시 목표가 관통에 대응하는 '대박익절(Jackpot Sell)' 파이프라인 전면 이식
-# 🚨 REMOVED: [제2헌법 준수] 사용되지 않는 유령 변수(residual) 데드코드 100% 영구 소각
-# 🚨 MODIFIED: [TypeError 붕괴 방어] get_ledger() 결측치(None) 유입 시 루프 마비를 막기 위한 단락 평가(or []) 쉴드 래핑
-# 🚨 MODIFIED: [상태 참조 오염 수술] _load_state_if_needed 에서 딕셔너리를 통째로 float 캐스팅하려던 ValueError 맹점 교정 (종목 Drill-down 결속)
-# 🚨 NEW: [10주 미만 LOC 강제 전환 소각] KIS 알고리즘 위임을 파기하고 100% 로컬 자체 슬라이싱을 위해 무조건 "VWAP" 타겟팅 팩트 락온
-# 🚨 MODIFIED: [Quant Logic 롤백] 심해 줍줍(Jubjub) 보너스 덫은 퀀트 공식에 따라 VWAP이 아닌 100% LOC로 강제 장전 락온
-# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술.
-# 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 생성 시 오염된 현재가(current_price)를 전면 배제하고 오직 순수 종가(Prev_Close)만을 절대 앵커로 락온.
+# 🚨 MODIFIED: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 팩트 수술.
 # ==========================================================
 import math
 import logging
@@ -53,7 +38,6 @@ class V14VwapStrategy:
         else:
             target_date = now_est
             
-        # 🚨 [주말(토/일) 보정] 16:05 금요일에 찍힌 스냅샷은 다음 거래일(월요일)을 타겟으로 락온
         if target_date.weekday() == 5: 
             target_date += timedelta(days=2)
         elif target_date.weekday() == 6: 
@@ -86,7 +70,6 @@ class V14VwapStrategy:
                         sub_dict = exec_dict.get(k)
                         safe_sub_dict = sub_dict if isinstance(sub_dict, dict) else {}
                         raw_val = safe_sub_dict.get(ticker, 0)
-                        
                         self.executed[k][ticker] = int(self._safe_float(raw_val)) if k == "SELL_QTY" else self._safe_float(raw_val)
                     self.state_loaded[ticker] = today_str
                     return
@@ -293,7 +276,6 @@ class V14VwapStrategy:
         _, dynamic_budget, _ = self.cfg.calculate_v14_state(ticker)
         dynamic_budget = self._safe_float(dynamic_budget)
         
-        # 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 시 장마감 직후 오염된 현재가(curr_p) 배제, 오직 Prev_Close 절대 앵커 락온
         if qty == 0:
             base_price = prev_close
         else:
@@ -347,7 +329,6 @@ class V14VwapStrategy:
             if q1 == 0 and q2 == 0 and p_buy > 0 and dynamic_budget >= p_buy:
                 q1 = int(math.floor(dynamic_budget / p_buy))
             
-            # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
             if q1 > 0: 
                 o_type = "VWAP"
                 desc = f"🆕새출발1({o_type})"
@@ -381,7 +362,6 @@ class V14VwapStrategy:
                 elif q_avg == 0 and q_star > 0: q_star = math.floor(dynamic_budget / buy_star_price) if buy_star_price > 0 else 0
                 elif q_star == 0 and q_avg > 0: q_avg = math.floor(dynamic_budget / p_avg) if p_avg > 0 else 0
                  
-                # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
                 if q_avg > 0: 
                     o_type = "VWAP"
                     desc = f"⚓평단매수({o_type})"
@@ -393,14 +373,12 @@ class V14VwapStrategy:
             else:
                 q_total = math.floor(dynamic_budget / buy_star_price) if buy_star_price > 0 else 0
                 if q_total > 0: 
-                    # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
                     o_type = "VWAP"
                     desc = f"💫별값매수(통합:{o_type})"
                     core_orders.append({"side": "BUY", "price": buy_star_price, "qty": q_total, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
             
             q_sell = math.ceil(qty / 4)
             if q_sell > 0:
-                # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
                 o_type = "VWAP"
                 desc = f"🌟별값매도({o_type})"
                 core_orders.append({"side": "SELL", "price": star_price, "qty": q_sell, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
@@ -410,7 +388,6 @@ class V14VwapStrategy:
         if is_zero_start_fact and market_type != "AFTER":
             core_orders = [o for o in core_orders if isinstance(o, dict) and o.get("side") != "SELL"]
 
-        # 🚨 MODIFIED: [Quant Logic 롤백] 심해 줍줍(Jubjub) 보너스 덫은 퀀트 공식에 따라 VWAP이 아닌 LOC로 강제 장전 락온
         q_base = sum(int(self._safe_float(o.get('qty'))) for o in core_orders if isinstance(o, dict) and o.get('side') == 'BUY')
         if q_base > 0:
             bonus_orders.extend(sorted([{"side": "BUY", "price": math.floor((dynamic_budget / (q_base + n)) * 100) / 100.0, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"} for n in range(1, 6) if math.floor((dynamic_budget / (q_base + n)) * 100) / 100.0 > 0.01], key=lambda x: x['price'], reverse=True))

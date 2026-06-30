@@ -3,18 +3,8 @@
 # ==========================================================
 # 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 'descriptor time... int object' 에러를 막기 위해, 순수 정수 연산인 `now_est.hour >= 16`으로 100% 팩트 교체 완료.
 # 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 100% 소각 및 EAFP 원자적 접근 강제
-# 🚨 MODIFIED: [Case 21] 후반전 별값 매수 예산 통합 100% 팩트 이식
-# 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍 5단 폭포수 덫 공식 진공 압축 팩트 이식 완료
 # 🚨 MODIFIED: [Case 16] 임시 파일 변수 스코프 전진 배치(Hoisting)로 UnboundLocalError 런타임 붕괴 완벽 차단
-# 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 및 NaN/Inf 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식
-# 🚨 MODIFIED: [Insight 06/07] JSON/Dict 결측치 붕괴를 막는 단락 평가(`or {}`, `or []`) 방어막 결속
-# 🚨 MODIFIED: [Indentation 붕괴 수술] get_plan 내부 새출발(qty == 0) 블록 마지막의 unexpected indent 에러 완벽 교정
-# 🚨 VERIFIED: [리버스 모드 탈출 스캔] 손실률(-15%, -20%) 기반 일반 모드 롤오버(Seed 재조정) 로직 전면 팩트 이식
-# 🚨 VERIFIED: [리버스 1/2일 차 타격망] T > Split-1 돌파 시 1일 차 MOC 타격 / 2일 차 이후 무한 루프 분할 타격망 100% 결속
-# 🚨 NEW: [스나이퍼 맹점 수술] save_daily_snapshot 및 get_plan 딕셔너리에 target_price, initial_qty, is_zero_start 스키마를 강제 병합하여 스나이퍼 모듈의 Silent Failure 완벽 봉쇄
-# 🚨 NEW: [0달러 덤핑 런타임 붕괴 방어] ma_5day(Rev_Star) 결측 시 LOC 매도 주문이 0달러로 KIS 서버에 전송되는 API Reject 버그를 prev_close 폴백으로 원천 차단
-# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술.
-# 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 생성 시 오염된 현재가(current_price)를 전면 배제하고 오직 순수 종가(Prev_Close)만을 절대 앵커로 락온.
+# 🚨 MODIFIED: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 팩트 수술.
 # ==========================================================
 import math
 import os
@@ -28,7 +18,6 @@ class V14Strategy:
     def __init__(self, config):
         self.cfg = config
 
-    # 🚨 MODIFIED: [Insight 14] String-Float 맹독성 런타임 붕괴 방어용 _safe_float 결속
     def _safe_float(self, value):
         try:
             val = float(str(value or 0.0).replace(',', ''))
@@ -47,7 +36,7 @@ class V14Strategy:
         
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
-        elif now_est.hour >= 16: # 🚨 MODIFIED: [TypeError 즉사 방어] datetime.time 충돌 소각
+        elif now_est.hour >= 16: # 🚨 MODIFIED: [TypeError 즉사 방어] datetime.time 충돌 소각 및 정수 연산 락온
             target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est
@@ -66,7 +55,6 @@ class V14Strategy:
         
         safe_plan = plan_data if isinstance(plan_data, dict) else {}
         
-        # 🚨 MODIFIED: [Case 08] 스냅샷 멱등성 파괴 방어 (무조건 원자적 덮어쓰기) 및 스나이퍼 맹점 방어 스키마(target_price) 100% 팩트 병합
         data = {
             "date": today_str,
             "total_q": int(self._safe_float(safe_plan.get('total_q', 0))),
@@ -90,7 +78,6 @@ class V14Strategy:
             try: os.makedirs(dir_name, exist_ok=True)
             except OSError: pass
             
-        # 🚨 MODIFIED: [Case 16] temp_path 및 fd 스코프 최상단 전진 배치 (UnboundLocalError 런타임 붕괴 원천 봉쇄)
         fd = None
         temp_path = None
         try:
@@ -107,7 +94,6 @@ class V14Strategy:
             if fd is not None:
                 try: os.close(fd)
                 except OSError: pass
-            # 🚨 MODIFIED: [Case 08] 잔존하던 os.path.exists 뇌관 영구 소각 및 EAFP 원자적 파일 I/O 100% 락온
             if temp_path:
                 try: os.remove(temp_path)
                 except OSError: pass
@@ -116,7 +102,6 @@ class V14Strategy:
         today_str = self._get_logical_date_str()
         snap_file = f"data/daily_snapshot_V14_{today_str}_{ticker}.json"
         
-        # 🚨 MODIFIED: [Case 08 절대 헌법] TOCTOU 레이스 컨디션 방어를 위해 os.path.exists 소각 및 EAFP 원자적 파일 I/O 락온
         try:
             with open(snap_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -150,7 +135,6 @@ class V14Strategy:
         return _clean(c_orders), _clean(b_orders)
 
     def get_plan(self, ticker, current_price, avg_price, qty, prev_close, ma_5day=0.0, market_type="REG", available_cash=0, is_simulation=False, is_snapshot_mode=False, **kwargs):
-        # 🚨 MODIFIED: [Insight 14] String-Float 정밀도 오염 원천 차단
         current_price = self._safe_float(current_price)
         avg_price = self._safe_float(avg_price)
         qty = int(self._safe_float(qty))
@@ -166,9 +150,6 @@ class V14Strategy:
         split = self._safe_float(self.cfg.get_split_count(ticker))
         if split <= 0: split = 40.0
 
-        # ==============================================================
-        # 🚨 1. [리버스 모드 탈출 스캔 및 롤오버 선행 검증]
-        # ==============================================================
         rev_state = self.cfg.get_reverse_state(ticker)
         is_rev_active = rev_state.get('is_active', False)
         
@@ -176,13 +157,11 @@ class V14Strategy:
             loss_pct = ((current_price - avg_price) / avg_price * 100.0) if avg_price > 0 else 0.0
             escape_thresh = -15.0 if ticker == "TQQQ" else -20.0
             
-            # 🚨 종가가 평단 대비 임계치 이내 진입 시 강제 탈출 격발
             if loss_pct >= escape_thresh and qty > 0:
                 logging.info(f"🚀 [{ticker}] 손실률 {loss_pct:.2f}% 도달 (임계치 {escape_thresh}%). 리버스 모드 탈출 및 일반 모드 롤오버를 가동합니다.")
                 dynamic_t = self._safe_float(rev_state.get('dynamic_t', 0.0))
                 rem_cash = self._safe_float(rev_state.get('rem_cash', 0.0))
                 
-                # 🚨 복귀 후 1회 매수금(Portion) 재조정을 위한 Seed 원자적 덮어쓰기
                 safe_denom = max(1.0, split - dynamic_t)
                 new_portion = rem_cash / safe_denom if rem_cash > 0 else 1.0
                 new_seed = new_portion * split
@@ -191,9 +170,6 @@ class V14Strategy:
                 self.cfg.set_reverse_state(ticker, False, 0, 0.0, dynamic_t=0.0, rem_cash=0.0, is_day_one=True)
                 is_rev_active = False
 
-        # ==============================================================
-        # 🚨 2. [오리지널 V14 연산망 세팅]
-        # ==============================================================
         seed = self._safe_float(self.cfg.get_seed(ticker))
         target_pct_val = self._safe_float(self.cfg.get_target_profit(ticker))
         target_ratio = target_pct_val / 100.0
@@ -209,7 +185,6 @@ class V14Strategy:
         star_ratio = target_ratio - (target_ratio * depreciation_factor * t_val)
         star_price = self._ceil(avg_price * (1 + star_ratio)) if avg_price > 0 else 0.0
             
-        # 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 시 장마감 직후 오염된 현재가(curr_p) 배제, 오직 Prev_Close 락온
         if qty == 0:
             base_price = prev_close
         else:
@@ -226,10 +201,6 @@ class V14Strategy:
         is_zero_start_fact = False
 
         if market_type == "REG":
-            # ==============================================================
-            # 🚨 3. [리버스 모드 퀀트 연산망 가동]
-            # ==============================================================
-            # 🚨 T > Split - 1 돌파 시 대박 익절이 아닌 리버스 모드(소진 방어)로 상태 강제 전이
             if is_rev_active or t_val > (split - 1):
                 if not is_rev_active:
                     logging.info(f"🚨 [{ticker}] T값({t_val})이 {split-1}을 돌파하여 리버스 모드(소진 방어)로 강제 진입합니다.")
@@ -244,14 +215,11 @@ class V14Strategy:
                 N_div = 10 if split <= 20 else 20
                 sell_qty = math.floor(qty / N_div)
                 
-                # 🚨 1일 차 (소진 당일) 타격망: 쿼터 매수 차단 및 전체의 N등분 무조건 매도(MOC)
                 if is_day_one:
                     if sell_qty > 0:
                         core_orders.append({"side": "SELL", "price": 0.0, "qty": sell_qty, "type": "MOC", "desc": "🩸리버스무조건매도(1일차)"})
                     process_status = "♻️리버스(1일차 진입)"
-                # 🚨 2일 차 이후 무한 반복 타격망
                 else:
-                    # 🚨 NEW: 0달러 덤핑 런타임 붕괴 방어막 결속 (API Reject 방어)
                     rev_star = ma_5day if ma_5day > 0 else (prev_close if prev_close > 0 else current_price)
                     buy_price = max(0.01, round(rev_star - 0.01, 2))
                     
@@ -278,9 +246,6 @@ class V14Strategy:
                 if is_snapshot_mode: self.save_daily_snapshot(ticker, plan_result)
                 return plan_result
 
-            # ==============================================================
-            # 🚨 4. [오리지널 V14 연산망 타격망 가동]
-            # ==============================================================
             if qty == 0:
                 is_zero_start_fact = True
                 process_status = "✨새출발"
@@ -339,7 +304,6 @@ class V14Strategy:
             if is_zero_start_fact and market_type != "AFTER":
                  core_orders = [o for o in core_orders if isinstance(o, dict) and o.get("side") != "SELL"]
 
-            # 🚨 MODIFIED: [Case 25] 오리지널 심해 줍줍(Jubjub) 5단 폭포수 1줄 진공 압축 및 안정 정렬 팩트 이식
             q_base = sum(int(self._safe_float(o.get('qty'))) for o in core_orders if isinstance(o, dict) and o.get('side') == 'BUY')
             if q_base > 0:
                 bonus_orders.extend(sorted([{"side": "BUY", "price": math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"} for n in range(1, 6) if math.floor((one_portion_amt / (q_base + n)) * 100) / 100.0 > 0.01], key=lambda x: x['price'], reverse=True))
@@ -356,7 +320,6 @@ class V14Strategy:
             if is_snapshot_mode: self.save_daily_snapshot(ticker, plan_result)
             return plan_result
 
-        # 정규장이 아닐 경우 대기 지시서 반환
         plan_result = {
             "orders": [], "core_orders": [], "bonus_orders": [], 
             "total_q": qty, "avg_price": avg_price, "t_val": t_val, 

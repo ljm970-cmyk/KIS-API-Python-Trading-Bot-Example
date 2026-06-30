@@ -2,11 +2,7 @@
 # FILE: strategy_reversion.py
 # ==========================================================
 # 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 에러를 막기 위해, `now_est.hour >= 16`으로 100% 팩트 교체 완료.
-# 🚨 MODIFIED: [스냅샷 오염 전이 절대 방어 소각] 실잔고(actual_qty) 강제 평가 데드코드를 전면 소각하고 스냅샷 절대주의로 회귀.
-# 🚨 MODIFIED: [스냅샷 절대주의 락온] 예산 결측(0.0) 시 스냅샷 지시서가 통째로 증발하는 맹점을 막기 위해 1일 고정 예산(daily_limit) 강제 주입 팩트 결속.
-# 🚨 MODIFIED: [0주 스냅샷 팩트 리앵커링 (Fact Override)] get_dynamic_plan 진입 시, 스냅샷 오염이 감지되면 YF 무결성 종가(prev_c)로 타점을 자가 치유(Self-Healing)하여 덮어씌웁니다.
-# 🚨 VERIFIED: [큐 장부 절대주의 헌법 수복] 타점 연산 및 새 사이클(0주) 판별 시 KIS 실잔고(actual_qty) 및 평단가(actual_avg)의 개입을 100% 영구 소각하고, 오직 로컬 큐(Queue) 장부 데이터만을 Single Source of Truth로 맹신하도록 팩트 교정 완료.
-# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술.
+# 🚨 MODIFIED: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 팩트 수술.
 # ==========================================================
 import math
 import os
@@ -41,7 +37,6 @@ class ReversionStrategy:
         else:
             target_date = now_est
             
-        # 🚨 [주말(토/일) 보정] 16:05 금요일에 찍힌 스냅샷은 다음 거래일(월요일)을 타겟으로 락온
         if target_date.weekday() == 5: 
             target_date += timedelta(days=2)
         elif target_date.weekday() == 6: 
@@ -209,7 +204,6 @@ class ReversionStrategy:
 
         cached_plan = self.load_daily_snapshot(ticker)
         
-        # 🚨 MODIFIED: [0주 스냅샷 팩트 리앵커링 (Fact Override)] 자가 치유(Self-Healing) 방어막 결속
         if cached_plan:
             is_zero_val = cached_plan.get("is_zero_start")
             if is_zero_val is None:
@@ -236,7 +230,7 @@ class ReversionStrategy:
                             if abs(p - target_p2) / target_p2 >= 0.01: is_polluted = True
                 
                 if is_polluted:
-                    logging.warning(f"🚨 [{ticker}] 0주 스냅샷 오염 감지 (Timeline Rollover Paradox)! YF 무결성 종가(${prev_c}) 기반으로 타점을 즉각 자가 치유(Self-Healing)합니다.")
+                    logging.warning(f"🚨 [{ticker}] 0주 스냅샷 오염 감지! YF 무결성 종가(${prev_c}) 기반으로 타점을 즉각 자가 치유(Self-Healing)합니다.")
                     
                     seed_val = self._safe_float(self.cfg.get_seed(ticker))
                     daily_limit = seed_val * 0.15
@@ -273,13 +267,11 @@ class ReversionStrategy:
 
                     self.save_daily_snapshot(ticker, cached_plan)
         
-        # 🚨 [스냅샷 절대 헌법 수복] 장중(is_snapshot_mode=False) 호출 시에는 무조건 (치유된) 스냅샷을 돌려줍니다.
         if not is_snapshot_mode and cached_plan:
             return cached_plan
 
         valid_q_data = [item for item in (q_data or []) if isinstance(item, dict) and self._safe_float(item.get('price')) > 0]
         
-        # 🚨 [큐 장부 절대주의 헌법 수복] 로컬 큐 수량만이 절대 기준입니다.
         total_q = sum(int(self._safe_float(item.get("qty"))) for item in valid_q_data)
         total_inv = sum(self._safe_float(item.get('qty')) * self._safe_float(item.get('price')) for item in valid_q_data)
         
@@ -312,16 +304,13 @@ class ReversionStrategy:
             else:
                 is_zero_start_session = str(is_zero_val).lower() == 'true'
         else:
-            # 🚨 [큐 장부 절대주의 헌법 수복] 오직 큐 장부의 total_q 만을 기준으로 새출발 여부를 판별합니다.
             is_zero_start_session = (total_q == 0)
 
-        # 🚨 [Fact Override 방어막] KIS 잔고 완전 배제, 오직 큐 수량 기준 팩트 오버라이드
         if is_zero_start_session and total_q > 0:
             is_zero_start_session = False
         elif not is_zero_start_session and total_q == 0:
             is_zero_start_session = True
 
-        # 🚨 NEW: [0주 타점 팩트 롤백 방어망] 0주 새출발 시 prev_c가 0.0이면, 타점을 0으로 장전하지 못하도록 에러 플랜을 반환. (추후 정상 스캔 시 자동 롤오버 됨)
         if is_zero_start_session and prev_c <= 0.0:
             error_plan = {
                 "orders": [], "trigger_loc": False, "total_q": total_q, "is_zero_start": True, "process_status": "⛔가격오류"
@@ -330,12 +319,10 @@ class ReversionStrategy:
                 self.save_daily_snapshot(ticker, error_plan)
             return error_plan
 
-        # 🚨 [0주 타점 팩트 롤백] 갭상승에 오염되지 않도록 0주 새출발은 오직 prev_c 만을 100% 절대 앵커로 사용합니다.
         if is_zero_start_session:
             p1_trigger = round(prev_c * 1.15, 2)
             p2_trigger = round(prev_c * 0.999, 2)
         else:
-            # 🚨 [큐 장부 절대주의 헌법 수복] KIS 실평단가(actual_avg) 배제, 오직 1층 단가 및 전일 종가만을 앵커로 사용
             safe_anchor = l1_price if l1_price > 0.0 else prev_c
             p1_trigger = round(safe_anchor * 0.998, 2)
             p2_trigger = round(safe_anchor * 0.993, 2)
@@ -381,7 +368,6 @@ class ReversionStrategy:
         seed_val = self._safe_float(self.cfg.get_seed(ticker))
         daily_limit = seed_val * 0.15
         
-        # 🚨 MODIFIED: [스냅샷 절대주의 락온] 통신 에러로 예산이 0.0 유입 시 지시서가 통째로 증발하는 맹점을 막기 위해 1일 고정 예산 강제 주입
         if alloc_cash <= 0.0:
             alloc_cash = daily_limit
             

@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 41대 엣지 케이스 완벽 결속 교차 검증 완료.
 # 🚨 MODIFIED: [IndentationError 궁극 수술] 파일 내부에 산재하던 17칸 들여쓰기 엇갈림 맹점을 16칸 규격으로 100% 정밀 교정.
+# 🚨 MODIFIED: [Thundering Herd 영구 소각] yfinance 등 모든 외부 통신 지연(time.sleep)을 제거하고 `GlobalThrottle.wait_api_sync()` 중앙 통제소로 100% 위임 락온.
 # 🚨 MODIFIED: [스냅샷 오염 전이 절대 방어] YF 1d 캔들 롤오버 지연 맹점을 파기하고 1m 기반 D-1 공식 종가 핀셋 추출 락온.
 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] YF 1d 롤오버 지연 버그 원천 차단을 위해 period="1d" -> "5d" 상향 락온.
 # 🚨 MODIFIED: [5d 롤오버 교정 연계 State 방어] 5일 치 데이터 중 당일(Today) 팩트만 정밀 필터링하여 당일 고/저점(day_high, day_low) 캐싱 오염 원천 차단.
@@ -23,6 +24,7 @@ import numpy as np
 import volatility_engine as ve
 from zoneinfo import ZoneInfo
 from kis_api_client import KisApiClient
+from global_throttle import GlobalThrottle # 🚨 NEW: 전역 통제소 결속
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
     """ 🚨 [수술 완료] 야후 파이낸스 API 업데이트로 인한 MultiIndex 순서 붕괴 방어 """
@@ -43,16 +45,18 @@ class MarketDataProvider(KisApiClient):
         """ 기초자산의 정규장 거래 내역 기반 일자별 순수 VWAP 계산 """
         for attempt in range(3):
             try:
-                time.sleep(0.06) # TPS 캡핑
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
             
                 stock = yf.Ticker(ticker)
                 df = stock.history(period="5d", interval="1m", prepost=False, timeout=10)
+         
                 if df.empty: 
                     if attempt == 2: return 0.0, 0.0
                     time.sleep(1.0 * (2 ** attempt))
                     continue
              
                 df = _flatten_columns(df)
+            
                 est = ZoneInfo('America/New_York') 
                 if df.index.tz is None: df.index = df.index.tz_localize('UTC').tz_convert(est)
                 else: df.index = df.index.tz_convert(est)
@@ -88,9 +92,10 @@ class MarketDataProvider(KisApiClient):
     def get_current_5min_candle(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 stock = yf.Ticker(ticker)
                 df = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
+             
                 if df.empty: 
                     if attempt == 2: return None
                     time.sleep(1.0 * (2 ** attempt))
@@ -119,7 +124,7 @@ class MarketDataProvider(KisApiClient):
                 
                 safe_cum_vol = np.where(cum_vol == 0, 1.0, cum_vol)
                 vwap_array = np.where(cum_vol > 0, cum_vol_price / safe_cum_vol, np.nan)
-             
+          
                 vwap_series = pd.Series(vwap_array, index=cum_vol.index).ffill() 
           
                 current_vwap = self._safe_float(vwap_series.iloc[-1]) if not vwap_series.empty else 0.0
@@ -154,7 +159,7 @@ class MarketDataProvider(KisApiClient):
     def get_current_price(self, ticker, is_market_closed=False):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="1d", interval="1m", prepost=True, timeout=5)
             
@@ -167,7 +172,7 @@ class MarketDataProvider(KisApiClient):
 
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                # KIS API 폴백 (내부에서 GlobalThrottle 자동 락온)
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
@@ -187,7 +192,7 @@ class MarketDataProvider(KisApiClient):
     def get_ask_price(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                # 내부 _call_api 에서 GlobalThrottle 자동 락온
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200100", "/uapi/overseas-price/v1/quotations/inquire-asking-price", "GET", params=params)
@@ -209,7 +214,7 @@ class MarketDataProvider(KisApiClient):
     def get_bid_price(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                # 내부 _call_api 에서 GlobalThrottle 자동 락온
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200100", "/uapi/overseas-price/v1/quotations/inquire-asking-price", "GET", params=params)
@@ -232,7 +237,7 @@ class MarketDataProvider(KisApiClient):
     def get_previous_close(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 stock = yf.Ticker(ticker)
                 # 🚨 MODIFIED: interval="1d" 의존성 소각 및 interval="1m", period="5d" 로 교체
                 hist = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
@@ -274,7 +279,7 @@ class MarketDataProvider(KisApiClient):
 
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                # 내부 _call_api 에서 GlobalThrottle 자동 락온
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker}
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params=params)
@@ -295,7 +300,7 @@ class MarketDataProvider(KisApiClient):
         # 🚨 MODIFIED: [미래 참조 데이터 누수 차단] 당일 미확정 라이브 캔들 절단 및 D-1 타임라인 락온
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="15d", timeout=5) 
     
@@ -303,7 +308,7 @@ class MarketDataProvider(KisApiClient):
                     est = ZoneInfo('America/New_York')
                     now_est = datetime.datetime.now(est)
                     cutoff_date = now_est.date()
-                    
+                
                     # 🚨 MODIFIED: 16:00:30 이후(16:05 스냅샷 시점)에는 오늘 캔들을 포함하여 5일선을 연산하도록 타임라인 팩트 락온.
                     if now_est.time() <= datetime.time(16, 0, 30): 
                         cutoff_date -= datetime.timedelta(days=1)
@@ -319,7 +324,7 @@ class MarketDataProvider(KisApiClient):
                     past_hist = hist[hist.index.date <= cutoff_date]
                     if len(past_hist) >= 5:
                         ma_val = past_hist['Close'].dropna().tail(5).mean()
-                    if not pd.isna(ma_val): return self._safe_float(ma_val)
+                        if not pd.isna(ma_val): return self._safe_float(ma_val)
   
                 break
             except Exception:
@@ -328,7 +333,7 @@ class MarketDataProvider(KisApiClient):
             
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                # 내부 _call_api 에서 GlobalThrottle 자동 락온
                 excg_cd = self._get_exchange_code(ticker, target_api="PRICE")
                 params = {"AUTH": "", "EXCD": excg_cd, "SYMB": ticker, "GUBN": "0", "BYMD": "", "MODP": "1"}
                 res = self._call_api("HHDFS76240000", "/uapi/overseas-price/v1/quotations/dailyprice", "GET", params=params)
@@ -339,7 +344,7 @@ class MarketDataProvider(KisApiClient):
                     if isinstance(o2, list) and len(o2) >= 5:
                         est = ZoneInfo('America/New_York')
                         now_est = datetime.datetime.now(est)
-                
+       
                         # 🚨 MODIFIED: [KIS API 폴백 오염 차단] 장 마감 이전이면 당일 라이브 주가 스킵
                         skip_today = 1 if now_est.time() <= datetime.time(16, 0, 30) else 0
                         
@@ -362,7 +367,7 @@ class MarketDataProvider(KisApiClient):
         """ 🚨 [제5경고] 하이킨아시 연산을 위한 open 컬럼 강제 보존 리턴 """
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 stock = yf.Ticker(ticker)
                 # 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] YF 1d 롤오버 지연 버그 원천 차단을 위해 period="1d" -> "5d" 상향 락온
                 df = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
@@ -370,7 +375,7 @@ class MarketDataProvider(KisApiClient):
                     if attempt == 2: return None
                     time.sleep(1.0 * (2 ** attempt))
                     continue
-                    
+               
                 df = _flatten_columns(df)
                 est = ZoneInfo('America/New_York')
                 
@@ -392,7 +397,7 @@ class MarketDataProvider(KisApiClient):
                         
                         time_high_raw = df_today.loc[time_high_idx, 'time_est'] if not pd.isna(time_high_idx) else ""
                         time_high_str = str(time_high_raw.iloc[0] if isinstance(time_high_raw, pd.Series) else time_high_raw)
-                        
+            
                         time_low_raw = df_today.loc[time_low_idx, 'time_est'] if not pd.isna(time_low_idx) else ""
                         time_low_str = str(time_low_raw.iloc[0] if isinstance(time_low_raw, pd.Series) else time_low_raw)
             
@@ -407,12 +412,12 @@ class MarketDataProvider(KisApiClient):
                         except json.JSONDecodeError: pass
 
                         cache_data[ticker] = {'day_high': max_high, 'day_low': min_low, 'time_high': time_high_str, 'time_low': time_low_str, 'date': datetime.datetime.now(est).strftime("%Y-%m-%d")}
-                        
+   
                         # 🚨 MODIFIED: [Case 16] 디렉토리 파싱 무결성 강화 및 스토리지 고갈 방어 락온
                         dir_name = os.path.dirname(cache_file) or '.'
                         try: os.makedirs(dir_name, exist_ok=True)
                         except OSError: pass
-                
+       
                         fd = None
                         tmp_path = None
                         try:
@@ -432,6 +437,7 @@ class MarketDataProvider(KisApiClient):
                                 try: os.remove(tmp_path)
                                 except OSError: pass
                             logging.debug(f"🚨 [{ticker}] 시계열 체력 팩트 캐싱 실패: {e}")
+           
                 except Exception as e: 
                     logging.debug(f"🚨 [{ticker}] 체력 팩트 캐싱 연산 에러: {e}")
                 return df[['open', 'high', 'low', 'close', 'volume', 'time_est']]
@@ -442,7 +448,7 @@ class MarketDataProvider(KisApiClient):
     def get_recent_stock_split(self, ticker, last_date_str):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 splits = yf.Ticker(ticker).splits
                 if splits is not None and not splits.empty:
                     safe_last_date = last_date_str if last_date_str else (datetime.datetime.now(ZoneInfo('America/New_York')) - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
@@ -482,7 +488,7 @@ class MarketDataProvider(KisApiClient):
     def get_day_high_low(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 hist = yf.Ticker(ticker).history(period="1d", interval="1m", prepost=True, timeout=5)
                 if not hist.empty:
                     hist = _flatten_columns(hist)
@@ -494,7 +500,7 @@ class MarketDataProvider(KisApiClient):
                 
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                # 내부 _call_api 에서 GlobalThrottle 자동 락온
                 res = self._call_api("HHDFS76200200", "/uapi/overseas-price/v1/quotations/price", "GET", params={"AUTH": "", "EXCD": self._get_exchange_code(ticker, target_api="PRICE"), "SYMB": ticker})
                 
                 # 🚨 MODIFIED: [AttributeError 붕괴 방어] output 객체 추출 시 안전 단락 평가
@@ -512,7 +518,7 @@ class MarketDataProvider(KisApiClient):
     def get_atr_data(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 hist = yf.Ticker(ticker).history(period="30d", prepost=False, timeout=5)
                 if hist.empty:
                     if attempt == 2: return 0.0, 0.0
@@ -574,7 +580,7 @@ class MarketDataProvider(KisApiClient):
     def get_amp_5d_data(self, ticker):
         for attempt in range(3):
             try:
-                time.sleep(0.06)
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 hist = yf.Ticker(ticker).history(period="20d", prepost=False, timeout=5)
                 
                 if hist.empty:
@@ -651,11 +657,11 @@ class MarketDataProvider(KisApiClient):
     def get_anchored_vwap(self, ticker, anchor_date):
         for attempt in range(3):
             try:
-                time.sleep(0.06) # 🚨 NEW: [Case 32] 동적 스캔 시 TPS 캡핑 강제
+                GlobalThrottle.wait_api_sync() # 🚨 MODIFIED: 중앙 통제소 락온
                 
                 est = ZoneInfo('America/New_York')
                 stock = yf.Ticker(ticker)
-               
+              
                 # 🚨 MODIFIED: [초단기 당일 누적] 1m 해상도 고정 및 prepost=True (프리장 포함) 팩트 락온
                 df = stock.history(period="5d", interval="1m", prepost=True, timeout=5)
                 
@@ -680,7 +686,7 @@ class MarketDataProvider(KisApiClient):
                 
                 if df.empty:
                     return 0.0
-                
+               
                 # 🚨 NEW: [Case 35 절대 방어망 결속] 결측치(NaN) 전이 방어
                 df['High'] = df['High'].ffill().bfill()
                 df['Low'] = df['Low'].ffill().bfill()
@@ -704,7 +710,7 @@ class MarketDataProvider(KisApiClient):
                 latest_avwap = self._safe_float(df['AVWAP'].iloc[-1])
             
                 return round(latest_avwap, 2)
-                
+              
             except Exception as e:
                 logging.debug(f"⚠️ [Broker] 당일 앵커드 VWAP 파싱 실패 ({ticker}): {e}")
                 if attempt == 2: return 0.0
