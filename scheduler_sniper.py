@@ -2,7 +2,8 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료
-# 🚨 MODIFIED: [애프터장 수익 실현망 팩트 수복] 오버나이트 모드(ON)로 전환 시, 기장전된 +1.0% 익절 덫을 취소하지 않고 살려두어 애프터마켓 슈팅 시 즉각 수익을 실현하도록 아키텍처 롤백. (사용자 인사이트 반영)
+# 🚨 MODIFIED: [Case 43 절대 헌법 준수] TPS 초과 밴(Ban) 원천 차단: 실시간 감시 폴링(Polling) 루프 내에 `await asyncio.sleep(1.5)`를 강제 래핑하여 초당 20건 Rate Limit 초과로 인한 API 차단을 완벽히 방어.
+# 🚨 MODIFIED: [애프터장 수익 실현망 팩트 수복] 오버나이트 모드(ON)로 전환 시, 기장전된 +1.0% 익절 덫을 취소하지 않고 살려두어 애프터마켓 슈팅 시 즉각 수익을 실현하도록 아키텍처 롤백.
 # 🚨 MODIFIED: [오버나이트 동면 방지] 15:59 오버나이트 진입 시 `shutdown=True`를 차단하여, 20:00 EST까지 봇이 애프터장 체결 여부를 끝까지 추적 및 장부 소각을 수행하도록 팩트 락온.
 # 🚨 MODIFIED: [Phase 3 암살자 지정 예산 락온] 주문가능금액 95% 강제 탕진 맹점을 파기하고, min(사용자 예산, 가용현금 * 0.95) 샌드위치 래핑으로 팻핑거 예산 초과(API Reject) 붕괴 원천 차단.
 # 🚨 MODIFIED: [Phase 2 암살자 독립 장부 이식] 1-Shot 1-Kill 진입 성공 및 익절/손절 시 `AssassinLedger`를 원자적으로 제어하여 본진 물량 절도(Ghost Selling) 패러독스 완벽 방어.
@@ -11,7 +12,6 @@
 # 🚨 MODIFIED: [1.0% 고정 익절망 장전] 체결 확인 즉시 평단가 기준 * 1.01 (+1.0%) 단가로 지정가 매도 덫 자동 장전 락온.
 # 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST) 개장 시점까지 프리장 소프트웨어 트리거 격발 실패 시, 당일 신규 매수 권한 영구 소각.
 # 🚨 MODIFIED: [제1헌법 절대 수복] 상태 파일 I/O 스레드 호출 시 누락되었던 asyncio.wait_for(timeout=5.0) 족쇄 100% 강제 래핑.
-# 🚨 MODIFIED: [Case 32, 33] 3단 지수 백오프 및 KIS 전송 TPS 캡핑(0.06s) 샌드위치 전면 락온.
 # ==========================================================
 import logging
 import datetime
@@ -244,7 +244,8 @@ async def scheduled_sniper_monitor(context):
              
             for t in active_tickers:
                 try:
-                    await asyncio.sleep(0.06) 
+                    # 🚨 MODIFIED: [Case 43 절대 헌법 준수] TPS 초과 밴(Ban) 원천 차단을 위해 1.5초 비동기 대기 강제
+                    await asyncio.sleep(1.5) 
                     target_base = base_map.get(t, 'SOXX')
 
                     try:
@@ -443,7 +444,7 @@ async def scheduled_sniper_monitor(context):
                                     if t_state.get('is_ordering'):
                                         logging.info(f"⏳ [{t}] 소프트웨어 트리거 중복 발사 방지 락온 가동")
                                         continue
-                                   
+                                    
                                     t_state['is_ordering'] = True
                                     await asyncio.wait_for(asyncio.to_thread(_save_avwap_trade_state, t, t_state), timeout=10.0)
                                     
@@ -549,7 +550,7 @@ async def scheduled_sniper_monitor(context):
                                     has_unfilled = True
                                     break
                                 await asyncio.sleep(2.0)
-                                
+                            
                             if has_unfilled: continue
                             
                             ask_price = _safe_float(await _retry_api(broker.get_ask_price, t))
@@ -575,7 +576,7 @@ async def scheduled_sniper_monitor(context):
                                         await asyncio.sleep(0.06) 
                                         unfilled_check = await asyncio.wait_for(asyncio.to_thread(broker.get_unfilled_orders_detail, t), timeout=10.0)
                                     except Exception: unfilled_check = []
-                                    
+                                     
                                     safe_unfilled = unfilled_check if isinstance(unfilled_check, list) else []
                                     my_order = next((ox for ox in safe_unfilled if isinstance(ox, dict) and str(ox.get('odno', '')) == odno), None)
                                     if my_order:
