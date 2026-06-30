@@ -37,7 +37,8 @@ class CallbackOrderHandler:
 
         if action == "EMERGENCY_REQ":
             ticker = sub
-            status_code, _ = await controller._get_market_status()
+            # 🚨 MODIFIED: [경로 A 수술] TelegramController에서 분리된 commands_handler로 _get_market_status 호출 라우팅 팩트 변경
+            status_code, _ = await controller.commands_handler._get_market_status()
             if status_code not in ["PRE", "REG"]:
                 await query.answer("❌ [격발 차단] 현재 장운영시간(정규장/프리장)이 아닙니다.", show_alert=True)
                 return
@@ -70,7 +71,8 @@ class CallbackOrderHandler:
 
         elif action == "EMERGENCY_EXEC":
             ticker = sub
-            status_code, _ = await controller._get_market_status()
+            # 🚨 MODIFIED: [경로 A 수술] TelegramController에서 분리된 commands_handler로 _get_market_status 호출 라우팅 팩트 변경
+            status_code, _ = await controller.commands_handler._get_market_status()
             
             if status_code not in ["PRE", "REG"]:
                 await query.answer("❌ [격발 차단] 현재 장운영시간(정규장/프리장)이 아닙니다.", show_alert=True)
@@ -106,7 +108,7 @@ class CallbackOrderHandler:
                         logging.error(f"🚨 긴급수혈 통신 에러/타임아웃: {e}")
                         res = None
                     
-                    if isinstance(res, dict) and str(res.get('rt_cd', '')) == '0':
+                if isinstance(res, dict) and str(res.get('rt_cd', '')) == '0':
                         await asyncio.to_thread(self.queue_ledger.pop_lots, ticker, emergency_qty)
                         msg = f"🚨 <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 (Emergency MOC) 격발 완료!</b>\n"
                         msg += f"▫️ 포트폴리오 매니저의 승인 하에 최근 로트 <b>{emergency_qty}주</b>를 시장가(MOC)로 강제 청산했습니다.\n"
@@ -118,7 +120,7 @@ class CallbackOrderHandler:
                             await query.edit_message_text(new_msg, reply_markup=markup, parse_mode='HTML')
                         except Exception:
                             pass
-                    else:
+                else:
                         err_msg = html.escape(str(res.get('msg1') or '알 수 없는 에러')) if isinstance(res, dict) else '응답 없음/통신 장애'
                         try:
                             await query.edit_message_text(f"❌ <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 실패:</b> {err_msg}", parse_mode='HTML')
@@ -208,7 +210,8 @@ class CallbackOrderHandler:
             safe_avg = float(str(h.get('avg') or 0.0).replace(',', '')) 
             safe_qty = max(0, int(float(str(h.get('qty') or 0).replace(',', ''))))
             
-            status_code, _ = await controller._get_market_status()
+            # 🚨 MODIFIED: [경로 A 수술] TelegramController에서 분리된 commands_handler로 _get_market_status 호출 라우팅 팩트 변경
+            status_code, _ = await controller.commands_handler._get_market_status()
             if status_code in ["AFTER", "CLOSE", "PRE"]:
                 try:
                     # 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단] YF 1d 호출 시 라이브 캔들을 절단하고 공식 MOC 종가만 추출.
@@ -252,7 +255,7 @@ class CallbackOrderHandler:
                 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가를 전일 종가로 고정
                 if status_code == "CLOSE":
                     curr_p = prev_c
-         
+          
             ma_5day = 0.0
             for attempt in range(3):
                 try:
