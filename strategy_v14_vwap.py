@@ -17,6 +17,8 @@
 # 🚨 MODIFIED: [최후의 맹점 수술] get_plan 및 ensure_failsafe_snapshot 진입부의 모든 파라미터와 config 반환값에 _safe_float 쉴드를 100% 강제 래핑하여 TypeError 런타임 붕괴 원천 봉쇄
 # 🚨 MODIFIED: [상태 참조 오염 수술] _load_state_if_needed 에서 딕셔너리를 통째로 float 캐스팅하려던 ValueError 맹점 교정 (종목 Drill-down 결속)
 # 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
+# 🚨 NEW: [10주 미만 LOC 강제 전환 소각] KIS 알고리즘 위임을 파기하고 100% 로컬 자체 슬라이싱을 위해 무조건 "VWAP" 타겟팅 팩트 락온
+# 🚨 MODIFIED: [Quant Logic 롤백] 심해 줍줍(Jubjub) 보너스 덫은 퀀트 공식에 따라 VWAP이 아닌 100% LOC로 강제 장전 락온
 # ==========================================================
 import math
 import logging
@@ -332,14 +334,15 @@ class V14VwapStrategy:
             if q1 == 0 and q2 == 0 and p_buy > 0 and dynamic_budget >= p_buy:
                 q1 = int(math.floor(dynamic_budget / p_buy))
             
+            # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
             if q1 > 0: 
-                o_type = "VWAP" if q1 >= 10 else "LOC"
+                o_type = "VWAP"
                 desc = f"🆕새출발1({o_type})"
-                core_orders.append({"side": "BUY", "price": p_buy, "qty": q1, "type": o_type, "start_time": start_t if o_type == "VWAP" else None, "end_time": end_t if o_type == "VWAP" else None, "desc": desc})
+                core_orders.append({"side": "BUY", "price": p_buy, "qty": q1, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
             if q2 > 0:
-                o_type = "VWAP" if q2 >= 10 else "LOC"
+                o_type = "VWAP"
                 desc = f"🆕새출발2({o_type})"
-                core_orders.append({"side": "BUY", "price": p_buy, "qty": q2, "type": o_type, "start_time": start_t if o_type == "VWAP" else None, "end_time": end_t if o_type == "VWAP" else None, "desc": desc})
+                core_orders.append({"side": "BUY", "price": p_buy, "qty": q2, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
             process_status = "✨새출발"
             
         elif is_jackpot_reached and t_val > (split - 1):
@@ -365,32 +368,36 @@ class V14VwapStrategy:
                 elif q_avg == 0 and q_star > 0: q_star = math.floor(dynamic_budget / buy_star_price) if buy_star_price > 0 else 0
                 elif q_star == 0 and q_avg > 0: q_avg = math.floor(dynamic_budget / p_avg) if p_avg > 0 else 0
                  
+                # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
                 if q_avg > 0: 
-                    o_type = "VWAP" if q_avg >= 10 else "LOC"
+                    o_type = "VWAP"
                     desc = f"⚓평단매수({o_type})"
-                    core_orders.append({"side": "BUY", "price": p_avg, "qty": q_avg, "type": o_type, "start_time": start_t if o_type == "VWAP" else None, "end_time": end_t if o_type == "VWAP" else None, "desc": desc})
+                    core_orders.append({"side": "BUY", "price": p_avg, "qty": q_avg, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
                 if q_star > 0: 
-                    o_type = "VWAP" if q_star >= 10 else "LOC"
+                    o_type = "VWAP"
                     desc = f"💫별값매수({o_type})"
-                    core_orders.append({"side": "BUY", "price": buy_star_price, "qty": q_star, "type": o_type, "start_time": start_t if o_type == "VWAP" else None, "end_time": end_t if o_type == "VWAP" else None, "desc": desc})
+                    core_orders.append({"side": "BUY", "price": buy_star_price, "qty": q_star, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
             else:
                 q_total = math.floor(dynamic_budget / buy_star_price) if buy_star_price > 0 else 0
                 if q_total > 0: 
-                    o_type = "VWAP" if q_total >= 10 else "LOC"
+                    # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
+                    o_type = "VWAP"
                     desc = f"💫별값매수(통합:{o_type})"
-                    core_orders.append({"side": "BUY", "price": buy_star_price, "qty": q_total, "type": o_type, "start_time": start_t if o_type == "VWAP" else None, "end_time": end_t if o_type == "VWAP" else None, "desc": desc})
+                    core_orders.append({"side": "BUY", "price": buy_star_price, "qty": q_total, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
             
             q_sell = math.ceil(qty / 4)
             if q_sell > 0:
-                o_type = "VWAP" if q_sell >= 10 else "LOC"
+                # 🚨 MODIFIED: [10주 미만 제한 전면 소각] 로컬 슬라이싱 위임을 위해 수량 무관 "VWAP" 타겟팅
+                o_type = "VWAP"
                 desc = f"🌟별값매도({o_type})"
-                core_orders.append({"side": "SELL", "price": star_price, "qty": q_sell, "type": o_type, "start_time": start_t if o_type == "VWAP" else None, "end_time": end_t if o_type == "VWAP" else None, "desc": desc})
+                core_orders.append({"side": "SELL", "price": star_price, "qty": q_sell, "type": o_type, "start_time": start_t, "end_time": end_t, "desc": desc})
             if qty - q_sell > 0:
                 core_orders.append({"side": "SELL", "price": target_price, "qty": qty - q_sell, "type": "LIMIT", "desc": "🎯목표매도(V)"})
 
         if is_zero_start_fact and market_type != "AFTER":
             core_orders = [o for o in core_orders if isinstance(o, dict) and o.get("side") != "SELL"]
 
+        # 🚨 MODIFIED: [Quant Logic 롤백] 심해 줍줍(Jubjub) 보너스 덫은 퀀트 공식에 따라 VWAP이 아닌 LOC로 강제 장전 락온
         q_base = sum(int(self._safe_float(o.get('qty'))) for o in core_orders if isinstance(o, dict) and o.get('side') == 'BUY')
         if q_base > 0:
             bonus_orders.extend(sorted([{"side": "BUY", "price": math.floor((dynamic_budget / (q_base + n)) * 100) / 100.0, "qty": 1, "type": "LOC", "desc": f"🧲줍줍(+{n}주)"} for n in range(1, 6) if math.floor((dynamic_budget / (q_base + n)) * 100) / 100.0 > 0.01], key=lambda x: x['price'], reverse=True))

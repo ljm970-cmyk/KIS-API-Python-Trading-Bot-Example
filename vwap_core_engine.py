@@ -1,22 +1,20 @@
 # ==========================================================
 # FILE: vwap_core_engine.py
 # ==========================================================
-# 🚨 VERIFIED: [도메인 주도 설계 (DDD) 신규 파일] 정규장 V-REV 매매망 전담 엔진
-# 🚨 NEW: [양방향 Gap Hijack 팩트 결속] 기존 하방(-2%) 전용이던 섀도우 엔진에 상방(+2.0% 하드코딩) 매도 하이재킹(Upward Sell Hijack) 엔진 100% 팩트 이식 완료.
-# 🚨 MODIFIED: [자전거래 간섭 방어] 상방 매도 하이재킹 성공 시 upward_hijacked 플래그를 원자적으로 락온하여 잔여 1분 슬라이싱 매수/매도 행위를 완벽히 마비.
+# 🚨 VERIFIED: [도메인 주도 설계 (DDD) 신규 파일] 정규장 VWAP(슬라이싱/하이재킹) 매매망 전담 엔진
+# 🚨 NEW: [V14 자율주행 엔진 대통합] V14 VWAP 모드 또한 본 파일의 Gap Hijack 및 Slicing 로직을 100% 공유하도록 병합 및 예산 분리 팩트 락온 완료
+# 🚨 MODIFIED: [Case 41 절대 방어망 팩트 수술] 상방 갭 하이재킹(Upward Sell Hijack) 발동 시, V-REV 모드는 KIS 실잔고 조회를 전면 소각하고 오직 '로컬 큐(Queue) 장부'의 합산 수량만을 100% 락온하여 개인 장기 물량 훼손을 원천 차단.
+# 🚨 NEW: [양방향 Gap Hijack 팩트 결속] 하방(-2%) 전용이던 섀도우 엔진에 상방(+2.0% 하드코딩) 매도 하이재킹 엔진 100% 팩트 이식.
+# 🚨 MODIFIED: [자전거래 간섭 방어] 상/하방 하이재킹 성공 시 hijacked 플래그를 원자적으로 락온하여 잔여 1분 슬라이싱 매수/매도 행위를 완벽히 마비.
 # 🚨 MODIFIED: [제2헌법 준수] 스케줄러에서 분리되어 단일 책임 원칙(SRP)을 100% 준수하는 순수 매매 집행 코어 모듈.
 # 🚨 MODIFIED: [제1헌법 절대 준수] 로컬 상태 파일 I/O, Config 조회, 큐 장부 연산 전역에 `asyncio.wait_for` 타임아웃 족쇄 강제.
 # 🚨 MODIFIED: [Case 32 & 33 절대 규칙] Gap Hijack 및 1분 슬라이싱 전역에 3단 지수 백오프와 TPS 캡핑(0.06s) 샌드위치 락온.
 # 🚨 MODIFIED: [Case 39 & 40 타임라인 역전 방어] 16:01 애프터장으로 지연 이관이 확정된 본진 플랜이 존재한다면 정규장 마감 직전의 Gap Hijack 및 슬라이싱 루프를 전면 바이패스(Bypass)하여 Double Spending 원천 차단.
 # 🚨 MODIFIED: [Case 35 결측치 맹독성 방어] 갭 하이재킹 판별을 위한 기초지수 VWAP 연산 시, `ffill().bfill()` 래핑을 강제하여 NaN 전이(Math Collapse) 원천 차단.
 # 🚨 MODIFIED: [무덤핑 정밀 요격 사수] 목표가 미충족 시 1주도 사지 않는 관망세 유지 및 15:57 클린업 페이즈 시 강제 덤핑(Dumping) 로직 전면 소각 유지.
-# 🚨 MODIFIED: [V-REV 일시불 요격 패러독스 방어] 0주 새출발 매수처럼 목표가가 현재가 대비 +2%를 초과하여 터무니없이 높을 경우, 전량 스윕(Sweep)을 강제 해제하고 정상적인 1분 슬라이싱 궤도로 복구 락온.
+# 🚨 MODIFIED: [V-REV 일시불 요격 패러독스 방어] 목표가가 현재가 대비 터무니없이 높을 경우, 전량 스윕(Sweep)을 강제 해제하고 정상적인 1분 슬라이싱 궤도로 복구 락온.
 # 🚨 MODIFIED: [Ghost-Dumping 붕괴 방어] 1분 슬라이싱 매도 타격 직전에 KIS 실잔고를 스캔하여 수량을 정밀 캡핑(`min(qty, rt_qty)`).
-# 🚨 MODIFIED: [Event Loop Deadlock 방어] 텔레그램 통신(send_message)에 `asyncio.wait_for(timeout=15.0)` 족쇄 100% 래핑.
-# 🚨 MODIFIED: [Time Paradox 팩트 교정] 자체 슬라이싱 체결 검증을 위한 KIS 원장 조회 시 KST 팩트 주입 완료.
-# 🚨 NEW: [Scope Mismatch 궁극 방어] 파일 I/O 스레드로 위임되는 `_sync_ledger_atomic` 함수에 명시적 파라미터를 주입하여 클로저 오염으로 인한 `UnboundLocalError` 원천 봉쇄.
-# 🚨 MODIFIED: [큐 장부 절대주의 헌법 수복] 자율주행 하이재킹 엔진이 KIS 실잔고를 오인하여 0주 상태에서 V14 물량을 유령 매도(Ghost Selling)하던 월권행위를 큐 장부 한도 캡핑(vrev_q_qty)으로 원천 차단.
-# 🚨 MODIFIED: [메시지 폭탄 소각 팩트 결속] 1분 단위 Slicing 체결 시마다 텔레그램을 타전하던 Spaming 뇌관을 전면 소각하고, 16:05 EST 일괄 정산망으로 100% 팩트 위임 완료.
+# 🚨 MODIFIED: [Scope Mismatch 궁극 방어] 파일 I/O 스레드로 위임되는 `_sync_ledger_atomic` 함수에 명시적 파라미터를 주입하여 클로저 오염으로 인한 `UnboundLocalError` 원천 봉쇄.
 # ==========================================================
 import logging
 import asyncio
@@ -68,7 +66,7 @@ async def _safe_send(context, chat_id, text, timeout=15.0, **kwargs):
         return None
 
 async def execute_vwap_init(tx_lock, cfg, broker, chat_id, context, vwap_cache):
-    """ 🚨 [관측망 기상] V-REV 슬라이싱 및 갭 하이재킹 모니터링 시작 브리핑 """
+    """ 🚨 [관측망 기상] V-REV 및 V14 슬라이싱 / 갭 하이재킹 모니터링 시작 브리핑 """
     async with tx_lock:
         active_tickers = await _retry_api(cfg.get_active_tickers, default=[])
         if isinstance(active_tickers, str): active_tickers = [active_tickers]
@@ -82,6 +80,7 @@ async def execute_vwap_init(tx_lock, cfg, broker, chat_id, context, vwap_cache):
                 version = await _retry_api(cfg.get_version, t, default="V14")
                 is_manual_vwap = await _retry_api(getattr(cfg, 'get_manual_vwap_mode', lambda x: False), t, default=False)
                 
+                # 🚨 V14 VWAP 모드 통합 개방 락온
                 if version == "V_REV" or (version == "V14" and is_manual_vwap):
                     if not vwap_cache.get(f"REV_{t}_nuked"):
                         msg = f"🌅 <b>[{html.escape(str(t))}] 자체 1분 슬라이싱 VWAP 엔진 / Gap Hijack 섀도우 관측망 기상</b>\n"
@@ -142,6 +141,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                 version = await _retry_api(cfg.get_version, t, default="V14")
                 is_manual_vwap = await _retry_api(getattr(cfg, 'get_manual_vwap_mode', lambda x: False), t, default=False)
 
+                # 🚨 V14 VWAP 모드 통합 개방
                 if version == "V_REV" or (version == "V14" and is_manual_vwap):
                     slice_file = f"data/vrev_slice_state_{t}.json"
                     
@@ -163,7 +163,8 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                     is_downward_hijacked_now = vwap_cache.get(f"REV_{t}_gap_hijack_fired", False)
                     is_upward_hijacked_now = vwap_cache.get(f"REV_{t}_upward_hijack_fired", False)
                     
-                    if version == "V_REV" and not (is_downward_hijacked_now or is_upward_hijacked_now):
+                    # 🚨 V14 VWAP 모드도 Gap Hijack 엔진에 100% 동기화 팩트 허용
+                    if (version == "V_REV" or (version == "V14" and is_manual_vwap)) and not (is_downward_hijacked_now or is_upward_hijacked_now):
                         # 🚨 MODIFIED: 기초자산(base_tkr) 대신 본종목(t) 100% 팩트 타격 롤오버
                         t_curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
                         df_1min_t = await _retry_api(broker.get_1min_candles_df, t)
@@ -258,14 +259,23 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                     seed = await _retry_api(cfg.get_seed, t, default=0.0)
                                     daily_limit = _safe_float(seed) * 0.15
                                     alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
-                                    safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
                                     
-                                    total_spent = 0.0
-                                    if hasattr(strategy, 'v_rev_plugin'):
-                                        spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
-                                        safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
-                                        total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
-                                        
+                                    # 🚨 NEW: V14 vs V-REV 모드별 잔여 예산 동적 추출 디커플링
+                                    if version == "V_REV":
+                                        safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
+                                        total_spent = 0.0
+                                        if hasattr(strategy, 'v_rev_plugin'):
+                                            spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
+                                            safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                            total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                                    else:
+                                        safe_alloc_cash = alloc_cash
+                                        total_spent = 0.0
+                                        if hasattr(strategy, 'v14_vwap_plugin'):
+                                            spent_dict = strategy.v14_vwap_plugin.executed.get("BUY_BUDGET")
+                                            safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                            total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                                            
                                     rem_budget = max(0.0, safe_alloc_cash - total_spent)
 
                                     ask_price = _safe_float(await _retry_api(broker.get_ask_price, t))
@@ -290,15 +300,20 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                             
                                             await _safe_send(context, chat_id, msg, parse_mode='HTML')
                                             
-                                            if hasattr(strategy, 'v_rev_plugin'):
-                                                await _retry_api(strategy.v_rev_plugin.record_execution, t, "BUY", buy_qty, exec_price)
-                                            if queue_ledger:
-                                                await _retry_api(queue_ledger.add_lot, t, buy_qty, exec_price, "GAP_HIJACK_BUY")
+                                            # 🚨 NEW: V14 vs V-REV 모드별 매수 장부 동기화 디커플링
+                                            if version == "V_REV":
+                                                if hasattr(strategy, 'v_rev_plugin'):
+                                                    await _retry_api(strategy.v_rev_plugin.record_execution, t, "BUY", buy_qty, exec_price)
+                                                if queue_ledger:
+                                                    await _retry_api(queue_ledger.add_lot, t, buy_qty, exec_price, "GAP_HIJACK_BUY")
+                                            else:
+                                                if hasattr(strategy, 'v14_vwap_plugin'):
+                                                    await _retry_api(strategy.v14_vwap_plugin.record_execution, t, "BUY", buy_qty, exec_price)
                                         else:
                                             err_msg = html.escape(str(safe_res.get('msg1') or '응답 없음/통신 장애'))
-                                            logging.error(f"🚨 [{t}] V-REV 하방 갭 하이재킹 KIS 서버 거절: {err_msg}")
+                                            logging.error(f"🚨 [{t}] 하방 갭 하이재킹 KIS 서버 거절: {err_msg}")
                                             reject_msg = (
-                                                f"🚨 <b>[{html.escape(str(t))}] V-REV 하방 갭 하이재킹 스윕(Sweep) 서버 거절 (Reject)!</b>\n"
+                                                f"🚨 <b>[{html.escape(str(t))}] 하방 갭 하이재킹 스윕(Sweep) 서버 거절 (Reject)!</b>\n"
                                                 f"▫️ 사유: <code>{err_msg}</code>\n"
                                                 f"▫️ 조치: 다음 스캔 시 재시도합니다."
                                             )
@@ -311,13 +326,23 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 # ----------------------------------------------------
                                 # 🚨 [B. 상방 매도 하이재킹 (Upward Sell Hijack) 격발망]
                                 # ----------------------------------------------------
-                                # 🚨 MODIFIED: [큐 장부 절대주의 수복] KIS 실잔고(actual_qty) 오인 방어를 위해 큐 장부 수량(vrev_q_qty) 팩트 교차 검증 락온
-                                elif gap_pct >= 2.0 and vrev_q_qty > 0 and actual_qty > 0:
-                                    logging.info(f"⚡ [{t}] Upward Sell Hijack Triggered! gap: {gap_pct:.2f}% >= +2.0%")
+                                # 🚨 MODIFIED: [Case 41 절대 방어망] V-REV 모드는 KIS 실잔고를 무시하고 오직 큐 장부 물량만으로 100% 팩트 락온 (V14는 KIS 실잔고 팩트 반영)
+                                can_upward_hijack = False
+                                target_sell_qty = 0
+                                
+                                if gap_pct >= 2.0:
+                                    if version == "V_REV":
+                                        if vrev_q_qty > 0:
+                                            can_upward_hijack = True
+                                            target_sell_qty = vrev_q_qty
+                                    else:
+                                        if actual_qty > 0:
+                                            can_upward_hijack = True
+                                            target_sell_qty = actual_qty
+                                            
+                                if can_upward_hijack:
+                                    logging.info(f"⚡ [{t}] Upward Sell Hijack Triggered! gap: {gap_pct:.2f}% >= +2.0%, Target Qty: {target_sell_qty}주")
                                     nuked_count = 0
-                                    
-                                    # 🚨 [격리 타격 락온] 오직 큐 장부 한도까지만 타격하여 KIS 잔고에 섞인 타 전략 물량을 절대 방어
-                                    target_sell_qty = min(actual_qty, vrev_q_qty)
                                     
                                     try:
                                         est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
@@ -358,7 +383,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 매도(SELL) 덫 {nuked_count}건 팩트 파기 완료 (BUY 덫 보존).")
                                     except Exception as e:
                                         logging.error(f"🚨 [{t}] 상방 매도 하이재킹 KIS 실원장 덫 스캔 에러: {e}")
-
+    
                                     try:
                                         s_state = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
                                         s_state['hijacked'] = True
@@ -368,9 +393,9 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         logging.info(f"⚡ [{t}] 상방 하이재킹: 로컬 1분 슬라이싱 엔진 무효화 (upward_hijacked) 마킹 완료.")
                                     except Exception as e:
                                         logging.error(f"🚨 [{t}] 상방 하이재킹 로컬 슬라이스 무효화 처리 에러: {e}")
-
+    
                                     await asyncio.sleep(2.0)
-
+    
                                     bid_price = _safe_float(await _retry_api(broker.get_bid_price, t))
                                     curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
                                     
@@ -385,22 +410,26 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                             vwap_cache[f"REV_{t}_upward_hijack_fired"] = True
                                             is_upward_hijacked_now = True
                                             
-                                            # 큐 장부 소각 (수익 확정)
-                                            if queue_ledger:
-                                                await _retry_api(queue_ledger.clear_queue, t)
+                                            # 🚨 NEW: V14 vs V-REV 모드별 매도 장부 동기화 디커플링
+                                            if version == "V_REV":
+                                                if queue_ledger:
+                                                    await _retry_api(queue_ledger.clear_queue, t)
+                                            else:
+                                                if hasattr(strategy, 'v14_vwap_plugin'):
+                                                    await _retry_api(strategy.v14_vwap_plugin.record_execution, t, "SELL", target_sell_qty, exec_price)
                                             
                                             msg = f"🚀 <b>[{html.escape(str(t))}] 🤖 상방 모멘텀 자율주행 (Sell Hijack) 격발!</b>\n"
                                             msg += f"▫️ 당일 누적 VWAP 대비 현재가 슈팅(<b>+{gap_pct:.2f}%</b>)이 익절 임계치(<b>+2.0%</b>)를 관통했습니다.\n"
-                                            msg += f"▫️ KIS 예약/미체결 매도 덫({nuked_count}건) 파기 후, 큐 장부 보유 물량을 매수 1호가로 일괄 스윕(Sweep) 덤핑하여 종가 거품 붕괴를 회피합니다!\n"
+                                            msg += f"▫️ KIS 예약/미체결 매도 덫({nuked_count}건) 파기 후, 보유 물량을 매수 1호가로 일괄 스윕(Sweep) 덤핑하여 종가 거품 붕괴를 회피합니다!\n"
                                             msg += f"▫️ 전량 익절 수량: <b>{target_sell_qty}주</b> (단가: ${exec_price:.2f})\n"
                                             msg += f"▫️ <b>당일 슬라이싱 엔진 가동을 전면 마비시킵니다 (조기 퇴근 락온).</b>"
                                             
                                             await _safe_send(context, chat_id, msg, parse_mode='HTML')
                                         else:
                                             err_msg = html.escape(str(safe_res.get('msg1') or '응답 없음/통신 장애'))
-                                            logging.error(f"🚨 [{t}] V-REV 상방 갭 하이재킹 KIS 서버 거절: {err_msg}")
+                                            logging.error(f"🚨 [{t}] 상방 갭 하이재킹 KIS 서버 거절: {err_msg}")
                                             reject_msg = (
-                                                f"🚨 <b>[{html.escape(str(t))}] V-REV 상방 하이재킹 스윕(Sweep) 서버 거절!</b>\n"
+                                                f"🚨 <b>[{html.escape(str(t))}] 상방 하이재킹 스윕(Sweep) 서버 거절!</b>\n"
                                                 f"▫️ 사유: <code>{err_msg}</code>\n"
                                                 f"▫️ 조치: 다음 스캔 시 재시도합니다."
                                             )
@@ -508,19 +537,22 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         processed_odnos.add(last_odno)
 
                                         # 🚨 NEW: [Scope Mismatch 궁극 방어] 클로저(Closure) 오염을 방지하기 위한 명시적 파라미터 패싱 락온
-                                        def _sync_ledger_atomic(tkr, sde, c_qty, r_price, q_ledger, strat):
-                                            if q_ledger:
-                                                if sde == "BUY":
-                                                    q_ledger.add_lot(tkr, c_qty, r_price, "VREV_VWAP_BUY")
-                                                else:
-                                                    q_ledger.pop_lots(tkr, c_qty, r_price)
-                                            
-                                            if hasattr(strat, 'v_rev_plugin'):
-                                                strat.v_rev_plugin.record_execution(tkr, sde, c_qty, r_price)
+                                        def _sync_ledger_atomic(tkr, sde, c_qty, r_price, q_ledger, strat, ver):
+                                            if ver == "V_REV":
+                                                if q_ledger:
+                                                    if sde == "BUY":
+                                                        q_ledger.add_lot(tkr, c_qty, r_price, "VREV_VWAP_BUY")
+                                                    else:
+                                                        q_ledger.pop_lots(tkr, c_qty, r_price)
+                                                if hasattr(strat, 'v_rev_plugin'):
+                                                    strat.v_rev_plugin.record_execution(tkr, sde, c_qty, r_price)
+                                            else:
+                                                if hasattr(strat, 'v14_vwap_plugin'):
+                                                    strat.v14_vwap_plugin.record_execution(tkr, sde, c_qty, r_price)
 
                                         try:
                                             # 🚨 MODIFIED: [제1헌법] 파라미터 명시적 전달 및 wait_for 타임아웃 래핑
-                                            p_sync = functools.partial(_sync_ledger_atomic, t, side, ccld_qty_this_tick, real_exec_price, queue_ledger, strategy)
+                                            p_sync = functools.partial(_sync_ledger_atomic, t, side, ccld_qty_this_tick, real_exec_price, queue_ledger, strategy, version)
                                             await asyncio.wait_for(asyncio.to_thread(p_sync), timeout=10.0)
                                             logging.info(f"💾 [{t}] 자체 슬라이싱 체결 장부 원자적 동기화 완료: {side} {ccld_qty_this_tick}주 @ ${real_exec_price:.2f}")
                                         except Exception as e:
@@ -529,7 +561,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         
                                         # 🚨 MODIFIED: [메시지 폭탄 소각] 1분 단위 Slicing 체결마다 텔레그램을 타전하는 Spaming 뇌관을 전면 소각하고, 16:05 EST 일괄 정산망으로 100% 위임합니다.
                                         msg_side = "매수" if side == "BUY" else "매도"
-                                        logging.info(f"⚡ [{t}] V-REV 섀도 엔진 체결 팩트 장부 동기화 완료: {msg_side} {ccld_qty_this_tick}주 @ ${real_exec_price:.2f} (텔레그램 타전 바이패스)")
+                                        logging.info(f"⚡ [{t}] 섀도 엔진 체결 팩트 장부 동기화 완료: {msg_side} {ccld_qty_this_tick}주 @ ${real_exec_price:.2f} (텔레그램 타전 바이패스)")
 
                                 filled_qty += ccld_qty_this_tick
                                 o['filled_qty'] = filled_qty
