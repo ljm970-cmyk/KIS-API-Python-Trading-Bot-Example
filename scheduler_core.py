@@ -15,6 +15,7 @@
 # 🚨 MODIFIED: [Double-Spending 붕괴 방어] get_budget_allocation 연산 시 V14 다중 종목 잉여금 중복 할당 차단.
 # 🚨 MODIFIED: [AttributeError 궁극 수술] context.job 객체 파손/결측 시 발생하는 연쇄 속성 접근(get/data/chat_id) 즉사 버그를 스케줄러 전역(force_reset, auto_sync 등)에서 getattr 단락 평가로 완벽 교정 완료.
 # 🚨 MODIFIED: [스냅샷 락온 타임라인 이동] 새벽 4시 스냅샷 강제 생성(is_snapshot_mode=True)을 16:05 EST로 이관함에 따라 해당 로직 전면 영구 소각 (Bypass).
+# 🚨 MODIFIED: [ImportError 붕괴 수술] 렌더링 중 증발했던 scheduled_auto_sync 함수 블록을 100% 팩트 복구 완료.
 # ==========================================================
 import logging
 import datetime
@@ -528,3 +529,101 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
 
             except Exception as e:
                 logging.error(f"🚨 [{ticker}] 실시간 조기 졸업 처리 에러: {e}")
+
+# ==============================================================
+# 2. 🏛️ 16:05 EST 정규 정산 (Scenario 1, 3 & Bypass)
+# ==============================================================
+async def scheduled_auto_sync(context):
+    logging.info("✅ [확정 정산] 16:05 EST 팩트 기반 확정 정산 엔진 다이렉트 가동")
+    job = getattr(context, 'job', None)
+    app_data = getattr(job, 'data', {}) if job else {}
+    if not isinstance(app_data, dict): app_data = {}
+    
+    tx_lock = app_data.get('tx_lock')
+    cfg = app_data.get('cfg')
+    broker = app_data.get('broker')
+    bot = app_data.get('bot')
+    chat_id = getattr(job, 'chat_id', None)
+
+    if not tx_lock or not cfg or not broker or not bot or not chat_id: return
+    
+    def _check_and_set_lock():
+        est_tz = ZoneInfo('America/New_York')
+        today_est = datetime.datetime.now(est_tz).strftime("%Y-%m-%d")
+        lock_file = "data/sync_lock.json"
+        try: os.makedirs("data", exist_ok=True)
+        except OSError: pass
+        try:
+            with open(lock_file, "r", encoding="utf-8") as f:
+                lock_data = json.load(f)
+                if isinstance(lock_data, dict) and lock_data.get("last_sync") == today_est: return False, today_est
+        except Exception: pass
+
+        fd = None; tmp_path = None
+        try:
+            fd, tmp_path = tempfile.mkstemp(dir="data", text=True)
+            with os.fdopen(fd, 'w', encoding="utf-8") as f:
+                fd = None
+                json.dump({"last_sync": today_est}, f)
+                f.flush(); os.fsync(f.fileno())
+            os.replace(tmp_path, lock_file)
+            tmp_path = None
+        except Exception:
+            if fd is not None:
+                try: os.close(fd)
+                except OSError: pass
+            if tmp_path:
+                try: os.remove(tmp_path)
+                except OSError: pass
+        return True, today_est
+
+    can_run, today_est = await async_retry(_check_and_set_lock, default=(False, ""))
+    if not can_run: return
+
+    status_msg = None
+    try: 
+        status_msg = await asyncio.wait_for(
+            context.bot.send_message(chat_id=chat_id, text=f"📝 <b>[16:05 EST] 장부 자동 동기화(무결성 검증)를 시작합니다.</b>", parse_mode='HTML'),
+            timeout=15.0
+        )
+    except Exception: pass
+    
+    success_tickers = []
+    try:
+        active_tickers = await asyncio.wait_for(asyncio.to_thread(cfg.get_active_tickers), timeout=10.0)
+    except Exception:
+        active_tickers = []
+    if not isinstance(active_tickers, list): active_tickers = []
+    
+    for t in active_tickers:
+        try:
+            await asyncio.sleep(0.06)
+            res = await bot.sync_engine.process_auto_sync(t, chat_id, context, silent_ledger=True)
+            if res == "SUCCESS": success_tickers.append(t)
+        except Exception as e:
+            logging.error(f"🚨 [{t}] 확정 정산 단일 종목 에러 (Cascade 방어): {e}")
+            
+    if success_tickers:
+        res = None
+        holdings = {}
+        async with tx_lock:
+            for attempt in range(3):
+                try:
+                    await asyncio.sleep(0.06)
+                    res = await asyncio.wait_for(asyncio.to_thread(broker.get_account_balance), timeout=10.0)
+                    raw_h = res[1] if isinstance(res, (list, tuple)) and len(res) > 1 else {}
+                    holdings = raw_h if isinstance(raw_h, dict) else {}
+                    break
+                except Exception:
+                    if attempt == 2: holdings = {}
+                    else: await asyncio.sleep(1.0 * (2 ** attempt))
+                    
+        await bot.sync_engine._display_ledger(success_tickers[0], chat_id, context, message_obj=status_msg, pre_fetched_holdings=holdings)
+    else:
+        if status_msg:
+            try: 
+                await asyncio.wait_for(
+                    status_msg.edit_text(f"📝 <b>[16:05 EST] 장부 동기화 완료</b> (표시할 진행 중인 장부가 없습니다)", parse_mode='HTML'),
+                    timeout=15.0
+                )
+            except Exception: pass
