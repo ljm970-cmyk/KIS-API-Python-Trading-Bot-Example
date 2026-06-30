@@ -5,6 +5,7 @@
 # 🚨 MODIFIED: [Case 08 절대 규칙 준수] 스냅샷 무결성 파이프라인 팩트 교정 - os.path.exists 방어막 100% 소각 및 EAFP 원자적 접근 강제
 # 🚨 MODIFIED: [Case 16] 임시 파일 변수 스코프 전진 배치(Hoisting)로 UnboundLocalError 런타임 붕괴 완벽 차단
 # 🚨 MODIFIED: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 팩트 수술.
+# 🚨 MODIFIED: [NameError 즉사 버그 소각] `is_jackpot_reached` 변수 선언 누락으로 인해 플랜 생성이 붕괴되며 빈 지시서를 반환하던 맹독성 결함을 100% 팩트 수술 완료.
 # ==========================================================
 import math
 import os
@@ -129,7 +130,7 @@ class V14Strategy:
                         new_o['price'] = round(min_s - 0.01, 2)
                     if "🛡️" not in str(new_o.get('desc', '')): 
                             new_o['desc'] = f"🛡️교정_{str(new_o.get('desc', '')).replace('🧹', '')}"
-                    new_o['price'] = max(0.01, self._safe_float(new_o.get('price')))
+                new_o['price'] = max(0.01, self._safe_float(new_o.get('price')))
                 res.append(new_o)
             return res
         return _clean(c_orders), _clean(b_orders)
@@ -179,12 +180,16 @@ class V14Strategy:
         t_val = round(t_val, 4)
 
         target_price = self._ceil(avg_price * (1 + target_ratio)) if avg_price > 0 else 0.0
+        
+        # 🚨 MODIFIED: [NameError 즉사 방어] 누락되었던 is_jackpot_reached 변수 선언 팩트 복구
+        is_jackpot_reached = target_price > 0 and current_price >= target_price
+        
         one_portion_amt = portion
         
         depreciation_factor = 2.0 / split if split > 0 else 0.1
         star_ratio = target_ratio - (target_ratio * depreciation_factor * t_val)
         star_price = self._ceil(avg_price * (1 + star_ratio)) if avg_price > 0 else 0.0
-            
+          
         if qty == 0:
             base_price = prev_close
         else:
@@ -230,6 +235,7 @@ class V14Strategy:
                         core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty, "type": "LOC", "desc": "🩸리버스쿼터매수"})
                     if sell_qty > 0:
                         core_orders.append({"side": "SELL", "price": round(rev_star, 2), "qty": sell_qty, "type": "LOC", "desc": "🩸리버스분할매도"})
+        
                     process_status = "♻️리버스(진행중)"
                 
                 core_orders, bonus_orders = self._apply_wash_trade_shield(core_orders, bonus_orders)
