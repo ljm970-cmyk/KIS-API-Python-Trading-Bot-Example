@@ -4,6 +4,8 @@
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] _retry_api 내의 await asyncio.sleep(0.06) 파편화 땜질 전면 삭제.
 # 🚨 MODIFIED: [중앙 통제소 위임] 모든 API 지연을 GlobalThrottle(중앙 통제소)로 100% 위임하여 이벤트 루프 교착 상태 완벽 방어.
 # 🚨 MODIFIED: [Buy High, Sell Low 패러독스 궁극 수술] 매수 체결 직후 거시적 VWAP 이탈률만 보고 손실 덤핑을 유발하던 맹독성 '상방 매도 하이재킹(Upward Sell Hijack)' 로직 및 연계 플래그를 시스템 전역에서 100% 영구 소각.
+# 🚨 MODIFIED: [순수 슬라이싱 아키텍처 팩트 수복] 슬라이싱 엔진 내부에서 목표가 2% 이내 접근 시 강제로 스윕(Sweep)해버리는 기형적인 조건문을 영구 소각하고, 오직 정밀한 1분 단위 분할(Slicing) 타격만 집행하도록 100% 팩트 교정 완료.
+# 🚨 MODIFIED: [하방 매수 하이재킹 팩트 교정] 거시 지표(VWAP -2%) 달성 시 무조건 매수하던 맹점을 파기하고, 당일 통합지시서상에 '매수(BUY)' 플랜이 존재하는 날에만 하방 갭 하이재킹이 격발되도록 안전 방어막(Bypass) 100% 결속.
 # ==========================================================
 import logging
 import asyncio
@@ -174,121 +176,134 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 # 🚨 [A. 하방 매수 하이재킹 격발망]
                                 # ----------------------------------------------------
                                 if gap_pct <= gap_thresh:
-                                    logging.info(f"⚡ [{t}] Downward Gap Hijack Triggered! gap: {gap_pct:.2f}%, thresh: {gap_thresh}%")
-                                    nuked_count = 0
+                                    # 🚨 NEW: 당일 지시서에 BUY(매수) 플랜이 있는지 원자적 스캔
+                                    slice_state_check = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
+                                    has_buy_plan = any(isinstance(o, dict) and str(o.get('side')) == 'BUY' for o in slice_state_check.get('orders', []))
                                     
-                                    try:
-                                        est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
-                                        d_str = est_now.strftime('%Y%m%d')
+                                    if not has_buy_plan:
+                                        if not vwap_cache.get(f"REV_{t}_gap_hijack_blocked_log", False):
+                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 조건 도달({gap_pct:.2f}%) ➔ 🛑 금일 통합지시서에 매수(BUY) 플랜이 없어 스윕 덤핑을 전면 차단(Bypass)합니다.")
+                                            vwap_cache[f"REV_{t}_gap_hijack_blocked_log"] = True
                                         
-                                        resv_orders = await _retry_api(broker.get_reservation_orders, t, d_str, d_str, default=[])
-                                        safe_resv_orders = resv_orders if isinstance(resv_orders, list) else []
-                                        
-                                        for req in safe_resv_orders:
-                                            if not isinstance(req, dict): continue
-                                            
-                                            side_cd = str(req.get('sll_buy_dvsn_cd') or req.get('sll_buy_dvsn') or '')
-                                            if side_cd == '01': continue 
-                                            
-                                            odno = str(req.get('ovrs_rsvn_odno') or req.get('odno') or '')
-                                            ord_dt = str(req.get('rsvn_ord_rcit_dt') or req.get('ord_dt') or d_str)
-                                            if odno:
-                                                c_res = await _retry_api(broker.cancel_reservation_order, ord_dt, odno)
-                                                if c_res: nuked_count += 1
-                                    
-                                        unfilled = await _retry_api(broker.get_unfilled_orders_detail, t, default=[])
-                                        safe_unfilled = unfilled if isinstance(unfilled, list) else []
-                                        
-                                        for uo in safe_unfilled:
-                                            if not isinstance(uo, dict): continue
-                                            
-                                            side_cd = str(uo.get('sll_buy_dvsn_cd') or uo.get('sll_buy_dvsn') or '')
-                                            if side_cd == '01': continue
-                                            
-                                            dvsn = str(uo.get('ord_dvsn_cd') or uo.get('ord_dvsn') or '').strip().zfill(2)
-                                            if dvsn in ['36', '00']:
-                                                u_odno = str(uo.get('odno') or '')
-                                                if u_odno:
-                                                    c_res = await _retry_api(broker.cancel_order, t, u_odno)
-                                                    if c_res: nuked_count += 1
-                                        
-                                        logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 매수(BUY) 덫 {nuked_count}건 팩트 파기 완료 (SELL 구출망 보존).")
-                                    except Exception as e:
-                                        logging.error(f"🚨 [{t}] KIS 실원장 덫 스캔 에러: {e}")
-
-                                    try:
-                                        s_state = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
-                                        s_state['hijacked'] = True
-                                        s_state['date'] = today_hyphen
-                                        await _retry_api(_atomic_write_json_sync, slice_file, s_state)
-                                        logging.info(f"⚡ [{t}] 로컬 1분 슬라이싱 엔진 무효화 (hijacked) 마킹 완료.")
-                                    except Exception as e:
-                                        logging.error(f"🚨 [{t}] 로컬 슬라이스 무효화 처리 에러: {e}")
-
-                                    seed = await _retry_api(cfg.get_seed, t, default=0.0)
-                                    daily_limit = _safe_float(seed) * 0.15
-                                    alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
-                                   
-                                    if version == "V_REV":
-                                        safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
-                                        total_spent = 0.0
-                                        if hasattr(strategy, 'v_rev_plugin'):
-                                            spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
-                                            safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
-                                            total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
-                                    else:
-                                        safe_alloc_cash = alloc_cash
-                                        total_spent = 0.0
-                                        if hasattr(strategy, 'v14_vwap_plugin'):
-                                            spent_dict = strategy.v14_vwap_plugin.executed.get("BUY_BUDGET")
-                                            safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
-                                            total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
-                                        
-                                    rem_budget = max(0.0, safe_alloc_cash - total_spent)
-
-                                    ask_price = _safe_float(await _retry_api(broker.get_ask_price, t))
-                                    curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
-                                             
-                                    exec_price = ask_price if ask_price > 0 else curr_p
-                                    buy_qty = int(math.floor(rem_budget / exec_price)) if exec_price > 0 else 0
-                                     
-                                    if buy_qty > 0:
-                                        res = await _retry_api(broker.send_order, t, "BUY", buy_qty, exec_price, "LIMIT")
-                                        safe_res = res if isinstance(res, dict) else {}
-                                        odno = str(safe_res.get('odno') or '')
-                                        
-                                        if safe_res.get('rt_cd') == '0' and odno:
-                                            vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
-                                            is_downward_hijacked_now = True
-                                            
-                                            msg = f"⚡ <b>[{html.escape(str(t))}] 🤖 하방 모멘텀 자율주행 (Gap Hijack) 섀도우 오버라이드 격발!</b>\n"
-                                            msg += f"▫️ 운용종목 당일 누적 VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
-                                            msg += f"▫️ KIS 예약/미체결 매수 덫({nuked_count}건) 파기 및 로컬 엔진 스톱 후, 잔여 예산 100%를 매도 1호가로 일괄 스윕(Sweep) 타격했습니다!\n"
-                                            msg += f"▫️ 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
-                                            
-                                            await _safe_send(context, chat_id, msg, parse_mode='HTML')
-                                            
-                                            if version == "V_REV":
-                                                if hasattr(strategy, 'v_rev_plugin'):
-                                                    await _retry_api(strategy.v_rev_plugin.record_execution, t, "BUY", buy_qty, exec_price)
-                                                if queue_ledger:
-                                                    await _retry_api(queue_ledger.add_lot, t, buy_qty, exec_price, "GAP_HIJACK_BUY")
-                                            else:
-                                                if hasattr(strategy, 'v14_vwap_plugin'):
-                                                    await _retry_api(strategy.v14_vwap_plugin.record_execution, t, "BUY", buy_qty, exec_price)
-                                        else:
-                                            err_msg = html.escape(str(safe_res.get('msg1') or '응답 없음/통신 장애'))
-                                            logging.error(f"🚨 [{t}] 하방 갭 하이재킹 KIS 서버 거절: {err_msg}")
-                                            reject_msg = (
-                                                f"🚨 <b>[{html.escape(str(t))}] 하방 갭 하이재킹 스윕(Sweep) 서버 거절 (Reject)!</b>\n"
-                                                f"▫️ 사유: <code>{err_msg}</code>\n"
-                                                f"▫️ 조치: 다음 스캔 시 재시도합니다."
-                                            )
-                                            await _safe_send(context, chat_id, reject_msg, parse_mode='HTML')
-                                    else:
+                                        # 플래그 락온을 통해 추가 연산 오버헤드를 막고 슬라이싱 엔진(SELL 유지)으로 자연스럽게 흘려보냅니다.
                                         vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                         is_downward_hijacked_now = True
-                                        logging.info(f"⚡ [{t}] 하방 Gap Hijack 격발 조건을 만족했으나 잉여 예산 소진으로 스윕 매수 생략 (플래그 락온 완료).")
+                                    else:
+                                        logging.info(f"⚡ [{t}] Downward Gap Hijack Triggered! gap: {gap_pct:.2f}%, thresh: {gap_thresh}%")
+                                        nuked_count = 0
+                                        
+                                        try:
+                                            est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
+                                            d_str = est_now.strftime('%Y%m%d')
+                                            
+                                            resv_orders = await _retry_api(broker.get_reservation_orders, t, d_str, d_str, default=[])
+                                            safe_resv_orders = resv_orders if isinstance(resv_orders, list) else []
+                                            
+                                            for req in safe_resv_orders:
+                                                if not isinstance(req, dict): continue
+                                                
+                                                side_cd = str(req.get('sll_buy_dvsn_cd') or req.get('sll_buy_dvsn') or '')
+                                                if side_cd == '01': continue 
+                                                
+                                                odno = str(req.get('ovrs_rsvn_odno') or req.get('odno') or '')
+                                                ord_dt = str(req.get('rsvn_ord_rcit_dt') or req.get('ord_dt') or d_str)
+                                                if odno:
+                                                    c_res = await _retry_api(broker.cancel_reservation_order, ord_dt, odno)
+                                                    if c_res: nuked_count += 1
+                                        
+                                            unfilled = await _retry_api(broker.get_unfilled_orders_detail, t, default=[])
+                                            safe_unfilled = unfilled if isinstance(unfilled, list) else []
+                                            
+                                            for uo in safe_unfilled:
+                                                if not isinstance(uo, dict): continue
+                                                
+                                                side_cd = str(uo.get('sll_buy_dvsn_cd') or uo.get('sll_buy_dvsn') or '')
+                                                if side_cd == '01': continue
+                                                
+                                                dvsn = str(uo.get('ord_dvsn_cd') or uo.get('ord_dvsn') or '').strip().zfill(2)
+                                                if dvsn in ['36', '00']:
+                                                    u_odno = str(uo.get('odno') or '')
+                                                    if u_odno:
+                                                        c_res = await _retry_api(broker.cancel_order, t, u_odno)
+                                                        if c_res: nuked_count += 1
+                                            
+                                            logging.info(f"⚡ [{t}] KIS 실원장 스캔: 예약 및 일반 매수(BUY) 덫 {nuked_count}건 팩트 파기 완료 (SELL 구출망 보존).")
+                                        except Exception as e:
+                                            logging.error(f"🚨 [{t}] KIS 실원장 덫 스캔 에러: {e}")
+
+                                        try:
+                                            s_state = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
+                                            s_state['hijacked'] = True
+                                            s_state['date'] = today_hyphen
+                                            await _retry_api(_atomic_write_json_sync, slice_file, s_state)
+                                            logging.info(f"⚡ [{t}] 로컬 1분 슬라이싱 엔진 무효화 (hijacked) 마킹 완료.")
+                                        except Exception as e:
+                                            logging.error(f"🚨 [{t}] 로컬 슬라이스 무효화 처리 에러: {e}")
+
+                                        seed = await _retry_api(cfg.get_seed, t, default=0.0)
+                                        daily_limit = _safe_float(seed) * 0.15
+                                        alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
+                                       
+                                        if version == "V_REV":
+                                            safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
+                                            total_spent = 0.0
+                                            if hasattr(strategy, 'v_rev_plugin'):
+                                                spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
+                                                safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                                total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                                        else:
+                                            safe_alloc_cash = alloc_cash
+                                            total_spent = 0.0
+                                            if hasattr(strategy, 'v14_vwap_plugin'):
+                                                spent_dict = strategy.v14_vwap_plugin.executed.get("BUY_BUDGET")
+                                                safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                                total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                                            
+                                        rem_budget = max(0.0, safe_alloc_cash - total_spent)
+
+                                        ask_price = _safe_float(await _retry_api(broker.get_ask_price, t))
+                                        curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
+                                                 
+                                        exec_price = ask_price if ask_price > 0 else curr_p
+                                        buy_qty = int(math.floor(rem_budget / exec_price)) if exec_price > 0 else 0
+                                         
+                                        if buy_qty > 0:
+                                            res = await _retry_api(broker.send_order, t, "BUY", buy_qty, exec_price, "LIMIT")
+                                            safe_res = res if isinstance(res, dict) else {}
+                                            odno = str(safe_res.get('odno') or '')
+                                            
+                                            if safe_res.get('rt_cd') == '0' and odno:
+                                                vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
+                                                is_downward_hijacked_now = True
+                                                
+                                                msg = f"⚡ <b>[{html.escape(str(t))}] 🤖 하방 모멘텀 자율주행 (Gap Hijack) 섀도우 오버라이드 격발!</b>\n"
+                                                msg += f"▫️ 운용종목 당일 누적 VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
+                                                msg += f"▫️ KIS 예약/미체결 매수 덫({nuked_count}건) 파기 및 로컬 엔진 스톱 후, 잔여 예산 100%를 매도 1호가로 일괄 스윕(Sweep) 타격했습니다!\n"
+                                                msg += f"▫️ 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
+                                                
+                                                await _safe_send(context, chat_id, msg, parse_mode='HTML')
+                                                
+                                                if version == "V_REV":
+                                                    if hasattr(strategy, 'v_rev_plugin'):
+                                                        await _retry_api(strategy.v_rev_plugin.record_execution, t, "BUY", buy_qty, exec_price)
+                                                    if queue_ledger:
+                                                        await _retry_api(queue_ledger.add_lot, t, buy_qty, exec_price, "GAP_HIJACK_BUY")
+                                                else:
+                                                    if hasattr(strategy, 'v14_vwap_plugin'):
+                                                        await _retry_api(strategy.v14_vwap_plugin.record_execution, t, "BUY", buy_qty, exec_price)
+                                            else:
+                                                err_msg = html.escape(str(safe_res.get('msg1') or '응답 없음/통신 장애'))
+                                                logging.error(f"🚨 [{t}] 하방 갭 하이재킹 KIS 서버 거절: {err_msg}")
+                                                reject_msg = (
+                                                    f"🚨 <b>[{html.escape(str(t))}] 하방 갭 하이재킹 스윕(Sweep) 서버 거절 (Reject)!</b>\n"
+                                                    f"▫️ 사유: <code>{err_msg}</code>\n"
+                                                    f"▫️ 조치: 다음 스캔 시 재시도합니다."
+                                                )
+                                                await _safe_send(context, chat_id, reject_msg, parse_mode='HTML')
+                                        else:
+                                            vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
+                                            is_downward_hijacked_now = True
+                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 격발 조건을 만족했으나 잉여 예산 소진으로 스윕 매수 생략 (플래그 락온 완료).")
 
                     # ======================================================
                     # [ 2. 자체 VWAP 1분 슬라이싱 로컬 엔진 가동 ]
