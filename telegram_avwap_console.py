@@ -6,6 +6,7 @@
 # 🚨 MODIFIED: [관제탑 UI 팩트 롤오버] 암살자 지정 예산($) 및 오버나이트 허용 상태를 관제탑 대시보드에 100% 팩트로 표출.
 # 🚨 MODIFIED: [Case 26 절대 헌법 준수] 텔레그램 HTML 파서 붕괴 방어를 위한 html.escape 쉴드 전역 강제 주입.
 # 🚨 MODIFIED: [UI 진공 압축 프로토콜] 인지 부하 감소를 위해 초단기 당일 누적 VWAP 및 숏 스퀴즈 감시망 UI 렌더링 텍스트 블록 100% 영구 소각 (백그라운드 연산은 완벽 보존).
+# 🚨 MODIFIED: [데드 버튼 영구 소각 (NEW)] 텍스트 지표가 제거됨에 따라, 하단에 잔존해 있던 '💡 숏 스퀴즈 지표 읽는 법' 인라인 버튼을 시스템 UI에서 100% 완전 삭제.
 # ==========================================================
 import logging
 import datetime
@@ -281,9 +282,6 @@ class AvwapConsolePlugin:
         else:
             msg += "▫️ 정규장 개장 대기 중...\n\n"
 
-        # 🚨 MODIFIED: [UI 진공 압축 프로토콜] 초단기 당일 누적 VWAP 및 숏 스퀴즈 감시망 UI 렌더링 텍스트 조합부 100% 영구 소각 완료.
-        # (관제탑 정보의 직관성을 높이기 위해 불필요한 렌더링 블록을 도려내었으며, 백그라운드의 데이터 연산 무결성은 100% 사수됩니다.)
-
         if is_avwap_hybrid or is_assassin_active:
             msg += f"⚔️ <b>[ 암살자(aVWAP) 1-Shot 교전망 (🟢 가동중) ]</b>\n"
         else:
@@ -318,10 +316,7 @@ class AvwapConsolePlugin:
         elif status_code in ["CLOSE"]:
             keyboard.append([InlineKeyboardButton(f"⛔ [{ticker_clean}] 장마감", callback_data="AVWAP_SET:REFRESH:NONE")])
 
-        keyboard.append([
-            InlineKeyboardButton("💡 숏 스퀴즈 지표 읽는 법", callback_data=f"AVWAP_SET:SQUEEZE_GUIDE:{t}")
-        ])
-
+        # 🚨 MODIFIED: '💡 숏 스퀴즈 지표 읽는 법' 버튼 영구 소각 완료
         keyboard.append([
             InlineKeyboardButton("🔄 관제탑 새로고침", callback_data="AVWAP_SET:REFRESH:NONE"),
             InlineKeyboardButton("🔙 닫기", callback_data="RESET:CANCEL")
