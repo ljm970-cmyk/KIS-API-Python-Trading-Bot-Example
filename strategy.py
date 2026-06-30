@@ -2,6 +2,7 @@
 # FILE: strategy.py
 # ==========================================================
 # 🚨 MODIFIED: [0주 오인 패러독스 차단] V-REV 플랜 생성 시 KIS 실잔고(actual_qty) 및 KIS 실평단가(actual_avg) 팩트를 직접 주입
+# 🚨 MODIFIED: [스냅샷 절대주의 락온] get_plan 통로를 통해 is_snapshot_mode 파라미터 완벽 바이패스 유지
 import logging
 import pandas as pd
 import numpy as np
@@ -194,7 +195,7 @@ class InfiniteStrategy:
 
         if version == "V14":
             if hasattr(self.v14_plugin, 'check_sniper_condition'):
-                 return self.v14_plugin.check_sniper_condition(safe_ticker, cfg, broker, chat_id)
+                return self.v14_plugin.check_sniper_condition(safe_ticker, cfg, broker, chat_id)
                 
         return {"action": "HOLD", "reason": "스나이퍼 감시 대기(또는 모듈 없음)", "limit_price": 0.0, "qty": 0}
 

@@ -6,19 +6,17 @@
 # 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 락온
 # 🚨 MODIFIED: [Case 16 위반 교정] 원자적 쓰기 실패 시 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 전진 배치
 # 🚨 MODIFIED: [TOCTOU 레이스 컨디션 수술] 임시 파일 정리 시 잔존하는 os.path.exists 마저 전면 소각하고 EAFP 패턴으로 100% 락온
-# 🚨 MODIFIED: [최종 팩트 수술] `math.isnan` 및 `math.isinf` 방어막을 `_safe_float`에 이식하여 치명적 수학 연산 붕괴(ValueError) 원천 봉쇄
 # 🚨 MODIFIED: [Insight 14] String-Float 콤마 맹독성 런타임 붕괴 방어용 `_safe_float` 래핑 전면 이식 및 alloc_cash 쉴드 확장
 # 🚨 MODIFIED: [Insight 06/07] JSON 이중 get() 호출 시 발생하는 AttributeError 붕괴 방어용 `(dict or {})` 단락 평가 쉴드 주입
 # 🚨 MODIFIED: [Insight 12] JSON 오염 객체(리스트/문자열) 유입 시 AttributeError를 막기 위한 `isinstance` 필터링 락온
-# 🚨 MODIFIED: [Case 25] V14 오리지널 심해 줍줍(Jubjub) 5단 폭포수 덫 및 워시 트레이드(Wash Trade) 쉴드 100% 팩트 이식 완료
 # 🚨 MODIFIED: [V14 코어 무결성 동기화] 후반전 도달 시 목표가 관통에 대응하는 '대박익절(Jackpot Sell)' 파이프라인 전면 이식
 # 🚨 REMOVED: [제2헌법 준수] 사용되지 않는 유령 변수(residual) 데드코드 100% 영구 소각
 # 🚨 MODIFIED: [TypeError 붕괴 방어] get_ledger() 결측치(None) 유입 시 루프 마비를 막기 위한 단락 평가(or []) 쉴드 래핑
-# 🚨 MODIFIED: [최후의 맹점 수술] get_plan 및 ensure_failsafe_snapshot 진입부의 모든 파라미터와 config 반환값에 _safe_float 쉴드를 100% 강제 래핑하여 TypeError 런타임 붕괴 원천 봉쇄
 # 🚨 MODIFIED: [상태 참조 오염 수술] _load_state_if_needed 에서 딕셔너리를 통째로 float 캐스팅하려던 ValueError 맹점 교정 (종목 Drill-down 결속)
-# 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
 # 🚨 NEW: [10주 미만 LOC 강제 전환 소각] KIS 알고리즘 위임을 파기하고 100% 로컬 자체 슬라이싱을 위해 무조건 "VWAP" 타겟팅 팩트 락온
 # 🚨 MODIFIED: [Quant Logic 롤백] 심해 줍줍(Jubjub) 보너스 덫은 퀀트 공식에 따라 VWAP이 아닌 100% LOC로 강제 장전 락온
+# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술.
+# 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 생성 시 오염된 현재가(current_price)를 전면 배제하고 오직 순수 종가(Prev_Close)만을 절대 앵커로 락온.
 # ==========================================================
 import math
 import logging
@@ -44,11 +42,22 @@ class V14VwapStrategy:
             return 0.0
 
     def _get_logical_date_str(self):
+        """ 🚨 [미래 참조 방어막 100% 수술] 16:00 이후 생성 시 D+1(명일)로 포워드 락온. 주말이면 차주 월요일로 정밀 매핑. """
         now_est = datetime.now(ZoneInfo('America/New_York'))
+        
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
+        elif now_est.time() >= datetime.time(16, 0):
+            target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est
+            
+        # 🚨 [주말(토/일) 보정] 16:05 금요일에 찍힌 스냅샷은 다음 거래일(월요일)을 타겟으로 락온
+        if target_date.weekday() == 5: 
+            target_date += timedelta(days=2)
+        elif target_date.weekday() == 6: 
+            target_date += timedelta(days=1)
+            
         return target_date.strftime("%Y-%m-%d")
 
     def _get_state_file(self, ticker):
@@ -283,8 +292,11 @@ class V14VwapStrategy:
         _, dynamic_budget, _ = self.cfg.calculate_v14_state(ticker)
         dynamic_budget = self._safe_float(dynamic_budget)
         
-        # 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
-        base_price = prev_close if prev_close > 0.0 else current_price
+        # 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 시 장마감 직후 오염된 현재가(curr_p) 배제, 오직 Prev_Close 절대 앵커 락온
+        if qty == 0:
+            base_price = prev_close
+        else:
+            base_price = prev_close if prev_close > 0.0 else current_price
         
         if base_price <= 0.0:
             plan_result = {

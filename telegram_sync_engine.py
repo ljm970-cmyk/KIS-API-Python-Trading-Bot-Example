@@ -9,7 +9,8 @@
 # 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가를 0.0으로 오염시키던 맹점 소각.
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False 강제 래핑 락온.
 # 🚨 MODIFIED: [수술 2 - 큐 장부 절대주의 락온] V-REV 모드 시 KIS 실잔고(Ghost Balance)를 무시하고 오직 큐 장부의 수량을 UI에 덮어씌워 렌더링 모순(Paradox) 완벽 차단.
-# 🚨 MODIFIED: [개인 물량 격리 보호] KIS 실잔고가 큐 장부보다 많을 때 강제 편입(MANUAL_BUY)하던 로직을 영구 소각하여 개인 장기 투자 물량을 100% 안전하게 보호.
+# 🚨 MODIFIED: [개인 물량 격리 보호] KIS 실잔고가 큐 장부보다 많을 때 강제 편입(MANUAL_BUY)하던 로직을 영구 소각하여 개인 장기 투자 물량의 100% 안전하게 보호.
+# 🚨 NEW: [16:05 스냅샷 락온 대통합] 16:05 EST 장부 정산이 완벽히 끝난 직후(렌더링 직전), 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)하도록 파이프라인 100% 이식.
 # ==========================================================
 
 import logging
@@ -380,7 +381,7 @@ class TelegramSyncEngine:
                             cap_dt = snapshot.get('captured_at', now_est)
                             cap_dt_str = cap_dt if isinstance(cap_dt, str) else cap_dt.strftime('%Y-%m-%d')
                             start_dt_str = str(q_data_before[0].get('date', ''))[:10] if q_data_before and isinstance(q_data_before[0], dict) else cap_dt_str[:10]
-                             
+                   
                             hist_data = await self._retry_api(self.cfg._load_json, self.cfg.FILES["HISTORY"], [], default=[])
                             
                             new_hist = {
@@ -391,7 +392,7 @@ class TelegramSyncEngine:
                             hist_data.append(new_hist)
                             await self._retry_api(self.cfg._save_json, self.cfg.FILES["HISTORY"], hist_data, timeout=10.0)
                             _vrev_snap_ok = True
-                                 
+                                
                         if getattr(self, 'queue_ledger', None):
                             await self._retry_api(self.queue_ledger.sync_with_broker, ticker, 0, timeout=10.0)
                             
@@ -399,7 +400,7 @@ class TelegramSyncEngine:
                             msg = f"🎉 <b>[{html.escape(str(ticker))} V-REV 잭팟 스윕(전량 익절) 감지!]</b>\n▫️ 잔고가 0주가 되어 LIFO 큐 지층을 100% 소각(초기화)했습니다."
                             if added_seed > 0: msg += f"\n💸 <b>자동 복리 +${added_seed:,.0f}</b> 이 다음 운용 시드에 완벽하게 추가되었습니다!"
                             await self._safe_send(context, chat_id, msg, parse_mode='HTML')
-                            
+                             
                             if snapshot and isinstance(snapshot, dict):
                                 img_path = await self._retry_api(
                                     self.view.create_profit_image, 
@@ -422,7 +423,8 @@ class TelegramSyncEngine:
                         else:
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
                  
-                        return "SUCCESS"
+                        # 🚨 NEW: 16:05 스냅샷 락온 (0주 상태 팩트 덮어쓰기)
+                        pass # 아래 공통 블록에서 처리
                   
                     if safe_actual_qty_for_vrev == vrev_ledger_qty:
                         pass
@@ -474,11 +476,10 @@ class TelegramSyncEngine:
                             calibrated = await self._retry_api(self.queue_ledger.sync_with_broker, ticker, safe_actual_qty_for_vrev, 0.0, actual_clear_price_for_sync, timeout=10.0, default=False)
                            
                         if calibrated: await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 비파괴 보정 및 리앵커링 완료!</b>\n▫️ 수동 매도 물량(<b>{gap_qty}주</b>)을 LIFO 큐에서 안전하게 차감하고, 수익금만큼 잔여 지층의 평단가를 일괄 차감했습니다.", parse_mode='HTML')
-                          
+                         
                     elif safe_actual_qty_for_vrev > 0 and safe_actual_qty_for_vrev > vrev_ledger_qty:
                         gap_qty = safe_actual_qty_for_vrev - vrev_ledger_qty
                         
-                        # 🚨 MODIFIED: [수술 2: 큐 장부 수량 절대주의 락온] 개인 물량 강제 편입(MANUAL_BUY) 데드코드 영구 소각
                         logging.info(f"🛡️ [{ticker}] V-REV 큐 장부 절대주의 가동: KIS 실잔고 초과분({gap_qty}주)을 개인 물량으로 간주하여 편입 차단.")
                         await self._safe_send(context, chat_id, f"🛡️ <b>[{html.escape(str(ticker))}] 개인 장기 물량 격리 보호 (Ghost Balance 차단)</b>\n▫️ KIS 실잔고가 로컬 큐 장부보다 <b>{gap_qty}주</b> 많습니다.\n▫️ 봇 관리를 벗어난 개인 장기 투자 물량으로 간주하여 V-REV 장부에 강제 편입(MANUAL_BUY)하지 않고 안전하게 100% 격리했습니다.\n▫️ 만약 봇 운용을 위해 수동 매수한 물량이라면 <code>/add_q</code> 명령어로 직접 지층을 주입하십시오.", parse_mode='HTML')
                 
@@ -524,6 +525,46 @@ class TelegramSyncEngine:
                             all_recs = [r for r in full_ledger2 if isinstance(r, dict) and r.get('ticker') != ticker]
                             await self._retry_api(self.cfg._save_json, self.cfg.FILES["LEDGER"], all_recs, timeout=10.0)
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} 강제 정산 완료]</b>\n잔고가 0주이나 마이너스 수익 상태이므로 명예의 전당 박제 없이 장부를 비우고 새출발 타점을 장전합니다.", parse_mode='HTML')
+
+                # 🚨 NEW: [스냅샷 락온 타임라인 이동] 16:05 EST 장부 정산이 완벽히 끝난 직후, 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)
+                if now_est.time() >= datetime.time(16, 0):
+                    try:
+                        await asyncio.sleep(0.06)
+                        curr_p_val = await self._retry_api(self.broker.get_current_price, ticker, timeout=10.0)
+                        curr_p = self._safe_float(curr_p_val)
+                        
+                        prev_c_val = await self._retry_api(self.broker.get_previous_close, ticker, timeout=10.0)
+                        prev_c = self._safe_float(prev_c_val)
+                        
+                        ma_5day_val = await self._retry_api(self.broker.get_5day_ma, ticker, timeout=10.0)
+                        ma_5day = self._safe_float(ma_5day_val)
+                        
+                        bal_res = await self._retry_api(self.broker.get_account_balance, timeout=10.0)
+                        cash_for_snap = self._safe_float(bal_res[0]) if bal_res else 0.0
+                        
+                        from scheduler_core import get_budget_allocation
+                        active_tickers_list = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
+                        _, alloc_cash_dict = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash_for_snap, active_tickers_list, self.cfg), timeout=10.0)
+                        avail_cash = self._safe_float((alloc_cash_dict or {}).get(ticker, 0.0))
+                        
+                        full_ledger_final = await self._retry_api(self.cfg.get_ledger, timeout=10.0)
+                        recs_final = [r for r in (full_ledger_final or []) if isinstance(r, dict) and r.get('ticker') == ticker]
+                        hold_res_final = await self._retry_api(self.cfg.calculate_holdings, ticker, recs_final, timeout=10.0)
+                        
+                        final_qty = hold_res_final[0] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 0 else 0
+                        final_avg = hold_res_final[1] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 1 else 0.0
+                        
+                        # 🚨 0주 새출발 패러독스 방어: 16:05의 현재가는 오염되었을 수 있으므로 0주 상태일 때 YF 공식 종가(prev_c)로 락온하도록 0.0 주입
+                        if final_qty == 0:
+                            curr_p = 0.0
+                        
+                        await asyncio.wait_for(asyncio.to_thread(
+                            self.strategy.get_plan, ticker, curr_p, final_avg, final_qty, prev_c, ma_5day=ma_5day,
+                            market_type="REG", available_cash=avail_cash, is_simulation=True, is_snapshot_mode=True
+                        ), timeout=15.0)
+                        logging.info(f"📸 [{ticker}] 16:05 EST 확정 정산 완료 후 명일(D+1) 대비 스냅샷 박제(Forward-Lock) 성공.")
+                    except Exception as e:
+                        logging.error(f"🚨 [{ticker}] 16:05 EST 스냅샷 팩트 박제 실패: {e}")
 
                 return "SUCCESS"
 

@@ -2,14 +2,14 @@
 # FILE: strategy_v_avwap.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 3중 딥다이브 교차 검증(Syntax 붕괴, Async I/O 족쇄, Float 정밀도 사수) 통과 완료.
-# 🚨 MODIFIED: [순수 돌파/추종 데이 트레이딩 아키텍처 팩트 교정] 역추세 기반ের 낡은 '현재가 <= 타점' 하향 관통 로직을 100% 영구 소각하고, "현재가가 실시간 VWAP 이상(상회 또는 상향 돌파)"일 때 `BREAKOUT_BUY`를 반환하도록 팩트 락온.
+# 🚨 MODIFIED: [순수 돌파/추종 데이 트레이딩 아키텍처 팩트 교정] 역추세 기반의 낡은 '현재가 <= 타점' 하향 관통 로직을 100% 영구 소각하고, "현재가가 실시간 VWAP 이상(상회 또는 상향 돌파)"일 때 `BREAKOUT_BUY`를 반환하도록 팩트 락온.
 # 🚨 MODIFIED: [과욕 제어 매도 타점 팩트 락온] 동적 익절 파라미터를 소각하고 체결 평단가 기준 '+1.0% 고정 익절' 스키마를 하드코딩하여 1-Shot 1-Kill 타격망 수복.
 # 🚨 MODIFIED: [절대 타임쉴드 (04:07 EST) 결속] 04:00~04:06 EST 구간 동안 기관의 휩소(노이즈)를 회피하기 위해 무조건 `OBSERVING(관망)`을 반환하도록 타임라인 방어막 100% 팩트 이식.
 # 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST 이후) 무포지션(0주) 상태일 경우 돌파와 무관하게 신규 진입을 전면 차단하고 '조기 퇴근' 상태를 반환하도록 2중 팩트 락온.
 # 🚨 MODIFIED: [Quant Logic 교정] 기초지수 매크로(fetch_macro_context) 연산 시 (High+Low+Close)/3.0 정통 퀀트 표준으로 팩트 교정 완료.
 # 🚨 MODIFIED: [Case 08, 16] os.path.exists 동기스캔 배제, EAFP 적용 및 temp_path 원자적 쓰기 스코프 전진 배치 유지.
 # 🚨 MODIFIED: [Case 35 결측치 전이 방어] 1분봉 데이터의 결측치(NaN)로 인해 VWAP 연산이 붕괴되는 현상을 막기 위해 ffill().bfill() 체인 강제 락온.
-# 🚨 MODIFIED: [프리장 데이터 공백 패러독스 방어] 거래량 0(Zero-Volume) 유입 시 코어 엔진의 VWAP이 0.0으로 즉사하는 맹점을 원천 차단하고, TWAP(시간가중평균) 폴백 가동.
+# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술. (주말 건너뛰기 보정 포함)
 # ==========================================================
 import logging
 import datetime
@@ -49,10 +49,20 @@ class VAvwapHybridPlugin:
         return df
 
     def _get_logical_date_str(self, now_est):
-        if now_est.hour < 4:
-             target_date = now_est - datetime.timedelta(days=1)
+        """ 🚨 [미래 참조 방어막 100% 수술] 16:00 이후 생성 시 D+1(명일)로 포워드 락온. 주말이면 차주 월요일로 정밀 매핑. """
+        if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
+            target_date = now_est - datetime.timedelta(days=1)
+        elif now_est.time() >= datetime.time(16, 0):
+            target_date = now_est + datetime.timedelta(days=1)
         else:
             target_date = now_est
+            
+        # 🚨 [주말(토/일) 보정] 16:05 금요일에 찍힌 스냅샷은 다음 거래일(월요일)을 타겟으로 락온
+        if target_date.weekday() == 5: 
+            target_date += datetime.timedelta(days=2)
+        elif target_date.weekday() == 6: 
+            target_date += datetime.timedelta(days=1)
+            
         return target_date.strftime('%Y-%m-%d')
 
     def _get_state_file(self, ticker, now_est):
@@ -185,7 +195,7 @@ class VAvwapHybridPlugin:
                 if attempt == 2: return None
                 time.sleep(1.0 * (2 ** attempt))
 
-    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avwap_avg_price=0.0, avwap_qty=0, avwap_alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, is_simulation=False, sortie_mode="SINGLE", **kwargs):
+    def get_decision(self, base_ticker=None, exec_ticker=None, base_curr_p=0.0, exec_curr_p=0.0, base_day_open=0.0, avwap_avg_price=0.0, avwap_qty=0, avwap_alloc_cash=0.0, context_data=None, df_1min_base=None, df_1min_exec=None, now_est=None, avwap_state=None, regime_data=None, is_simulation=False, sortie_mode="SINGLE", **kwargs):
         is_holiday = kwargs.get('is_holiday', False)
         now_est = now_est or datetime.datetime.now(ZoneInfo('America/New_York'))
         today_est_date = now_est.date()

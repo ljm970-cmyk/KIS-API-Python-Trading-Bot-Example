@@ -10,10 +10,10 @@
 # 🚨 MODIFIED: [Indentation 붕괴 수술] get_plan 내부 새출발(qty == 0) 블록 마지막의 unexpected indent 에러 완벽 교정
 # 🚨 VERIFIED: [리버스 모드 탈출 스캔] 손실률(-15%, -20%) 기반 일반 모드 롤오버(Seed 재조정) 로직 전면 팩트 이식
 # 🚨 VERIFIED: [리버스 1/2일 차 타격망] T > Split-1 돌파 시 1일 차 MOC 타격 / 2일 차 이후 무한 루프 분할 타격망 100% 결속
-# 🚨 MODIFIED: [제2헌법 준수] 리버스 모드 라우팅으로 인해 영구적으로 도달 불가능해진 대박 익절(is_jackpot_reached) 데드코드 전면 소각
 # 🚨 NEW: [스나이퍼 맹점 수술] save_daily_snapshot 및 get_plan 딕셔너리에 target_price, initial_qty, is_zero_start 스키마를 강제 병합하여 스나이퍼 모듈의 Silent Failure 완벽 봉쇄
 # 🚨 NEW: [0달러 덤핑 런타임 붕괴 방어] ma_5day(Rev_Star) 결측 시 LOC 매도 주문이 0달러로 KIS 서버에 전송되는 API Reject 버그를 prev_close 폴백으로 원천 차단
-# 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
+# 🚨 NEW: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 `_get_logical_date_str()` 100% 팩트 수술.
+# 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 생성 시 오염된 현재가(current_price)를 전면 배제하고 오직 순수 종가(Prev_Close)만을 절대 앵커로 락온.
 # ==========================================================
 import math
 import os
@@ -41,11 +41,22 @@ class V14Strategy:
     def _floor(self, val): return math.floor(self._safe_float(val) * 100) / 100.0
 
     def _get_logical_date_str(self):
+        """ 🚨 [미래 참조 방어막 100% 수술] 16:00 이후 생성 시 D+1(명일)로 포워드 락온. 주말이면 차주 월요일로 정밀 매핑. """
         now_est = datetime.now(ZoneInfo('America/New_York'))
+        
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
+        elif now_est.time() >= datetime.time(16, 0):
+            target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est
+            
+        # 🚨 [주말(토/일) 보정] 16:05 금요일에 찍힌 스냅샷은 다음 거래일(월요일)을 타겟으로 락온
+        if target_date.weekday() == 5: 
+            target_date += timedelta(days=2)
+        elif target_date.weekday() == 6: 
+            target_date += timedelta(days=1)
+            
         return target_date.strftime("%Y-%m-%d")
 
     def save_daily_snapshot(self, ticker, plan_data):
@@ -197,8 +208,11 @@ class V14Strategy:
         star_ratio = target_ratio - (target_ratio * depreciation_factor * t_val)
         star_price = self._ceil(avg_price * (1 + star_ratio)) if avg_price > 0 else 0.0
             
-        # 🚨 MODIFIED: [0주 팩트 리앵커링] 실시간 현재가(current_price) 오염 방지 및 전일 종가(prev_close) 절대 앵커 락온
-        base_price = prev_close if prev_close > 0.0 else current_price
+        # 🚨 MODIFIED: [0주 팩트 리앵커링] 0주 스냅샷 시 장마감 직후 오염된 현재가(curr_p) 배제, 오직 Prev_Close 락온
+        if qty == 0:
+            base_price = prev_close
+        else:
+            base_price = prev_close if prev_close > 0.0 else current_price
 
         if base_price <= 0.0: 
             plan_result = {"orders": [], "core_orders": [], "bonus_orders": [], "total_q": qty, "avg_price": avg_price, "t_val": t_val, "one_portion": one_portion_amt, "process_status": "⛔가격오류", "is_reverse": False, "star_price": star_price, "star_ratio": star_ratio, "target_price": target_price, "real_cash_used": real_available_cash, "tracking_info": {}, "initial_qty": qty, "is_zero_start": False}
@@ -279,6 +293,11 @@ class V14Strategy:
                 
                 if buy_qty1 > 0: core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty1, "type": "LOC", "desc": "🆕새출발1"})
                 if buy_qty2 > 0: core_orders.append({"side": "BUY", "price": buy_price, "qty": buy_qty2, "type": "LOC", "desc": "🆕새출발2"})
+                
+            elif is_jackpot_reached and t_val > (split - 1):
+                process_status = "🎉대박익절"
+                if qty > 0:
+                    core_orders.append({"side": "SELL", "price": target_price, "qty": int(qty), "type": "LIMIT", "desc": "🎯전량대박익절"})
                 
             else:
                 safe_ceiling = min(avg_price, star_price) if star_price > 0 else avg_price
