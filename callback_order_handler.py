@@ -7,6 +7,7 @@
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] EXEC 수동명령어 호출 시 기존 스냅샷을 파기하는 `_nuke_old_snapshot` 로직을 영구 소각하고 `is_snapshot_mode=False`를 강제 래핑하여 락온된 스냅샷을 절대 덮어쓰지 않고 불러오도록 팩트 교정 완료.
 # 🚨 MODIFIED: [MOC 공식 종가 오버라이드] KIS의 낡은 종가를 배제하고 YF 공식 종가로 무조건 덮어쓰도록 `<= 0.0` 제약 100% 소각.
 # 🚨 MODIFIED: [현재가 보존 락온 복구] 장마감 시에만 현재가(curr)를 전일 종가(prev_close)로 강제 덮어씌워 렌더링 무결성 100% 사수.
+# 🚨 MODIFIED: [SyntaxError 붕괴 수술] EMERGENCY_EXEC 내부의 엇갈린 들여쓰기(else)를 팩트 교정하여 무한 크래시 루프 원천 봉쇄 완료.
 # ==========================================================
 import logging
 import datetime
@@ -104,6 +105,7 @@ class CallbackOrderHandler:
                         logging.error(f"🚨 긴급수혈 통신 에러/타임아웃: {e}")
                         res = None
                     
+                    # 🚨 MODIFIED: [Syntax 붕괴 수술] else 구문 들여쓰기 100% 정밀 교정
                     if isinstance(res, dict) and str(res.get('rt_cd', '')) == '0':
                         await asyncio.to_thread(self.queue_ledger.pop_lots, ticker, emergency_qty)
                         msg = f"🚨 <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 (Emergency MOC) 격발 완료!</b>\n"
@@ -116,12 +118,12 @@ class CallbackOrderHandler:
                             await query.edit_message_text(new_msg, reply_markup=markup, parse_mode='HTML')
                         except Exception:
                             pass
-                else:
-                    err_msg = html.escape(str(res.get('msg1') or '알 수 없는 에러')) if isinstance(res, dict) else '응답 없음/통신 장애'
-                    try:
-                        await query.edit_message_text(f"❌ <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 실패:</b> {err_msg}", parse_mode='HTML')
-                    except Exception:
-                        pass
+                    else:
+                        err_msg = html.escape(str(res.get('msg1') or '알 수 없는 에러')) if isinstance(res, dict) else '응답 없음/통신 장애'
+                        try:
+                            await query.edit_message_text(f"❌ <b>[{html.escape(str(ticker))}] 수동 긴급 수혈 실패:</b> {err_msg}", parse_mode='HTML')
+                        except Exception:
+                            pass
 
         elif action == "EXEC":
             t = sub
@@ -152,9 +154,6 @@ class CallbackOrderHandler:
                 except Exception:
                     pass
                 return
-
-            # 🚨 MODIFIED: [스냅샷 절대주의 사수] 수동명령(EXEC) 시 기존에 락온된 스냅샷 파일(JSON)을 파기하는 맹독성 덤핑 로직 영구 소각.
-            # (def _nuke_old_snapshot() 및 await asyncio.to_thread(_nuke_old_snapshot) 삭제 완료)
 
             try:
                 from scheduler_core import get_budget_allocation
@@ -245,7 +244,6 @@ class CallbackOrderHandler:
                     
             is_manual_vwap = await asyncio.to_thread(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t)
             
-            # 🚨 MODIFIED: [스냅샷 절대주의 사수] is_snapshot_mode=False 강제 래핑하여 락온된 스냅샷 파일(JSON)을 절대 덮어쓰지 않고 불러오기만 함.
             try:
                 plan = await asyncio.to_thread(self.strategy.get_plan, t, curr_p, safe_avg, safe_qty, prev_c, ma_5day=ma_5day, market_type="REG", available_cash=allocated_budget, is_simulation=True, is_snapshot_mode=False)
             except Exception as e:
