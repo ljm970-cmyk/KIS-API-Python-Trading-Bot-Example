@@ -11,6 +11,7 @@
 # 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 메세지 발송 및 파일 I/O 스레드 전역에 asyncio.wait_for(timeout=10.0) 족쇄 래핑 완료 (Deadlock 원천 봉쇄).
 # 🚨 MODIFIED: [수술 1] 암살자 유령 장부(Ghost Ledger) 및 잔여 상태 캐시 100% 영구 소각 파이프라인 결속 완료.
 # 🚨 MODIFIED: [스냅샷 파괴 범위 대통합] RESET:LOCK 해제 시 V-REV 뿐만 아니라 V14, V14VWAP 스냅샷까지 100% 순회 소각하도록 팩트 교정 완료.
+# 🚨 MODIFIED: [논리 붕괴 궁극 수술] EDITQ_ 지층 편집 모드에서 API 응답(break) 시 팻핑거 방어막이 바이패스되는 패러독스(들여쓰기 오류)를 루프 외부로 팩트 교정 완료.
 # ==========================================================
 
 import logging
@@ -123,11 +124,12 @@ class TelegramStates:
                             if attempt == 2: curr_p = 0.0
                             else: await asyncio.sleep(1.0 * (2 ** attempt))
             
-                        if curr_p and curr_p > 0 and (price < curr_p * 0.4 or price > curr_p * 1.6):
-                            del controller.user_states[chat_id]
-                            try: await asyncio.wait_for(update.effective_message.reply_text(f"🚨 <b>팻핑거 방어 가동:</b> 입력가(${price:.2f})가 현재가(${curr_p:.2f}) 대비 ±60%를 초과합니다. 다시 시도해주세요.", parse_mode='HTML'), timeout=10.0)
-                            except Exception: pass
-                            return
+                    # 🚨 MODIFIED: [논리 붕괴 교정] API 응답 성공(break) 시 팻핑거 방어막이 통째로 무시되는 즉사 버그를 막기 위해 for 루프 외부로 스코프 전진 배치 완료.
+                    if curr_p and curr_p > 0 and (price < curr_p * 0.4 or price > curr_p * 1.6):
+                        del controller.user_states[chat_id]
+                        try: await asyncio.wait_for(update.effective_message.reply_text(f"🚨 <b>팻핑거 방어 가동:</b> 입력가(${price:.2f})가 현재가(${curr_p:.2f}) 대비 ±60%를 초과합니다. 다시 시도해주세요.", parse_mode='HTML'), timeout=10.0)
+                        except Exception: pass
+                        return
                 except Exception:
                     pass
 
@@ -211,7 +213,7 @@ class TelegramStates:
             elif state.startswith("CONF_TARGET"):
                 ticker = parts[-1]
                 safe_ticker = html.escape(str(ticker))
-            
+                
                 def _set_target(cfg_obj, t, v):
                     with cfg_obj._io_lock:
                         d = cfg_obj._load_json(cfg_obj.FILES["PROFIT_CFG"], cfg_obj.DEFAULT_TARGET)
@@ -352,4 +354,3 @@ class TelegramStates:
         finally:
             if chat_id in controller.user_states:
                 del controller.user_states[chat_id]
-
