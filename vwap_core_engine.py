@@ -4,10 +4,11 @@
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] _retry_api 내의 await asyncio.sleep(0.06) 파편화 땜질 전면 삭제.
 # 🚨 MODIFIED: [중앙 통제소 위임] 모든 API 지연을 GlobalThrottle(중앙 통제소)로 100% 위임하여 이벤트 루프 교착 상태 완벽 방어.
 # 🚨 MODIFIED: [순수 슬라이싱 아키텍처 팩트 수복] 슬라이싱 엔진 내부에서 목표가 2% 이내 접근 시 강제로 스윕(Sweep)해버리는 기형적인 조건문을 영구 소각하고, 오직 정밀한 1분 단위 분할(Slicing) 타격만 집행하도록 100% 팩트 교정 완료.
-# 🚨 MODIFIED: [하이재킹 1회분 절대 락온 (V93.90)] 하이재킹 발동 시 예산 전액/물량 전량을 무식하게 스윕(Sweep)하던 맹독성 뇌관을 100% 영구 소각. 금일 로컬 지시서(slice_state)에 할당된 '미체결 1회분(Portion)' 수량만을 정밀하게 추출하여 요격함으로써 퀀트 예산 통제 원칙 완벽 사수.
 # 🚨 MODIFIED: [상방 매도 하이재킹 큐 장부 보존] 전량 익절망(clear_queue)을 소각하고, 1회분 타격량만큼만 큐 장부에서 부분 차감(pop_lots)하도록 팩트 결속.
-# 🚨 MODIFIED: [재시작 붕괴 (Double Fire) 궁극 수술] 봇 재시작 시 메모리 증발로 인해 하이재킹이 이중 격발되는 대참사를 막기 위해, 1) 디스크(slice_state) 크로스체크 전진 배치, 2) 예산 장부(_load_state_if_needed) 강제 동기화, 3) 타격 성공 시 slice_state 내부 filled_qty 원자적 차감(Idempotency) 로직을 100% 팩트 결속 완료.
-# 🚨 MODIFIED: [Case 41 절대 사수 및 API 최적화] 매도 슬라이싱 타격 시 증권사 실잔고 조회(get_account_balance)를 중복 호출하던 맹독성 루프를 영구 소각. V-REV 모드일 경우 오직 로컬 큐 장부(vrev_q_qty) 기준으로만 캡핑하여 개인 장기 투자 물량을 100% 물리적 격리 보호.
+# 🚨 MODIFIED: [재시작 붕괴 (Double Fire) 궁극 수술] 봇 재시작 시 메모리 증발로 인해 하이재킹이 이중 격발되는 대참사를 막기 위해, 1) 디스크(slice_state) 크로스체크 전진 배치, 2) 예산 장부(_load_state_if_needed) 강제 동기화 결속.
+# 🚨 MODIFIED: [Case 41 절대 사수 및 API 최적화] 매도 슬라이싱 타격 시 증권사 실잔고 조회(get_account_balance)를 중복 호출하던 맹독성 루프를 영구 소각.
+# 🚨 MODIFIED: [V94.10 정액제 절대주의 팩트 롤백] 하방 하이재킹 격발 시 스냅샷 지시서 수량(정량제)으로 캡핑(Capping)하던 맹독성 뇌관을 100% 영구 소각. 퀀트의 Value Averaging(가치 평균화) 철학에 따라, 오직 '1회분 잔여 예산 전액'을 투입해 폭락한 가격만큼 최대 수량을 스윕(Sweep)하도록 로직을 원상 복구 완료.
+# 🚨 MODIFIED: [Idempotency 락온] 정액제 풀 스윕 이후 로컬 지시서의 모든 매수(BUY) 물량을 즉각 만기(Full Fill) 처리하여 슬라이싱 엔진의 자전거래를 물리적으로 영구 차단.
 # ==========================================================
 import logging
 import asyncio
@@ -274,16 +275,13 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                             
                                         rem_budget = max(0.0, safe_alloc_cash - total_spent)
 
-                                        # 1일분 예산 전액 무지성 덤핑 소각 및 로컬 지시서 기반 1회분(Portion) 정밀 추출
-                                        rem_buy_qty_from_plan = sum(max(0, int(_safe_float(o.get('total_qty', 0))) - int(_safe_float(o.get('filled_qty', 0)))) for o in slice_state_check.get('orders', []) if str(o.get('side')) == 'BUY')
-
                                         ask_price = _safe_float(await _retry_api(broker.get_ask_price, t))
                                         curr_p = _safe_float(await _retry_api(broker.get_current_price, t))
                                         exec_price = ask_price if ask_price > 0 else curr_p
                                         
-                                        max_affordable_qty = int(math.floor(rem_budget / exec_price)) if exec_price > 0 else 0
-                                        # 🚨 지시서상 남은 1회분 물량과 잔여 예산 물량 중 작은 값을 취하여 예산 통제 100% 사수
-                                        buy_qty = min(rem_buy_qty_from_plan, max_affordable_qty)
+                                        # 🚨 MODIFIED: [V94.10 정액제 절대주의 팩트 롤백] 스냅샷 수량 캡핑(min) 영구 소각.
+                                        # 퀀트의 Value Averaging(가치 평균화) 철학에 따라 오직 잔여 예산을 한도 끝까지 긁어모아 매도 1호가로 풀-스윕(Sweep)합니다.
+                                        buy_qty = int(math.floor(rem_budget / exec_price)) if exec_price > 0 else 0
                                         
                                         if buy_qty > 0:
                                             res = await _retry_api(broker.send_order, t, "BUY", buy_qty, exec_price, "LIMIT")
@@ -294,29 +292,24 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                                 vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                                 is_downward_hijacked_now = True
                                                 
-                                                # 🚨 MODIFIED: [로컬 지시서 멱등성 사수] 타격 성공 시, 지시서의 filled_qty를 물리적으로 깎아내어 재시작 시 이중 격발(Double Fire) 완벽 차단
+                                                # 🚨 MODIFIED: [로컬 지시서 멱등성 사수] 정액제 스윕 시 잔여 슬라이싱을 영구 마비시키기 위해 모든 BUY 플랜의 filled_qty를 만기 처리.
                                                 try:
                                                     final_slice_state = await _retry_api(_read_json_safe_sync, slice_file, today_hyphen, default={})
-                                                    rem_to_fill = buy_qty
                                                     for o in final_slice_state.get('orders', []):
-                                                        if str(o.get('side')) == 'BUY' and rem_to_fill > 0:
-                                                            o_tot = int(_safe_float(o.get('total_qty', 0)))
-                                                            o_fill = int(_safe_float(o.get('filled_qty', 0)))
-                                                            space = max(0, o_tot - o_fill)
-                                                            fill_amt = min(space, rem_to_fill)
-                                                            o['filled_qty'] = o_fill + fill_amt
-                                                            rem_to_fill -= fill_amt
+                                                        if str(o.get('side')) == 'BUY':
+                                                            # 이중 격발 원천 차단: 잔여 매수 물량을 0으로 물리적 소각
+                                                            o['filled_qty'] = o.get('total_qty', 0)
                                                     
                                                     final_slice_state['hijacked'] = True
                                                     final_slice_state['date'] = today_hyphen
                                                     await _retry_api(_atomic_write_json_sync, slice_file, final_slice_state)
                                                 except Exception as e:
-                                                    logging.error(f"🚨 [{t}] 하이재킹 체결 후 로컬 지시서 수량(filled_qty) 차감 중 I/O 에러: {e}")
+                                                    logging.error(f"🚨 [{t}] 하이재킹 체결 후 로컬 지시서 수량(filled_qty) 만기 처리 중 I/O 에러: {e}")
 
                                                 msg = f"⚡ <b>[{html.escape(str(t))}] 🤖 하방 모멘텀 자율주행 (Gap Hijack) 섀도우 오버라이드 격발!</b>\n"
                                                 msg += f"▫️ 당일 누적 VWAP 이탈률(<b>{gap_pct:+.2f}%</b>)이 임계치(<b>{gap_thresh}%</b>)를 하향 돌파했습니다.\n"
-                                                msg += f"▫️ 예약/미체결 덫({nuked_count}건) 파기 후, 금일 지시서상의 <b>잔여 매수 1회분</b>을 매도 1호가로 일괄 타격(Sweep)했습니다!\n"
-                                                msg += f"▫️ 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
+                                                msg += f"▫️ 예약/미체결 덫({nuked_count}건) 파기 후, 금일 <b>잔여 예산 전액(${rem_budget:,.2f})</b>을 매도 1호가로 일괄 타격(Sweep)했습니다!\n"
+                                                msg += f"▫️ 정액제 스윕 수량: <b>{buy_qty}주</b> (단가: ${exec_price:.2f})"
                                                 
                                                 await _safe_send(context, chat_id, msg, parse_mode='HTML')
                                                 
@@ -340,7 +333,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         else:
                                             vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                             is_downward_hijacked_now = True
-                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 격발 조건을 만족했으나 1회분 잔여 물량 또는 예산 소진으로 스윕 매수 생략 (플래그 락온 완료).")
+                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 격발 조건을 만족했으나 잔여 예산 소진($0)으로 스윕 매수 생략 (플래그 락온 완료).")
 
                                 # ----------------------------------------------------
                                 # 🚨 [B. 상방 매도 하이재킹 (Upward Sell Hijack) 격발망]
@@ -357,7 +350,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         can_upward_hijack = False
                                         target_sell_qty = 0
                                         
-                                        # 로컬 지시서 기반 1회분(Portion) 정밀 추출
+                                        # 로컬 지시서 기반 1회분(Portion) 정밀 추출 (매도는 층별 캡핑을 위해 정량제 유지)
                                         rem_sell_qty_from_plan = sum(max(0, int(_safe_float(o.get('total_qty', 0))) - int(_safe_float(o.get('filled_qty', 0)))) for o in slice_state_check.get('orders', []) if str(o.get('side')) == 'SELL')
                                         
                                         if rem_sell_qty_from_plan > 0:
