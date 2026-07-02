@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [Case 41 절대 사수 및 API 최적화] 매도 슬라이싱 타격 시 증권사 실잔고 조회(get_account_balance)를 중복 호출하던 맹독성 루프를 영구 소각.
 # 🚨 MODIFIED: [V94.10 정액제 절대주의 팩트 롤백] 하방 하이재킹 격발 시 스냅샷 지시서 수량(정량제)으로 캡핑(Capping)하던 맹독성 뇌관을 100% 영구 소각. 퀀트의 Value Averaging(가치 평균화) 철학에 따라, 오직 '1회분 잔여 예산 전액'을 투입해 폭락한 가격만큼 최대 수량을 스윕(Sweep)하도록 로직을 원상 복구 완료.
 # 🚨 MODIFIED: [Idempotency 락온] 정액제 풀 스윕 이후 로컬 지시서의 모든 매수(BUY) 물량을 즉각 만기(Full Fill) 처리하여 슬라이싱 엔진의 자전거래를 물리적으로 영구 차단.
+# 🚨 MODIFIED: [1분 슬라이싱 정액제(Fixed-Amount) 궁극 락온] 15:56 EST 마지막 슬라이싱 틱(cum_weight >= 1.0) 도달 시, 정량제 수량 캡핑을 영구 무효화하고 다중 매수 지층(Buy1, Buy2)의 잔여 예산을 정밀 산출하여 남은 한도 끝까지 100% 스윕(Sweep) 매수하도록 팩트 교정 완료.
 # ==========================================================
 import logging
 import asyncio
@@ -32,9 +33,11 @@ def _safe_float(val):
         return 0.0
 
 async def _retry_api(func, *args, timeout=15.0, default=None, **kwargs):
-    """ 🚨 [Case 32, 33] 중앙 집중형 TPS 캡핑 (GlobalThrottle 위임) 및 지수 백오프 래퍼 """
+    """ 🚨 [Case 31, 32, 33] TPS 캡핑(0.06s) 및 지수 백오프 래퍼 """
     for attempt in range(3):
         try:
+            # 🚨 MODIFIED: [Case 31 준수] 대량 API 호출 전 0.06초 팩트 지연 강제 주입
+            await asyncio.sleep(0.06)
             if asyncio.iscoroutinefunction(func):
                  return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
             else:
@@ -385,7 +388,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                                     if odno:
                                                         c_res = await _retry_api(broker.cancel_reservation_order, ord_dt, odno)
                                                         if c_res: nuked_count += 1
-                                                        
+                                            
                                                 unfilled = await _retry_api(broker.get_unfilled_orders_detail, t, default=[])
                                                 safe_unfilled = unfilled if isinstance(unfilled, list) else []
                                                 
@@ -515,6 +518,39 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                             
                         state_changed = False
                         
+                        # 🚨 MODIFIED: [1분 슬라이싱 정액제 마지막 타격 예산 스윕 락온]
+                        global_rem_budget = 0.0
+                        safe_alloc_cash = 0.0
+                        if cum_weight >= 1.0:
+                            seed = await _retry_api(cfg.get_seed, t, default=0.0)
+                            daily_limit = _safe_float(seed) * 0.15
+                            alloc_cash = _safe_float(allocated_cash.get(t, 0.0))
+                            
+                            if version == "V_REV":
+                                safe_alloc_cash = min(alloc_cash, daily_limit) if daily_limit > 0 else alloc_cash
+                                total_spent = 0.0
+                                if hasattr(strategy, 'v_rev_plugin'):
+                                    await asyncio.to_thread(strategy.v_rev_plugin._load_state_if_needed, t)
+                                    spent_dict = strategy.v_rev_plugin.executed.get("BUY_BUDGET")
+                                    safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                    total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                            else:
+                                safe_alloc_cash = alloc_cash
+                                total_spent = 0.0
+                                if hasattr(strategy, 'v14_vwap_plugin'):
+                                    await asyncio.to_thread(strategy.v14_vwap_plugin._load_state_if_needed, t)
+                                    spent_dict = strategy.v14_vwap_plugin.executed.get("BUY_BUDGET")
+                                    safe_spent_dict = spent_dict if isinstance(spent_dict, dict) else {}
+                                    total_spent = _safe_float(safe_spent_dict.get(t, 0.0))
+                                
+                            global_rem_budget = max(0.0, safe_alloc_cash - total_spent)
+                            
+                            # 🚨 NEW: 다중 매수 지층별 잔여 예산 정밀 할당 (Double Spending 방어)
+                            all_buy_orders = [ox for ox in orders if str(ox.get('side')) == 'BUY']
+                            tot_b = sum(int(_safe_float(ox.get('total_qty', 0))) for ox in all_buy_orders)
+                            for ox in all_buy_orders:
+                                ox['_rem_budget'] = global_rem_budget * (int(_safe_float(ox.get('total_qty', 0))) / tot_b) if tot_b > 0 else 0.0
+                        
                         for o in orders:
                             if not isinstance(o, dict): continue
                             
@@ -530,8 +566,10 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                             if is_state_upward_hijacked and side == 'SELL':
                                 continue
                             
-                            if filled_qty >= total_qty and not last_odno:
-                                continue
+                            # 🚨 MODIFIED: [정액제 예산 돌파 사수] 마지막 틱(cum_weight >= 1.0) 매수(BUY) 시 스냅샷 한도를 초과할 수 있으므로 continue 방어막 우회
+                            if not (side == "BUY" and cum_weight >= 1.0):
+                                if filled_qty >= total_qty and not last_odno:
+                                    continue
                             
                             ccld_qty_this_tick = 0
                             if last_odno:
@@ -593,7 +631,7 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         except Exception as e:
                                             processed_odnos.remove(last_odno) 
                                             logging.error(f"🚨 [{t}] 자체 슬라이싱 체결 장부 동기화 실패 (캐시 롤백): {e}")
-                            
+                                        
                                         msg_side = "매수" if side == "BUY" else "매도"
                                         logging.info(f"⚡ [{t}] 섀도 엔진 체결 팩트 장부 동기화 완료: {msg_side} {ccld_qty_this_tick}주 @ ${real_exec_price:.2f} (텔레그램 타전 바이패스)")
 
@@ -606,21 +644,18 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                             if is_cleanup_phase:
                                 continue 
 
-                            if filled_qty >= total_qty: continue
-                            
                             target_cum_qty = round(total_qty * cum_weight)
-                            qty_to_send = target_cum_qty - filled_qty
                             
                             exec_price = 0.0
                             if side == "BUY":
                                 exec_price = _safe_float(await _retry_api(broker.get_ask_price, t))
                             else:
                                 exec_price = _safe_float(await _retry_api(broker.get_bid_price, t))
-                                
+                                    
                             if exec_price <= 0.0:
                                 exec_price = _safe_float(await _retry_api(broker.get_current_price, t))
                                          
-                            # 🚨 MODIFIED: [순수 슬라이싱 아키텍처 팩트 수복] 스윕 로직 영구 소각, 무조건 1분 할당량 분할 타격
+                            qty_to_send = 0
                             if target_price > 0.0:
                                 is_target_hit = False
                                 if side == "BUY" and exec_price <= target_price:
@@ -628,13 +663,23 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                 elif side == "SELL" and exec_price >= target_price:
                                     is_target_hit = True
 
-                                if is_target_hit:
-                                    qty_to_send = target_cum_qty - filled_qty
-                                else:
+                                if not is_target_hit:
                                     continue 
+
+                            # 🚨 MODIFIED: [1분 슬라이싱 정액제(Fixed-Amount) 100% 락온] 마지막 15:56 도달 시 남은 1회분 전체 예산을 정밀 역산하여 스윕 매수!
+                            if side == "BUY" and cum_weight >= 1.0:
+                                my_rem_budget = o.get('_rem_budget', 0.0)
+                                qty_to_send = math.floor(my_rem_budget / exec_price) if exec_price > 0 else 0
+                                
+                                # 중복 매수(Double Fire) 방지를 위해 글로벌 예산 즉시 차감
+                                if qty_to_send > 0:
+                                    global_rem_budget -= (qty_to_send * exec_price)
+                                    o['_rem_budget'] = 0.0 
+                            else:
+                                qty_to_send = target_cum_qty - filled_qty
                                     
                             if qty_to_send <= 0: continue
-                                
+                                      
                             if exec_price > 0:
                                 if side == "SELL" and qty_to_send > 0:
                                     # 🚨 MODIFIED: [Case 41 절대 사수] 매도 캡핑 시 KIS 실잔고 조회(get_account_balance) 루프를 영구 소각하고, 
