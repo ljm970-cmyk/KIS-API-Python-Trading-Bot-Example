@@ -10,6 +10,8 @@
 # 🚨 MODIFIED: [제3헌법 준수] 토큰 만료 연산 시 잔존하던 KST 혼용 뇌관 전면 소각 및 EST 타임라인 100% 통합
 # 🚨 MODIFIED: [AttributeError 궁극 수술] 서버 응답(msg1, msg_cd) NoneType 유입 시 .lower() 붕괴 원천 차단
 # 🚨 MODIFIED: [로깅 증발 방어] 헤드리스(Headless) 환경에서 증발하는 print() 데드코드 전면 소각 및 logging 체계 100% 락온
+# 🚨 NEW: [토큰 데드락 궁극 수술] 정기점검 후 KIS 서버의 비표준 Reject(점검, 권한, 등록되지 등)에 대응하기 위한 맹독성 에러 키워드 스펙트럼 확장 결속.
+# 🚨 NEW: [연속 Reject 컷오프] 3회 연속 API 거절(rt_cd != 0) 시 무조건 토큰을 영구 소각하는 Fail-Safe 방어망 전면 이식 완료.
 # ==========================================================
 
 import requests
@@ -147,9 +149,10 @@ class KisApiClient:
         }
 
     def _api_request(self, method, url, headers, params=None, data=None):
+        # 🚨 MODIFIED: [맹독성 에러 키워드 스펙트럼 확장] 정기점검 후 KIS 서버의 비표준 Reject 에러 키워드 일괄 결속
         TOKEN_EXPIRY_KEYWORDS = frozenset([
             'expired', '인증', 'authorization', 'egt0001', 'egt0002', 'oauth', 
-            '접근토큰이 만료', '토큰이 유효하지'
+            '접근토큰이 만료', '토큰이 유효하지', '점검', '권한', '등록되지', '시스템', '초과'
         ])
     
         for attempt in range(3): 
@@ -178,7 +181,7 @@ class KisApiClient:
                     if any(x in msg1_lower or x in msg_cd for x in TOKEN_EXPIRY_KEYWORDS):
                         if attempt == 0: 
                             old_token = self.token 
-                            logging.warning(f"🚨 [안전장치 가동] API 토큰 만료 감지! : {msg1_lower}")
+                            logging.warning(f"🚨 [안전장치 가동] API 토큰 만료 및 오염 감지! : {msg1_lower}")
                             self._get_access_token(force=True)
                             
                             if self.token == old_token or self.token is None:
@@ -188,6 +191,14 @@ class KisApiClient:
                             headers["authorization"] = f"Bearer {self.token}"
                             time.sleep(1.0)
                             continue
+
+                    # 🚨 NEW: [연속 Reject 컷오프 (Fail-Safe)망 결속] 3회 연속 실패 시 묻지도 따지지도 않고 토큰 파기
+                    if attempt == 2:
+                        logging.error(f"🚨 [Fail-Safe] KIS 서버 연속 거절 감지. 토큰 오염으로 간주하고 캐시를 파기합니다: {msg1_lower}")
+                        try:
+                            os.remove(self.token_file)
+                        except OSError:
+                            pass
  
                 return res, resp_json
          
@@ -252,3 +263,4 @@ class KisApiClient:
 
         self._excg_cd_cache[ticker] = {'PRICE': price_cd, 'ORDER': order_cd}
         return price_cd if target_api == "PRICE" else order_cd
+
