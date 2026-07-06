@@ -5,23 +5,24 @@
 # 🚨 MODIFIED: [제4헌법 준수] 원자적 쓰기(Atomic Write) 강제 락온 및 .bak 파일 듀얼 세이프티
 # 🚨 MODIFIED: [Case 16 위반 교정] 임시 파일 스코프 최상단 전진 배치(Hoisting)
 # 🚨 MODIFIED: [Insight 14 & 25] NaN, Infinity 및 String-Comma 맹독성 데이터 방어막 100% 내재화
+# 🚨 MODIFIED: [Lost Update 궁극 방어] 인스턴스 락(self._lock) 영구 소각 및 GlobalThrottle 파일 뮤텍스 강제 래핑 완료.
 # ==========================================================
 
 import os
 import json
 import time
 import math
-import threading
 import shutil
 import tempfile
 from zoneinfo import ZoneInfo
 from datetime import datetime
 import logging
+from global_throttle import GlobalThrottle # 🚨 전역 락 엔진
 
 class AssassinLedger:
     def __init__(self, file_path="data/assassin_ledger.json"):
         self.file_path = file_path
-        self._lock = threading.Lock()
+        # 🚨 인스턴스 락 영구 소각 완료
         self._ensure_file()
 
     def _safe_float(self, value):
@@ -34,30 +35,27 @@ class AssassinLedger:
             return 0.0
 
     def _ensure_file(self):
-        try:
-            dir_name = os.path.dirname(self.file_path) or '.'
-            os.makedirs(dir_name, exist_ok=True)
-        except OSError:
-            pass
-
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
+        # 🚨 전역 파일 뮤텍스로 원자성 보장
+        with GlobalThrottle.get_file_lock(self.file_path):
+            try:
+                dir_name = os.path.dirname(self.file_path) or '.'
+                os.makedirs(dir_name, exist_ok=True)
+            except OSError:
                 pass
-        except FileNotFoundError:
-            with self._lock:
-                try:
-                    with open(self.file_path, 'r', encoding='utf-8') as f:
-                        pass
-                except FileNotFoundError:
-                    self._save_unsafe({})
-        except Exception:
-            pass
+            try:
+                with open(self.file_path, 'r', encoding='utf-8') as f:
+                    pass
+            except FileNotFoundError:
+                self._save_unsafe_no_lock({})
+            except Exception:
+                pass
 
     def _get_trading_date_str(self):
         est = ZoneInfo('America/New_York')
         return datetime.now(est).strftime("%Y-%m-%d")
 
-    def _load_unsafe(self):
+    def _load_unsafe_no_lock(self):
+        """ 🚨 호출부에서 GlobalThrottle Lock을 잡고 진입하므로 순수 읽기만 수행 """
         last_exc = None
         for attempt in range(3):
             try:
@@ -81,7 +79,7 @@ class AssassinLedger:
                 data = json.load(f)
                 logging.warning(f"🚨 [AssassinLedger] JSON 손상 감지. 백업 파일({backup_path}) 복원 완료.")
                 try:
-                    self._save_unsafe(data)
+                    self._save_unsafe_no_lock(data)
                 except Exception as heal_e:
                     logging.error(f"🚨 [AssassinLedger] 자가 치유 I/O 통신 에러: {heal_e}")
                 return data
@@ -92,13 +90,9 @@ class AssassinLedger:
         
         raise RuntimeError(f"🚨 [FATAL ERROR] {self.file_path} 암살자 장부 읽기 실패. 원인: {last_exc}")
 
-    def _save_unsafe(self, data):
+    def _save_unsafe_no_lock(self, data):
+        """ 🚨 호출부에서 GlobalThrottle Lock을 잡고 진입하므로 순수 쓰기만 수행 """
         dir_name = os.path.dirname(self.file_path) or '.'
-        try:
-            os.makedirs(dir_name, exist_ok=True)
-        except OSError:
-            pass
-
         for attempt in range(3):
             fd = None
             tmp_path = None
@@ -136,8 +130,8 @@ class AssassinLedger:
 
     def apply_stock_split(self, ticker, ratio):
         if ratio <= 0: return
-        with self._lock:
-            data = self._load_unsafe()
+        with GlobalThrottle.get_file_lock(self.file_path):
+            data = self._load_unsafe_no_lock()
             q = data.get(ticker, [])
             changed = False
             for lot in q:
@@ -151,11 +145,11 @@ class AssassinLedger:
                 changed = True
             if changed:
                 data[ticker] = q
-                self._save_unsafe(data)
+                self._save_unsafe_no_lock(data)
 
     def get_ledger(self, ticker):
-        with self._lock:
-            data = self._load_unsafe()
+        with GlobalThrottle.get_file_lock(self.file_path):
+            data = self._load_unsafe_no_lock()
             q = data.get(ticker, [])
             return [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0]
 
@@ -168,8 +162,8 @@ class AssassinLedger:
             logging.error(f"🚨 [AssassinLedger] add_lot 중단: {ticker} — 유효하지 않은 매수 가격 (price={price}). 로트 추가 취소.")
             return
             
-        with self._lock:
-            data = self._load_unsafe()
+        with GlobalThrottle.get_file_lock(self.file_path):
+            data = self._load_unsafe_no_lock()
             q = data.get(ticker, [])
             q = [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0] 
             
@@ -194,15 +188,15 @@ class AssassinLedger:
                 })
             
             data[ticker] = q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
 
     def pop_lots(self, ticker, target_qty, sold_price=0.0):
         original_target = int(self._safe_float(target_qty))
         target_qty = original_target
         if target_qty <= 0: return 0
         
-        with self._lock:
-            data = self._load_unsafe()
+        with GlobalThrottle.get_file_lock(self.file_path):
+            data = self._load_unsafe_no_lock()
             q = data.get(ticker, [])
             q = [lot for lot in q if int(self._safe_float(lot.get("qty"))) > 0] 
             
@@ -232,11 +226,11 @@ class AssassinLedger:
                 logging.warning(f"⚠️ [AssassinLedger] pop_lots 미달: {ticker} — 요청 {original_target}주 중 {popped_total}주만 차감.")
 
             data[ticker] = q
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)
             return popped_total
 
     def clear_ledger(self, ticker):
-        with self._lock:
-            data = self._load_unsafe()
+        with GlobalThrottle.get_file_lock(self.file_path):
+            data = self._load_unsafe_no_lock()
             data[ticker] = []
-            self._save_unsafe(data)
+            self._save_unsafe_no_lock(data)

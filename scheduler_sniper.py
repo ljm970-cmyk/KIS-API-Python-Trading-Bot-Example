@@ -2,6 +2,7 @@
 # FILE: scheduler_sniper.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [Lost Update 궁극 방어] 상태 파일 I/O(_load, _save) 시 GlobalThrottle 전역 파일 뮤텍스를 강제 주입하여, 비동기 경합으로 인해 체결 수량(qty)이 0으로 덮어써지는 유령 상태(Ghost State) 패러독스 완벽 차단.
 # 🚨 MODIFIED: [Case 43 절대 헌법 준수] TPS 초과 밴(Ban) 원천 차단: 실시간 감시 폴링(Polling) 루프 내에 `await asyncio.sleep(1.5)`를 강제 래핑하여 초당 20건 Rate Limit 초과로 인한 API 차단을 완벽히 방어.
 # 🚨 MODIFIED: [애프터장 수익 실현망 팩트 수복] 오버나이트 모드(ON)로 전환 시, 기장전된 +1.0% 익절 덫을 취소하지 않고 살려두어 애프터마켓 슈팅 시 즉각 수익을 실현하도록 아키텍처 롤백.
 # 🚨 MODIFIED: [오버나이트 동면 방지] 15:59 오버나이트 진입 시 `shutdown=True`를 차단하여, 20:00 EST까지 봇이 애프터장 체결 여부를 끝까지 추적 및 장부 소각을 수행하도록 팩트 락온.
@@ -32,6 +33,7 @@ import functools
 
 from scheduler_core import is_market_open
 from assassin_ledger import AssassinLedger
+from global_throttle import GlobalThrottle # 🚨 NEW: 전역 파일 뮤텍스 결속
 
 def _safe_float(val):
     """ 🚨 [Insight 14, 25] NaN, Infinity 및 String-Comma 맹독성 런타임 붕괴 방어막 결속 """
@@ -43,44 +45,8 @@ def _safe_float(val):
     except Exception:
         return 0.0
 
-# 🚨 [Case 08, 16] 암살자 실전 매매 상태 원자적 제어 헬퍼
-def _load_avwap_trade_state(ticker, now_est):
-    date_str = now_est.strftime('%Y-%m-%d')
-    file_path = f"data/avwap_trade_state_{ticker}.json"
-    data = {}
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        pass
-    
-    if not isinstance(data, dict): data = {}
-    
-    # 🚨 [새로운 스키마 초기화 및 Double Fire 락온(is_ordering) 변수 주입]
-    if data.get('date') != date_str:
-        data = {
-            'date': date_str,
-            'qty': 0,
-            'avg_price': 0.0,
-            'buy_odno': "",
-            'is_ordering': False,  
-            'sell_odno': "",
-            'shutdown': False,
-            'dumped': False,
-            'cash_warned': False,
-            'alert_msg_id': 0
-        }
-        
-        if 'buy_target_price' in data: del data['buy_target_price']
-        _save_avwap_trade_state(ticker, data)
-        
-    if 'is_ordering' not in data:
-        data['is_ordering'] = False
-        
-    return data
-
-def _save_avwap_trade_state(ticker, state_data):
-    file_path = f"data/avwap_trade_state_{ticker}.json"
+def _save_avwap_trade_state_unsafe(file_path, state_data):
+    """ 🚨 [동기화 헬퍼] Lock 획득 후 안전하게 원자적 쓰기 집행 """
     dir_name = os.path.dirname(file_path) or '.'
     try: os.makedirs(dir_name, exist_ok=True)
     except OSError: pass
@@ -103,7 +69,51 @@ def _save_avwap_trade_state(ticker, state_data):
         if tmp_path:
             try: os.remove(tmp_path)
             except OSError: pass
-        logging.error(f"🚨 [{ticker}] 암살자 실전 매매 상태 저장 실패: {e}")
+        logging.error(f"🚨 [Sniper] 암살자 실전 매매 상태 저장 실패: {e}")
+
+# 🚨 MODIFIED: [Lost Update 궁극 방어] GlobalThrottle 기반 File Mutex 강제 주입
+def _load_avwap_trade_state(ticker, now_est):
+    date_str = now_est.strftime('%Y-%m-%d')
+    file_path = f"data/avwap_trade_state_{ticker}.json"
+    
+    with GlobalThrottle.get_file_lock(file_path):
+        data = {}
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+        
+        if not isinstance(data, dict): data = {}
+        
+        # 🚨 [새로운 스키마 초기화 및 Double Fire 락온(is_ordering) 변수 주입]
+        if data.get('date') != date_str:
+            data = {
+                'date': date_str,
+                'qty': 0,
+                'avg_price': 0.0,
+                'buy_odno': "",
+                'is_ordering': False,  
+                'sell_odno': "",
+                'shutdown': False,
+                'dumped': False,
+                'cash_warned': False,
+                'alert_msg_id': 0
+            }
+            
+            if 'buy_target_price' in data: del data['buy_target_price']
+            _save_avwap_trade_state_unsafe(file_path, data)
+            
+        if 'is_ordering' not in data:
+            data['is_ordering'] = False
+            
+        return data
+
+# 🚨 MODIFIED: [Lost Update 궁극 방어] GlobalThrottle 기반 File Mutex 강제 주입
+def _save_avwap_trade_state(ticker, state_data):
+    file_path = f"data/avwap_trade_state_{ticker}.json"
+    with GlobalThrottle.get_file_lock(file_path):
+        _save_avwap_trade_state_unsafe(file_path, state_data)
 
 async def _safe_send(context, chat_id, text, timeout=15.0, **kwargs):
     """ 🚨 [이벤트 루프 교착 방어] 텔레그램 통신 샌드박스 """
