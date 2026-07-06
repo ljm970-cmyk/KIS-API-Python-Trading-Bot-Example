@@ -2,6 +2,7 @@
 # FILE: telegram_view.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 MODIFIED: [UI 직관성 궁극 교정] 암살자 장부 0주 대기 상태 렌더링 시 'OFF' 표출을 'STANDBY (타점 감시 중 / 0주)'로 100% 팩트 교체하여 엔진 가동 상태(ON)와의 논리적 오해 원천 차단.
 # 🚨 MODIFIED: [Phase 4 암살자 장부 상시 렌더링 락온] `create_ledger_dashboard` 메서드 호출 시 암살자 데이터가 0주라도 무조건 "OFF (대기 중 / 0주)"를 표출하여 사용자 팩트 검증을 보조.
 # 🚨 MODIFIED: [Phase 4 암살자 지정 예산 렌더링] /settlement 호출 시 표출되는 설정 화면에 사용자가 지정한 '암살자 예산'과 '오버나이트 모드'를 100% 팩트로 표출.
 # 🚨 MODIFIED: [Phase 4 인라인 버튼 결속] 암살자 설정 메뉴(SETTLEMENT)에 "🔫 암살자 1회 타격 예산" 및 "🌙 오버나이트 토글" 버튼 주입 완료.
@@ -680,7 +681,8 @@ class TelegramView:
                 report += f"▪️ 락온 수량 : <b>{a_qty} 주</b>\n"
                 report += f"▪️ 진입 평단가: <b>${a_avg:,.2f}</b>\n"
             else:
-                report += f"▪️ 진행 상태 : <b>OFF (대기 중 / 0주)</b>\n"
+                # 🚨 MODIFIED: [UI 직관성 교정] 암살자 물량이 없을 때 OFF가 아닌 STANDBY 상태로 표출하여 오해 원천 차단
+                report += f"▪️ 진행 상태 : <b>STANDBY (타점 감시 중 / 0주)</b>\n"
 
         if not is_history:
             other = "TQQQ" if ticker == "SOXL" else "SOXL"

@@ -2,6 +2,7 @@
 # FILE: telegram_sync_engine.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
+# 🚨 MODIFIED: [UI 직관성 궁극 교정] 암살자 장부 0주 대기 상태 렌더링 시 'OFF' 표출을 'STANDBY (타점 감시 중 / 0주)'로 100% 팩트 교체하여 엔진 가동 상태(ON)와의 논리적 오해 원천 차단.
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] `await asyncio.sleep(0.06)` 파편화 코드를 전면 삭제하고 `GlobalThrottle` 기반의 `18 TPS` 통제소로 비동기 딜레이를 100% 위임하여 이벤트 루프 교착 완벽 방어.
 # 🚨 MODIFIED: [암살자 장부 상시 렌더링 락온] `_display_ledger` 호출 시 암살자 물량이 0주이더라도 "OFF (대기 중 / 0주)" 상태를 무조건 표출하여 사용자 심리적 안정감 및 가시성 100% 사수.
 # 🚨 MODIFIED: [Phase 4 암살자 장부 병렬 렌더링] 100% 독립된 `AssassinLedger`를 로드하여, 오버나이트 중인 암살자 물량과 평단가를 본진 장부 하단에 완벽히 분리 표출하는 브릿지 결속 유지.
@@ -57,7 +58,6 @@ class TelegramSyncEngine:
         """ 🚨 [Case 32, 33] 지수 백오프 비동기 래퍼 (+ 런타임 호환성 partial 결속) """
         for attempt in range(3):
             try:
-                # 🚨 MODIFIED: 파편화된 sleep 소각 (GlobalThrottle 위임)
                 if asyncio.iscoroutinefunction(func):
                     return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
                 else:
@@ -119,7 +119,6 @@ class TelegramSyncEngine:
                     await self._safe_send(context, chat_id, f"✂️ <b>[{html.escape(str(ticker))}] 야후 파이낸스 {split_type} 자동 감지!</b>\n▫️ 감지된 비율: <b>{split_ratio}배</b> (발생일: {html.escape(str(split_date))})\n▫️ 봇이 기존 V14 장부, V-REV 큐 장부, 암살자 장부, AVWAP 상태 캐시의 수량과 평단가를 100% 무인 자동 소급 조정 완료했습니다.", parse_mode='HTML')
              
                 def _get_last_trade_date(target_est):
-                    # 🚨 MODIFIED: 파편화된 sleep 소각
                     nyse = mcal.get_calendar('NYSE')
                     return nyse.schedule(start_date=(target_est - datetime.timedelta(days=10)).date(), end_date=target_est.date())
 
@@ -208,7 +207,7 @@ class TelegramSyncEngine:
                             if sold_today == prev_sold_today:
                                 stable_cnt += 1
                                 if stable_cnt >= 1: break
-                        else: stable_cnt = 0
+                            else: stable_cnt = 0
                         
                         prev_sold_today = sold_today
                         
@@ -342,7 +341,7 @@ class TelegramSyncEngine:
                             temp_invested = sum(self._safe_float(item.get("qty")) * self._safe_float(item.get("price")) for item in q_data_before if isinstance(item, dict))
                             temp_avg = temp_invested / vrev_ledger_qty if vrev_ledger_qty > 0 else 0.0
                             missing_price = temp_avg
-                             
+            
                             if buy_execs:
                                 b_tot_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in buy_execs)
                                 b_tot_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in buy_execs)
@@ -354,7 +353,7 @@ class TelegramSyncEngine:
                                             iq = int(self._safe_float(item.get("qty")))
                                             q_today_qty += iq
                                             q_today_amt += iq * self._safe_float(item.get("price"))
-                                       
+                                        
                                     pure_manual_q = b_tot_q - q_today_qty
                                     pure_manual_amt = b_tot_amt - q_today_amt
                                     if pure_manual_q >= missing_qty and pure_manual_q > 0 and pure_manual_amt > 0:
@@ -537,7 +536,7 @@ class TelegramSyncEngine:
                     try:
                         curr_p_val = await self._retry_api(self.broker.get_current_price, ticker, timeout=10.0)
                         curr_p = self._safe_float(curr_p_val)
-                        
+                    
                         prev_c_val = await self._retry_api(self.broker.get_previous_close, ticker, timeout=10.0)
                         prev_c = self._safe_float(prev_c_val)
                     
@@ -551,11 +550,11 @@ class TelegramSyncEngine:
                         active_tickers_list = await asyncio.wait_for(asyncio.to_thread(self.cfg.get_active_tickers), timeout=10.0) or []
                         _, alloc_cash_dict = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash_for_snap, active_tickers_list, self.cfg), timeout=10.0)
                         avail_cash = self._safe_float((alloc_cash_dict or {}).get(ticker, 0.0))
-                        
+                    
                         full_ledger_final = await self._retry_api(self.cfg.get_ledger, timeout=10.0)
                         recs_final = [r for r in (full_ledger_final or []) if isinstance(r, dict) and r.get('ticker') == ticker]
                         hold_res_final = await self._retry_api(self.cfg.calculate_holdings, ticker, recs_final, timeout=10.0)
-                        
+                    
                         final_qty = hold_res_final[0] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 0 else 0
                         final_avg = hold_res_final[1] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 1 else 0.0
                     
@@ -597,7 +596,7 @@ class TelegramSyncEngine:
                 key = (date_short, side_str)
             
                 if key not in agg_dict: agg_dict[key] = {'qty': 0, 'amt': 0.0}
-            
+
                 agg_dict[key]['qty'] += int(self._safe_float(rec.get('qty')))
                 agg_dict[key]['amt'] += (int(self._safe_float(rec.get('qty'))) * self._safe_float(rec.get('price')))
             
@@ -671,9 +670,11 @@ class TelegramSyncEngine:
                     report += f"▪️ 락온 수량 : <b>{a_qty} 주</b>\n"
                     report += f"▪️ 진입 평단가: <b>${a_avg:,.2f}</b>\n"
                 else:
-                    report += f"▪️ 진행 상태 : <b>OFF (대기 중 / 0주)</b>\n"
+                    # 🚨 MODIFIED: [UI 직관성 교정] 암살자 물량이 없을 때 OFF가 아닌 STANDBY 상태로 표출하여 오해 원천 차단
+                    report += f"▪️ 진행 상태 : <b>STANDBY (타점 감시 중 / 0주)</b>\n"
             else:
-                report += f"▪️ 진행 상태 : <b>OFF (대기 중 / 0주)</b>\n"
+                # 🚨 MODIFIED: [UI 직관성 교정] 암살자 물량이 없을 때 OFF가 아닌 STANDBY 상태로 표출하여 오해 원천 차단
+                report += f"▪️ 진행 상태 : <b>STANDBY (타점 감시 중 / 0주)</b>\n"
                 
         except Exception as e:
             logging.error(f"🚨 암살자 장부 UI 렌더링 실패: {e}")
