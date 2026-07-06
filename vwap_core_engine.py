@@ -8,6 +8,7 @@
 # 🚨 MODIFIED: [순수 슬라이싱 아키텍처 팩트 수복] 슬라이싱 엔진 내부에서 목표가 2% 이내 접근 시 강제로 스윕해버리는 기형적인 조건문을 영구 소각하고, 오직 정밀한 1분 단위 분할 타격만 집행하도록 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [재시작 붕괴 (Double Fire) 방어] 봇 재시작 시 메모리 증발로 인해 하방 하이재킹이 이중 격발되는 대참사를 막기 위해 디스크 크로스체크 전진 배치.
 # 🚨 MODIFIED: [1분 슬라이싱 정액제(Fixed-Amount) 궁극 락온] 15:56 EST 마지막 슬라이싱 틱 도달 시, 정량제 수량 캡핑을 영구 무효화하고 다중 매수 지층(Buy1, Buy2)의 잔여 예산을 정밀 산출하여 남은 한도 끝까지 100% 스윕 매수하도록 팩트 락온 완료.
+# 🚨 MODIFIED: [떨사오팔(Buy Low, Sell High) 절대 헌법 사수] 현재가가 매도(SELL) 타점 이상에 도달하여 '매도 조건'에 진입했을 경우, 장중 하방 갭(-2.0%)이 발생하더라도 맹독성 고점 추격 매수(Limit-Trap)를 막기 위해 하이재킹 스윕 매수를 100% 원천 차단하는 `is_sell_condition` 방어막 전격 결속.
 # ==========================================================
 import logging
 import asyncio
@@ -186,6 +187,15 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                     slice_state_check = slice_state_disk
                                     has_buy_plan = any(isinstance(o, dict) and str(o.get('side')) == 'BUY' for o in slice_state_check.get('orders', []))
                                     
+                                    # 🚨 MODIFIED: [떨사오팔 절대 헌법 사수] 현재가가 매도(SELL) 타점 이상일 경우(매도 조건), 하방 하이재킹 스윕 매수를 100% 원천 차단
+                                    sell_orders = [o for o in slice_state_check.get('orders', []) if str(o.get('side')) == 'SELL']
+                                    is_sell_condition = False
+                                    for o in sell_orders:
+                                        tp = _safe_float(o.get('target_price', 0.0))
+                                        if tp > 0.0 and t_curr_p >= tp:
+                                            is_sell_condition = True
+                                            break
+                                            
                                     if not has_buy_plan:
                                         if not vwap_cache.get(f"REV_{t}_gap_hijack_blocked_log", False):
                                             logging.info(f"⚡ [{t}] 하방 Gap Hijack 조건 도달({gap_pct:.2f}%) ➔ 🛑 금일 통합지시서에 매수(BUY) 플랜이 없어 스윕 매수를 전면 차단(Bypass)합니다.")
@@ -193,7 +203,15 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                         
                                         vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                         is_downward_hijacked_now = True
+                                        
+                                    elif is_sell_condition:
+                                        if not vwap_cache.get(f"REV_{t}_gap_hijack_sell_blocked_log", False):
+                                            logging.info(f"⚡ [{t}] 하방 Gap Hijack 조건 도달({gap_pct:.2f}%) ➔ 🛑 현재가(${t_curr_p:.2f})가 매도(SELL) 타점 이상이므로 스윕 매수를 차단하고 관망합니다 (Buy Low 원칙 사수).")
+                                            vwap_cache[f"REV_{t}_gap_hijack_sell_blocked_log"] = True
+                                        # 🚨 매도 조건이 해소(하락)될 때까지 재평가하기 위해 hijack_fired 플래그를 세팅하지 않음
+                                        
                                     else:
+                                        vwap_cache.pop(f"REV_{t}_gap_hijack_sell_blocked_log", None)
                                         logging.info(f"⚡ [{t}] Downward Gap Hijack Triggered! gap: {gap_pct:.2f}%, thresh: {gap_thresh}%")
                                         nuked_count = 0
                                         
@@ -325,8 +343,6 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
                                             vwap_cache[f"REV_{t}_gap_hijack_fired"] = True
                                             is_downward_hijacked_now = True
                                             logging.info(f"⚡ [{t}] 하방 Gap Hijack 격발 조건을 만족했으나 잔여 예산 소진($0)으로 스윕 매수 생략 (플래그 락온 완료).")
-                                            
-                                # 🚨 MODIFIED: [상방 하이재킹 영구 소각] elif gap_pct >= 2.0: 블록 전면 삭제됨.
 
                     # ======================================================
                     # [ 2. 자체 VWAP 1분 슬라이싱 로컬 엔진 가동 ]
