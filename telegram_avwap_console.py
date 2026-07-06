@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [Silent Death 붕괴 수술] 새로고침, 휴장일, 장마감 버튼 클릭 시 무반응을 유발하던 하드코딩 `NONE` 파라미터를 동적 `ticker_clean`으로 100% 팩트 교정 완료.
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] `_get_with_retry` 및 `_fetch_schedule`에 산재하던 파편화된 `sleep(0.06)`을 전면 소각하고 `GlobalThrottle` 중앙 통제소로 비동기 딜레이 100% 위임.
 # 🚨 MODIFIED: [Lost Update 궁극 방어] JSON 상태 파일 읽기(`_read_state`) 시 `GlobalThrottle.get_file_lock()` 기반 파일 뮤텍스를 래핑하여 더티 리드(Dirty Read) 붕괴 원천 차단.
+# 🚨 MODIFIED: [SSOT 락온 수술] 관제탑 UI가 지연된 구형 캐시 상태 파일(avwap_trade_state)의 수량을 참조하던 패러독스를 소각하고, 즉각 반영되는 AssassinLedger를 단일 진실 공급원(SSOT)으로 100% 팩트 락온.
 # ==========================================================
 import logging
 import datetime
@@ -205,22 +206,30 @@ class AvwapConsolePlugin:
                         return {}
 
             state_data = await asyncio.wait_for(asyncio.to_thread(_read_state), timeout=5.0)
+            is_shutdown = False
             
             if isinstance(state_data, dict):
-                avwap_qty = int(self._safe_float(state_data.get('qty', 0)))
                 is_shutdown = bool(state_data.get('shutdown', False))
+
+            # 🚨 MODIFIED: [SSOT 락온] 구형 캐시 파일(avwap_trade_state)의 지연된 수량을 무시하고 AssassinLedger에서 100% 팩트 도출
+            from assassin_ledger import AssassinLedger
+            a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
+            a_data = await _get_with_retry(a_ledger.get_ledger, t)
+            
+            if isinstance(a_data, list) and len(a_data) > 0:
+                avwap_qty = sum(int(self._safe_float(r.get('qty'))) for r in a_data)
                 
-                if avwap_qty == 0 and is_shutdown:
-                    is_early_shutdown = True
-                    
-                if avwap_qty > 0 and not is_shutdown:
-                    is_assassin_active = True
-                    avwap_avg = self._safe_float(state_data.get('avg_price', 0.0))
-                    avwap_inv_usd = avwap_qty * avwap_avg
-                    
-                    target_usd = math.ceil(avwap_avg * 1.01 * 100) / 100.0
-        except Exception:
-            pass
+            if avwap_qty == 0 and is_shutdown:
+                is_early_shutdown = True
+                
+            if avwap_qty > 0 and not is_shutdown:
+                is_assassin_active = True
+                avwap_inv_usd = sum(int(self._safe_float(r.get('qty'))) * self._safe_float(r.get('price')) for r in a_data)
+                avwap_avg = avwap_inv_usd / avwap_qty if avwap_qty > 0 else 0.0
+                target_usd = math.ceil(avwap_avg * 1.01 * 100) / 100.0
+                
+        except Exception as e:
+            logging.error(f"🚨 [{t}] 암살자 장부/상태 팩트 병합 실패: {e}")
 
         lev_amp_pct = base_amp5 * 3 * 100.0
         kis_gap_pct = ((curr_p - kis_avg) / kis_avg * 100.0) if kis_avg > 0 else 0.0
