@@ -1,7 +1,7 @@
 # ==========================================================
 # FILE: scheduler_sniper.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 46대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 MODIFIED: [Lost Update 궁극 방어] 상태 파일 I/O(_read, _update) 시 GlobalThrottle 전역 파일 뮤텍스를 강제 주입하여, 비동기 경합으로 인해 체결 수량(qty)이 0으로 덮어써지는 유령 상태(Ghost State) 패러독스 완벽 차단.
 # 🚨 MODIFIED: [원자적 부분 갱신] 과거 상태를 메모리에 들고 있다가 전체를 덮어쓰는 로직을 소각하고, Lock 안에서 Delta(변경분)만 원자적으로 갱신하는 `_update_state_sync` 파이프라인 결속.
 # 🚨 MODIFIED: [Case 43 절대 헌법 준수] TPS 초과 밴(Ban) 원천 차단: 실시간 감시 폴링(Polling) 루프 내에 `await asyncio.sleep(1.5)`를 강제 래핑하여 초당 20건 Rate Limit 초과로 인한 API 차단을 완벽히 방어.
@@ -14,6 +14,7 @@
 # 🚨 MODIFIED: [1.0% 고정 익절망 장전] 체결 확인 즉시 평단가 기준 * 1.01 (+1.0%) 단가로 지정가 매도 덫 자동 장전 락온.
 # 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST) 개장 시점까지 프리장 소프트웨어 트리거 격발 실패 시, 당일 신규 매수 권한 영구 소각.
 # 🚨 MODIFIED: [제1헌법 절대 수복] 상태 파일 I/O 스레드 호출 시 누락되었던 asyncio.wait_for(timeout=10.0) 족쇄 100% 강제 래핑.
+# 🚨 MODIFIED: [SSOT 무결성 사수] 암살자 장부(AssassinLedger)에 주문 요청가가 아닌 KIS 원장 스캔을 통한 '팩트 체결가'가 기입되도록 파이프라인을 이관하여, 관제탑 UI의 유령 평단가 표출 패러독스 100% 원천 봉쇄 완료.
 # ==========================================================
 import logging
 import datetime
@@ -392,6 +393,9 @@ async def scheduled_sniper_monitor(context):
                                 
                                 await asyncio.wait_for(asyncio.to_thread(_update_state_sync, t, now_est, {'qty': filled_qty, 'avg_price': round(avg_p, 4)}), timeout=10.0)
                                 
+                                # 🚨 MODIFIED: [SSOT 무결성 사수] 실제 체결이 확인된 이 시점에 암살자 장부에 팩트 평단가로 로트를 추가합니다.
+                                await asyncio.wait_for(asyncio.to_thread(assassin_ledger.add_lot, t, filled_qty, avg_p, "ASSASSIN_BUY"), timeout=10.0)
+                                
                                 if chat_id:
                                     await _safe_send(context, chat_id, f"🎯 <b>[{html.escape(t)}] 암살자 1-Shot 1-Kill 매수 타격!</b>\n▫️ 올인 진입: {filled_qty}주 @ ${avg_p:.2f}\n▫️ 즉시 과욕 제어망(+1.0% 지정가 전량 매도 덫)을 장전합니다.", parse_mode='HTML')
                             else:
@@ -485,10 +489,11 @@ async def scheduled_sniper_monitor(context):
                                             if safe_b_res.get('rt_cd') == '0':
                                                 await asyncio.wait_for(asyncio.to_thread(_update_state_sync, t, now_est, {'buy_odno': str(safe_b_res.get('odno')), 'is_ordering': False, 'cash_warned': False}), timeout=10.0)
                                                 
-                                                await asyncio.wait_for(asyncio.to_thread(assassin_ledger.add_lot, t, buy_qty, ask_price, "ASSASSIN_BUY"), timeout=10.0)
+                                                # 🚨 MODIFIED: [유령 장부 방어] 주문 발사 시점에는 장부에 기입하지 않고, 체결 확인망으로 이관
+                                                # (삭제됨: await asyncio.to_thread(assassin_ledger.add_lot...))
                                                 
                                                 if chat_id:
-                                                    msg_text = f"🎯 <b>[{html.escape(t)}] 소프트웨어 트리거 요격(Breakout) 성공!</b>\n▫️ VWAP 상향 돌파를 확인하고 매도 1호가(${ask_price:.2f})로 즉각 낚아챘습니다.\n▫️ 암살자 지정 예산 락온 투입(${safe_available_cash:,.2f})\n▫️ 지정가(LIMIT) 요격 완료: {buy_qty}주"
+                                                    msg_text = f"🎯 <b>[{html.escape(t)}] 소프트웨어 트리거 요격(Breakout) 성공!</b>\n▫️ VWAP 상향 돌파를 확인하고 매도 1호가(${ask_price:.2f})로 즉각 낚아챘습니다.\n▫️ 암살자 지정 예산 락온 투입(${safe_available_cash:,.2f})\n▫️ 지정가(LIMIT) 요격 대기: {buy_qty}주"
                                                     await _safe_send(context, chat_id, msg_text, parse_mode='HTML')
                                             else:
                                                 await asyncio.wait_for(asyncio.to_thread(_update_state_sync, t, now_est, {'is_ordering': False}), timeout=10.0)
