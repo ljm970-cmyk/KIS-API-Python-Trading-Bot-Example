@@ -11,7 +11,8 @@
 # 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False 강제 래핑 락온.
 # 🚨 MODIFIED: [수술 2 - 큐 장부 절대주의 락온] V-REV 모드 시 KIS 실잔고(Ghost Balance)를 무시하고 오직 큐 장부의 수량을 UI에 덮어씌워 렌더링 모순(Paradox) 완벽 차단.
 # 🚨 MODIFIED: [개인 물량 격리 보호] KIS 실잔고가 큐 장부보다 많을 때 강제 편입(MANUAL_BUY)하던 로직을 영구 소각하여 개인 장기 투자 물량의 100% 안전하게 보호.
-# 🚨 NEW: [16:05 스냅샷 락온 대통합] 16:05 EST 장부 정산이 완벽히 끝난 직후(렌더링 직전), 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)하도록 파이프라인 100% 이식.
+# 🚨 MODIFIED: [16:05 스냅샷 락온 대통합] 16:05 EST 장부 정산이 완벽히 끝난 직후(렌더링 직전), 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)하도록 파이프라인 100% 이식.
+# 🚨 MODIFIED: [제1헌법 철저 준수] process_auto_sync 내부에서 AssassinLedger를 동기적으로 인스턴스화하여 메인 이벤트 루프를 블로킹하던 맹독성 I/O 뇌관을 asyncio.to_thread 샌드박스로 100% 격리(Isolation) 수술 완료.
 # ==========================================================
 
 import logging
@@ -104,10 +105,10 @@ class TelegramSyncEngine:
                     if hasattr(self.strategy, 'v_avwap_plugin'):
                         await self._retry_api(self.strategy.v_avwap_plugin.apply_stock_split, ticker, split_ratio, now_est, timeout=10.0)
                     
-                    # 🚨 NEW: [Phase 2 암살자 독립 장부 액면분할 적용]
+                    # 🚨 MODIFIED: [제1헌법 사수] 암살자 독립 장부 액면분할 적용 시 인스턴스화 샌드박스 래핑
                     try:
                         from assassin_ledger import AssassinLedger
-                        a_ledger = AssassinLedger()
+                        a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
                         await self._retry_api(a_ledger.apply_stock_split, ticker, split_ratio, timeout=10.0)
                     except Exception as e:
                         logging.error(f"🚨 암살자 장부 액면분할 팩트 적용 실패: {e}")
@@ -162,7 +163,8 @@ class TelegramSyncEngine:
                 a_qty_for_check = 0
                 try:
                     from assassin_ledger import AssassinLedger
-                    a_ledger = AssassinLedger()
+                    # 🚨 MODIFIED: [제1헌법 수호] 동기 I/O 샌드박스 래핑
+                    a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
                     a_data_check = await self._retry_api(a_ledger.get_ledger, ticker, default=[])
                     a_qty_for_check = sum(int(self._safe_float(item.get("qty"))) for item in (a_data_check or []))
                 except Exception as e:
@@ -654,6 +656,7 @@ class TelegramSyncEngine:
         # 🚨 NEW: [Phase 4] 암살자 전용 장부(AssassinLedger) 무조건 병렬 렌더링 팩트 삽입 (0주 관망 상태 포함)
         try:
             from assassin_ledger import AssassinLedger
+            # 🚨 MODIFIED: [제1헌법 철저 준수] 샌드박스 래핑 유지
             a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
             a_data = await self._retry_api(a_ledger.get_ledger, ticker, default=[])
             

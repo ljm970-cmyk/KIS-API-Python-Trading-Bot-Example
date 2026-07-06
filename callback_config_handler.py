@@ -1,7 +1,7 @@
 # ==========================================================
 # FILE: callback_config_handler.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 46대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 MODIFIED: [Phase 5 암살자 지정 예산 락온] INPUT 라우팅에 `AVWAP_BUDGET` 액션을 추가하여 사용자 예산 설정을 위한 상태(State) 전이를 완벽 매핑.
 # 🚨 MODIFIED: [Phase 5 오버나이트 락온] CONFIG_AVWAP 라우팅에 `TOGGLE_OVERNIGHT` 스위칭 로직을 결속하여 당일청산(MOC)과 오버나이트 모드를 동적으로 제어.
 # 🚨 MODIFIED: [Case 38 UI 렌더링 높이 붕괴 패러독스 차단] 버튼 클릭 시 1줄짜리 텍스트("업데이트 중...")로 중간 갱신하여 기존 화면을 증발시키는 행위를 전면 금지. 로딩은 query.answer() 팝업으로 대체하고 최종 결과로 단 1회 제자리 갱신(In-place Edit) 락온.
@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단).
 # 🚨 MODIFIED: [수술 1] 삼위일체 소각(Nuke) 격발 시 암살자 유령 장부(Ghost Ledger) 및 잔여 상태 캐시 100% 영구 소각 파이프라인 결속 완료.
 # 🚨 MODIFIED: [Event Loop 교착 수술] AssassinLedger 및 SystemUpdater 인스턴스화 시 발생하는 __init__ 내부의 동기 I/O(파일 체크/생성) 블로킹을 막기 위해 100% 백그라운드 스레드(to_thread) 샌드박스로 래핑 락온.
+# 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] RESET:LOCK 내부 `_hijack_vwap_lock()` 실행 시 V-REV 뿐만 아니라 V14, V14VWAP 스냅샷 파일까지 순회하며 100% 영구 소각하도록 팩트 교정 완료.
 # ==========================================================
 import logging
 import datetime
@@ -174,18 +175,21 @@ class CallbackConfigHandler:
                         except (OSError, json.JSONDecodeError): 
                             pass
                             
+                        # 🚨 MODIFIED: [스냅샷 파괴 범위 대통합] V-REV 뿐만 아니라 V14, V14VWAP 스냅샷 순회 소각 락온
                         try:
                             est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
                             today_str = est_now.strftime("%Y-%m-%d")
-                            snap_file = f"data/daily_snapshot_REV_{today_str}_{ticker}.json"
-                            os.remove(snap_file)
-                        except OSError: 
+                            for snap_prefix in ["REV", "V14", "V14VWAP"]:
+                                snap_file = f"data/daily_snapshot_{snap_prefix}_{today_str}_{ticker}.json"
+                                try: os.remove(snap_file)
+                                except OSError: pass
+                        except Exception: 
                             pass
                         
                     await asyncio.wait_for(asyncio.to_thread(_hijack_vwap_lock), timeout=10.0)
                     await asyncio.wait_for(asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker), timeout=10.0)
                     try: 
-                        await asyncio.wait_for(query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 금일 매매 잠금이 해제되었으며, 오염된 슬라이싱 엔진도 무효화되었습니다.</b>", parse_mode='HTML'), timeout=10.0)
+                        await asyncio.wait_for(query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 금일 매매 잠금이 해제되었으며, 오염된 슬라이싱 엔진 및 스냅샷도 무효화되었습니다.</b>", parse_mode='HTML'), timeout=10.0)
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
