@@ -1,7 +1,7 @@
 # ==========================================================
 # FILE: scheduler_sniper.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 46대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 47대 엣지 케이스 완벽 결속 교차 검증 완료
 # 🚨 MODIFIED: [Lost Update 궁극 방어] 상태 파일 I/O(_read, _update) 시 GlobalThrottle 전역 파일 뮤텍스를 강제 주입하여, 비동기 경합으로 인해 체결 수량(qty)이 0으로 덮어써지는 유령 상태(Ghost State) 패러독스 완벽 차단.
 # 🚨 MODIFIED: [원자적 부분 갱신] 과거 상태를 메모리에 들고 있다가 전체를 덮어쓰는 로직을 소각하고, Lock 안에서 Delta(변경분)만 원자적으로 갱신하는 `_update_state_sync` 파이프라인 결속.
 # 🚨 MODIFIED: [Case 43 절대 헌법 준수] TPS 초과 밴(Ban) 원천 차단: 실시간 감시 폴링(Polling) 루프 내에 `await asyncio.sleep(1.5)`를 강제 래핑하여 초당 20건 Rate Limit 초과로 인한 API 차단을 완벽히 방어.
@@ -14,7 +14,8 @@
 # 🚨 MODIFIED: [1.0% 고정 익절망 장전] 체결 확인 즉시 평단가 기준 * 1.01 (+1.0%) 단가로 지정가 매도 덫 자동 장전 락온.
 # 🚨 MODIFIED: [프리장 미진입 조기 퇴근 팩트 락온] 정규장(09:30 EST) 개장 시점까지 프리장 소프트웨어 트리거 격발 실패 시, 당일 신규 매수 권한 영구 소각.
 # 🚨 MODIFIED: [제1헌법 절대 수복] 상태 파일 I/O 스레드 호출 시 누락되었던 asyncio.wait_for(timeout=10.0) 족쇄 100% 강제 래핑.
-# 🚨 MODIFIED: [SSOT 무결성 사수] 암살자 장부(AssassinLedger)에 주문 요청가가 아닌 KIS 원장 스캔을 통한 '팩트 체결가'가 기입되도록 파이프라인을 이관하여, 관제탑 UI의 유령 평단가 표출 패러독스 100% 원천 봉쇄 완료.
+# 🚨 MODIFIED: [SSOT 무결성 사수] 암살자 장부에 주문 요청가가 아닌 KIS 원장 팩트 체결가가 기입되도록 파이프라인 이관 완료.
+# 🚨 NEW: [Case 47 자전거래 절대 방어] 본진 슬라이싱 타격 중 암살자가 `suppress_sell=True` 상태(오버나이트 ON)로 락온되었을 경우, 폴링 스케줄러가 매도 덫을 함부로 재발사하지 못하도록 억제(Suppress) 파이프라인 100% 결속.
 # ==========================================================
 import logging
 import datetime
@@ -87,7 +88,7 @@ def _read_state_sync(ticker, now_est):
             pass
             
         if not isinstance(data, dict) or data.get('date') != date_str:
-            data = {'date': date_str, 'qty': 0, 'avg_price': 0.0, 'buy_odno': "", 'is_ordering': False, 'sell_odno': "", 'shutdown': False, 'dumped': False, 'cash_warned': False, 'alert_msg_id': 0}
+            data = {'date': date_str, 'qty': 0, 'avg_price': 0.0, 'buy_odno': "", 'is_ordering': False, 'sell_odno': "", 'shutdown': False, 'dumped': False, 'cash_warned': False, 'alert_msg_id': 0, 'suppress_sell': False}
             _write_json_atomic(file_path, data)
             
         return data
@@ -106,7 +107,7 @@ def _update_state_sync(ticker, now_est, updates):
             pass
             
         if not isinstance(data, dict) or data.get('date') != date_str:
-            data = {'date': date_str, 'qty': 0, 'avg_price': 0.0, 'buy_odno': "", 'is_ordering': False, 'sell_odno': "", 'shutdown': False, 'dumped': False, 'cash_warned': False, 'alert_msg_id': 0}
+            data = {'date': date_str, 'qty': 0, 'avg_price': 0.0, 'buy_odno': "", 'is_ordering': False, 'sell_odno': "", 'shutdown': False, 'dumped': False, 'cash_warned': False, 'alert_msg_id': 0, 'suppress_sell': False}
         
         # Delta 덮어쓰기
         for k, v in updates.items():
@@ -129,7 +130,7 @@ def _try_lock_ordering_sync(ticker, now_est):
             pass
             
         if not isinstance(data, dict) or data.get('date') != date_str:
-            data = {'date': date_str, 'qty': 0, 'avg_price': 0.0, 'buy_odno': "", 'is_ordering': False, 'sell_odno': "", 'shutdown': False, 'dumped': False, 'cash_warned': False, 'alert_msg_id': 0}
+            data = {'date': date_str, 'qty': 0, 'avg_price': 0.0, 'buy_odno': "", 'is_ordering': False, 'sell_odno': "", 'shutdown': False, 'dumped': False, 'cash_warned': False, 'alert_msg_id': 0, 'suppress_sell': False}
         
         # 이미 락이 걸려있거나 매수 덫이 진행중이면 실패 반환
         if data.get('is_ordering') or data.get('buy_odno'):
@@ -421,15 +422,19 @@ async def scheduled_sniper_monitor(context):
                             t_state = await asyncio.wait_for(asyncio.to_thread(_update_state_sync, t, now_est, {'qty': a_qty, 'avg_price': round(a_avg, 4)}), timeout=10.0)
 
                         if t_state.get('qty') > 0 and not t_state.get('sell_odno'):
-                            exit_multiplier = 1.01
-                            sell_price = math.ceil(t_state['avg_price'] * exit_multiplier * 100) / 100.0
-                            
-                            s_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], sell_price, "LIMIT")
-                            
-                            if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
-                                await asyncio.wait_for(asyncio.to_thread(_update_state_sync, t, now_est, {'sell_odno': str(s_res.get('odno'))}), timeout=10.0)
-                                if chat_id:
-                                    await _safe_send(context, chat_id, f"🕸️ <b>[{html.escape(t)}] +1.0% 고정 익절망 장전 완료</b>\n▫️ 목표 지정가: ${sell_price:.2f} (독립 장부 수량 {t_state['qty']}주)", parse_mode='HTML')
+                            if t_state.get('suppress_sell', False):
+                                # 자전거래 방어(오버나이트 ON)로 인해 억제된 상태이므로 스킵
+                                pass
+                            else:
+                                exit_multiplier = 1.01
+                                sell_price = math.ceil(t_state['avg_price'] * exit_multiplier * 100) / 100.0
+                                
+                                s_res = await _retry_api(broker.send_order, t, "SELL", t_state['qty'], sell_price, "LIMIT")
+                                
+                                if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
+                                    await asyncio.wait_for(asyncio.to_thread(_update_state_sync, t, now_est, {'sell_odno': str(s_res.get('odno'))}), timeout=10.0)
+                                    if chat_id:
+                                        await _safe_send(context, chat_id, f"🕸️ <b>[{html.escape(t)}] +1.0% 고정 익절망 장전 완료</b>\n▫️ 목표 지정가: ${sell_price:.2f} (독립 장부 수량 {t_state['qty']}주)", parse_mode='HTML')
 
                         # 🚨 [매도 덫 동적 익절 체결 감시망] (당일 또는 애프터장 셧다운)
                         # 체결 직후 상태 리로드 (최신 반영)

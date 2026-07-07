@@ -3,6 +3,7 @@
 # ==========================================================
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] _retry_api 및 루프 내부의 파편화된 await asyncio.sleep(0.06) 땜질 전면 삭제.
 # 🚨 MODIFIED: [중앙 통제소 위임] 모든 API 지연을 GlobalThrottle(중앙 통제소)로 100% 위임하여 이벤트 루프 교착 상태 완벽 방어.
+# 🚨 NEW: [Case 47 자전거래(Wash Trade) 절대 방어망 결속] 암살자 오버나이트 모드 허용 시 기장전된 +1.0% 지정가 익절 덫과 본진(V-REV)의 16:01 애프터장 지연 고가 매수 덫이 충돌하여 KIS 서버에서 리젝(Reject)당하는 맹독성 패러독스를 완벽히 차단하기 위해, 타격 직전 암살자 덫 임시 취소 및 타격 직후 원상 복구(재장전) 파이프라인 100% 팩트 이식 완료.
 # ==========================================================
 import logging
 import asyncio
@@ -27,7 +28,6 @@ async def _retry_api(func, *args, timeout=15.0, default=None, **kwargs):
     """ 🚨 [Case 32, 33] 중앙 집중형 TPS 캡핑 (GlobalThrottle 위임) 및 지수 백오프 래퍼 """
     for attempt in range(3):
         try:
-            # 🚨 MODIFIED: 파편화된 sleep 소각 (GlobalThrottle 위임)
             if asyncio.iscoroutinefunction(func):
                 return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
             else:
@@ -121,10 +121,39 @@ async def execute_aftermarket_trade(tx_lock, cfg, broker, strategy, queue_ledger
                     if attempt < 2:
                         logging.warning(f"⏳ [{t}] 애프터장 타격 대기: KIS 예수금 정산 지연(0.0). 10초 후 재스캔합니다.")
                         await asyncio.sleep(10.0)
-                        
+                
                 if cash <= 0.0:
                     logging.error(f"🚨 [{t}] 애프터장 예수금 확보 실패 (자본 잠김 미해소). 타격 중단.")
                     continue
+
+                # 🚨 NEW: [Case 47 자전거래(Wash Trade) 절대 방어망 결속]
+                avwap_state_file = f"data/avwap_trade_state_{t}.json"
+                avwap_state = {}
+                try:
+                    avwap_state = await _retry_api(_read_json_safe_sync, avwap_state_file, today_hyphen, default={})
+                except Exception as e:
+                    logging.error(f"🚨 [{t}] 암살자 상태 스캔 에러: {e}")
+                    
+                restored_avwap_sell = False
+                avwap_qty_to_restore = 0
+                avwap_price_to_restore = 0.0
+                
+                if avwap_state and avwap_state.get('qty', 0) > 0 and avwap_state.get('sell_odno'):
+                    avwap_sell_odno = avwap_state.get('sell_odno')
+                    logging.info(f"🛡️ [{t}] 자전거래 방어: 암살자 오버나이트 매도 덫({avwap_sell_odno}) 임시 취소 집행")
+                    
+                    avwap_avg_price = _safe_float(avwap_state.get('avg_price', 0.0))
+                    avwap_qty_to_restore = int(_safe_float(avwap_state.get('qty', 0)))
+                    avwap_price_to_restore = math.ceil(avwap_avg_price * 1.01 * 100) / 100.0 if avwap_avg_price > 0 else 0.0
+                    
+                    c_res = await _retry_api(broker.cancel_order, t, avwap_sell_odno, timeout=10.0)
+                    if isinstance(c_res, dict) and str(c_res.get('rt_cd', '')) == '0':
+                        restored_avwap_sell = True
+                        avwap_state['sell_odno'] = ""
+                        await _retry_api(_atomic_write_json_sync, avwap_state_file, avwap_state, timeout=10.0)
+                        await asyncio.sleep(1.0)
+                    else:
+                        logging.warning(f"⚠️ [{t}] 암살자 오버나이트 덫 임시 취소 실패. 자전거래 리젝 위험 잔존.")
 
                 msgs = ""
                 state_changed = False
@@ -159,7 +188,7 @@ async def execute_aftermarket_trade(tx_lock, cfg, broker, strategy, queue_ledger
                             except Exception:
                                 if p_attempt == 2: exec_price = 0.0
                                 else: await asyncio.sleep(1.0 * (2 ** p_attempt))
-                                 
+                                
                     is_target_hit = False
                     if target_price > 0.0 and exec_price > 0.0:
                         if side == "BUY" and exec_price <= target_price: is_target_hit = True
@@ -199,7 +228,6 @@ async def execute_aftermarket_trade(tx_lock, cfg, broker, strategy, queue_ledger
                     res = None
                     for s_attempt in range(3):
                         try:
-                            # 🚨 MODIFIED: 파편화된 sleep 소각 (GlobalThrottle 위임)
                             res = await _retry_api(broker.send_order, t, side, total_qty, target_price, "LIMIT", timeout=15.0)
                             break
                         except Exception as e:
@@ -226,10 +254,42 @@ async def execute_aftermarket_trade(tx_lock, cfg, broker, strategy, queue_ledger
                     else:
                         err_msg = html.escape(str(safe_res.get('msg1') or '거절'))
                         msgs += f"❌ {desc}: 16:01 타격 실패 ({err_msg})\n"
-                        
+                    
                 if msgs.strip() and chat_id:
                     await _safe_send(context, chat_id, f"🌃 <b>[{html.escape(t)}] 16:01 EST 애프터장 일괄 타격 보고</b>\n\n{msgs.strip()}", parse_mode='HTML')
-                    
+
+                # 🚨 NEW: [Case 47 절대 방어망 결속] 자전거래 방어 해제: 암살자 오버나이트 덫 원상 복구
+                avwap_state_fresh = await _retry_api(_read_json_safe_sync, avwap_state_file, today_hyphen, default={})
+                
+                if avwap_state_fresh and avwap_state_fresh.get('qty', 0) > 0:
+                    need_to_restore = False
+                    if restored_avwap_sell:
+                        need_to_restore = True
+                    elif avwap_state_fresh.get('suppress_sell', False):
+                        need_to_restore = True
+                        
+                    if need_to_restore:
+                        logging.info(f"🛡️ [{t}] 자전거래 방어 해제: 암살자 오버나이트 덫 재장전 집행")
+                        avwap_qty_to_restore = int(_safe_float(avwap_state_fresh.get('qty', 0)))
+                        avwap_avg_price = _safe_float(avwap_state_fresh.get('avg_price', 0.0))
+                        avwap_price_to_restore = math.ceil(avwap_avg_price * 1.01 * 100) / 100.0
+                        
+                        s_res = await _retry_api(broker.send_order, t, "SELL", avwap_qty_to_restore, avwap_price_to_restore, "LIMIT", timeout=15.0)
+                        
+                        if isinstance(s_res, dict) and s_res.get('rt_cd') == '0':
+                            new_odno = str(s_res.get('odno', ''))
+                            avwap_state_fresh['sell_odno'] = new_odno
+                            avwap_state_fresh['suppress_sell'] = False
+                            await _retry_api(_atomic_write_json_sync, avwap_state_file, avwap_state_fresh, timeout=10.0)
+                            
+                            if chat_id:
+                                await _safe_send(context, chat_id, f"🛡️ <b>[{html.escape(t)} 자전거래 방어 시스템]</b>\n▫️ 본진 애프터장 타격 완료 후 암살자 +1.0% 지정가 익절 덫을 안전하게 재장전했습니다.", parse_mode='HTML')
+                        else:
+                            err_msg = html.escape(str(s_res.get('msg1', '통신 장애'))) if isinstance(s_res, dict) else '응답 없음'
+                            logging.error(f"🚨 [{t}] 암살자 오버나이트 덫 재장전 실패: {err_msg}")
+                            if chat_id:
+                                await _safe_send(context, chat_id, f"🚨 <b>[{html.escape(t)} 자전거래 방어 시스템 오류]</b>\n▫️ 암살자 매도 덫 재장전에 실패했습니다. 앱을 확인해주세요!\n▫️ 사유: <code>{err_msg}</code>", parse_mode='HTML')
+
                 if state_changed:
                     try:
                         await asyncio.wait_for(asyncio.to_thread(_atomic_write_json_sync, state_file, after_state), timeout=10.0)

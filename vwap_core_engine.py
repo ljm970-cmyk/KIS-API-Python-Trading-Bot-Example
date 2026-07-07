@@ -1,3 +1,4 @@
+
 # ==========================================================
 # FILE: vwap_core_engine.py
 # ==========================================================
@@ -9,6 +10,7 @@
 # 🚨 MODIFIED: [재시작 붕괴 (Double Fire) 방어] 봇 재시작 시 메모리 증발로 인해 하방 하이재킹이 이중 격발되는 대참사를 막기 위해 디스크 크로스체크 전진 배치.
 # 🚨 MODIFIED: [1분 슬라이싱 정액제(Fixed-Amount) 궁극 락온] 15:56 EST 마지막 슬라이싱 틱 도달 시, 정량제 수량 캡핑을 영구 무효화하고 다중 매수 지층(Buy1, Buy2)의 잔여 예산을 정밀 산출하여 남은 한도 끝까지 100% 스윕 매수하도록 팩트 락온 완료.
 # 🚨 MODIFIED: [떨사오팔(Buy Low, Sell High) 절대 헌법 사수] 현재가가 매도(SELL) 타점 이상에 도달하여 '매도 조건'에 진입했을 경우, 장중 하방 갭(-2.0%)이 발생하더라도 맹독성 고점 추격 매수(Limit-Trap)를 막기 위해 하이재킹 스윕 매수를 100% 원천 차단하는 `is_sell_condition` 방어막 전격 결속.
+# 🚨 NEW: [Case 47 자전거래(Wash Trade) 절대 방어망 결속] 암살자 덫과 본진 매수 덫이 교차하여 KIS 서버에서 리젝되는 현상을 막기 위해, 매수 타격 직전 암살자 덫을 임시 취소(Suspend)하고 오버나이트 설정에 따라 동적으로 재장전(Resume)하는 파이프라인 100% 팩트 이식.
 # ==========================================================
 import logging
 import asyncio
@@ -555,7 +557,48 @@ async def execute_vwap_trade(tx_lock, cfg, broker, strategy, queue_ledger, chat_
 
                                 res = None
                                 if qty_to_send > 0:
+                                    # 🚨 [Case 47: 자전거래(Wash Trade) 절대 방어막 - V-REV 슬라이싱]
+                                    avwap_state_file = f"data/avwap_trade_state_{t}.json"
+                                    need_avwap_resume = False
+                                    is_overnight = await _retry_api(getattr(cfg, 'get_avwap_overnight_mode', lambda x: False), t, default=False)
+                                    avwap_qty_to_restore = 0
+                                    avwap_price_to_restore = 0.0
+                                    
+                                    if side == "BUY":
+                                        avwap_state = await _retry_api(_read_json_safe_sync, avwap_state_file, today_hyphen, default={})
+                                        if avwap_state and avwap_state.get('qty', 0) > 0 and avwap_state.get('sell_odno'):
+                                            avwap_sell_odno = avwap_state.get('sell_odno')
+                                            logging.info(f"🛡️ [{t}] 자전거래 방어: 암살자 덫({avwap_sell_odno}) 임시 취소 집행")
+                                            c_res = await _retry_api(broker.cancel_order, t, avwap_sell_odno, timeout=10.0)
+                                            
+                                            if isinstance(c_res, dict) and str(c_res.get('rt_cd', '')) == '0':
+                                                avwap_state['sell_odno'] = ""
+                                                if is_overnight:
+                                                    avwap_state['suppress_sell'] = True # 오버나이트 ON: 본진 작동만 수행 (재장전 보류)
+                                                    if chat_id and not vwap_cache.get(f"REV_{t}_wash_trade_msg"):
+                                                        vwap_cache[f"REV_{t}_wash_trade_msg"] = True
+                                                        await _safe_send(context, chat_id, f"🛡️ <b>[{html.escape(t)} 자전거래 방어 가동]</b>\n▫️ 암살자 오버나이트 모드(ON) 확인.\n▫️ 본진 슬라이싱 타격 중 자전거래 차단을 위해 암살자 매도 덫을 임시 수거합니다. (애프터장 재장전 예정)", parse_mode='HTML')
+                                                
+                                                await _retry_api(_atomic_write_json_sync, avwap_state_file, avwap_state, timeout=10.0)
+                                                await asyncio.sleep(1.0) # 취소 확정 대기
+                                                
+                                                if not is_overnight:
+                                                    need_avwap_resume = True # 오버나이트 OFF: 본진 타격 후 암살자 덫 즉시 복구
+                                                    avwap_qty_to_restore = int(_safe_float(avwap_state.get('qty', 0)))
+                                                    avwap_avg_price = _safe_float(avwap_state.get('avg_price', 0.0))
+                                                    avwap_price_to_restore = math.ceil(avwap_avg_price * 1.01 * 100) / 100.0
+
+                                    # 본진 타격 집행
                                     res = await _retry_api(broker.send_order, t, side, qty_to_send, exec_price, "LIMIT")
+
+                                    # 암살자 덫 원상 복구 (오버나이트 OFF 시)
+                                    if need_avwap_resume:
+                                        logging.info(f"🛡️ [{t}] 자전거래 방어 해제: 암살자 덫 복구(재장전) 집행")
+                                        s_res = await _retry_api(broker.send_order, t, "SELL", avwap_qty_to_restore, avwap_price_to_restore, "LIMIT", timeout=15.0)
+                                        if isinstance(s_res, dict) and str(s_res.get('rt_cd', '')) == '0':
+                                            avwap_state_fresh = await _retry_api(_read_json_safe_sync, avwap_state_file, today_hyphen, default={})
+                                            avwap_state_fresh['sell_odno'] = str(s_res.get('odno', ''))
+                                            await _retry_api(_atomic_write_json_sync, avwap_state_file, avwap_state_fresh, timeout=10.0)
                                 else:
                                     logging.warning(f"🚨 [{t}] VWAP 슬라이싱 매도 스킵: 큐/잔고 0주 캡핑 (Ghost-Dumping 방어)")
                                     res = {'rt_cd': '999', 'msg1': '보유 수량 0주 캡핑으로 매도 스킵'}
