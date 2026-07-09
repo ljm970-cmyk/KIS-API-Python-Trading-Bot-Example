@@ -1,19 +1,7 @@
 # ==========================================================
 # FILE: telegram_sync_engine.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료. 시스템 런타임 즉사 뇌관 잔존율 0%.
-# 🚨 MODIFIED: [UI 직관성 궁극 교정] 암살자 장부 0주 대기 상태 렌더링 시 'OFF' 표출을 'STANDBY (타점 감시 중 / 0주)'로 100% 팩트 교체하여 엔진 가동 상태(ON)와의 논리적 오해 원천 차단.
-# 🚨 MODIFIED: [Thundering Herd 영구 소각] `await asyncio.sleep(0.06)` 파편화 코드를 전면 삭제하고 `GlobalThrottle` 기반의 `18 TPS` 통제소로 비동기 딜레이를 100% 위임하여 이벤트 루프 교착 완벽 방어.
-# 🚨 MODIFIED: [암살자 장부 상시 렌더링 락온] `_display_ledger` 호출 시 암살자 물량이 0주이더라도 "OFF (대기 중 / 0주)" 상태를 무조건 표출하여 사용자 심리적 안정감 및 가시성 100% 사수.
-# 🚨 MODIFIED: [Phase 4 암살자 장부 병렬 렌더링] 100% 독립된 `AssassinLedger`를 로드하여, 오버나이트 중인 암살자 물량과 평단가를 본진 장부 하단에 완벽히 분리 표출하는 브릿지 결속 유지.
-# 🚨 MODIFIED: [IndentationError 궁극 수술] 파이썬 컴파일러 즉사 버그 원천 차단.
-# 🚨 MODIFIED: [NameError 런타임 붕괴 수술] 텔레그램 인라인 키보드 UI 컴포넌트 임포트 누락 교정 완료.
-# 🚨 MODIFIED: [유령 평단가 덮어쓰기 뇌관 소각] 큐(Queue) 장부가 비어있을 때 KIS 실제 평단가를 0.0으로 오염시키던 맹점 소각.
-# 🚨 MODIFIED: [스냅샷 절대주의 사수] process_auto_sync 호출 시 is_snapshot_mode=False 강제 래핑 락온.
-# 🚨 MODIFIED: [수술 2 - 큐 장부 절대주의 락온] V-REV 모드 시 KIS 실잔고(Ghost Balance)를 무시하고 오직 큐 장부의 수량을 UI에 덮어씌워 렌더링 모순(Paradox) 완벽 차단.
-# 🚨 MODIFIED: [개인 물량 격리 보호] KIS 실잔고가 큐 장부보다 많을 때 강제 편입(MANUAL_BUY)하던 로직을 영구 소각하여 개인 장기 투자 물량의 100% 안전하게 보호.
-# 🚨 MODIFIED: [16:05 스냅샷 락온 대통합] 16:05 EST 장부 정산이 완벽히 끝난 직후(렌더링 직전), 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)하도록 파이프라인 100% 이식.
-# 🚨 MODIFIED: [제1헌법 철저 준수] process_auto_sync 내부에서 AssassinLedger를 동기적으로 인스턴스화하여 메인 이벤트 루프를 블로킹하던 맹독성 I/O 뇌관을 asyncio.to_thread 샌드박스로 100% 격리(Isolation) 수술 완료.
+# 🚨 MODIFIED: [유령 잔고 방어 팩트 수술] actual_qty < a_qty_for_check 로 인해 마이너스 값이 산출될 경우, 이를 0주 졸업으로 오인하여 큐 장부를 소각하는 맹독성 에러를 완벽 방지하고 큐 장부를 교차 검증하여 100% 바이패스(Bypass)하도록 팩트 락온.
 # ==========================================================
 
 import logging
@@ -44,9 +32,6 @@ class TelegramSyncEngine:
         self.tx_lock = tx_lock
         self.sync_locks = sync_locks
 
-    # ==========================================================
-    # 🛡️ [DRY Helper] 절대 방어 헬퍼 메서드 모음
-    # ==========================================================
     def _safe_float(self, value):
         try:
             f_val = float(str(value or 0.0).replace(',', ''))
@@ -55,7 +40,6 @@ class TelegramSyncEngine:
         except Exception: return 0.0
 
     async def _retry_api(self, func, *args, timeout=15.0, default=None, **kwargs):
-        """ 🚨 [Case 32, 33] 지수 백오프 비동기 래퍼 (+ 런타임 호환성 partial 결속) """
         for attempt in range(3):
             try:
                 if asyncio.iscoroutinefunction(func):
@@ -79,9 +63,6 @@ class TelegramSyncEngine:
             logging.error(f"🚨 텔레그램 전송 실패: {e}")
             return None
 
-    # ==========================================================
-    # 📝 [Core Engine] 16:05 정산 및 수동 동기화 메인 프로세스
-    # ==========================================================
     async def process_auto_sync(self, ticker, chat_id, context, silent_ledger=False):
         if ticker not in self.sync_locks:
             self.sync_locks[ticker] = asyncio.Lock()
@@ -105,7 +86,6 @@ class TelegramSyncEngine:
                     if hasattr(self.strategy, 'v_avwap_plugin'):
                         await self._retry_api(self.strategy.v_avwap_plugin.apply_stock_split, ticker, split_ratio, now_est, timeout=10.0)
                     
-                    # 🚨 MODIFIED: [제1헌법 사수] 암살자 독립 장부 액면분할 적용 시 인스턴스화 샌드박스 래핑
                     try:
                         from assassin_ledger import AssassinLedger
                         a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
@@ -162,7 +142,6 @@ class TelegramSyncEngine:
                 a_qty_for_check = 0
                 try:
                     from assassin_ledger import AssassinLedger
-                    # 🚨 MODIFIED: [제1헌법 수호] 동기 I/O 샌드박스 래핑
                     a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
                     a_data_check = await self._retry_api(a_ledger.get_ledger, ticker, default=[])
                     a_qty_for_check = sum(int(self._safe_float(item.get("qty"))) for item in (a_data_check or []))
@@ -230,7 +209,14 @@ class TelegramSyncEngine:
                 ledger_qty = hold_res2[0] if isinstance(hold_res2, tuple) and len(hold_res2) > 0 else 0
                 avg_price = hold_res2[1] if isinstance(hold_res2, tuple) and len(hold_res2) > 1 else 0.0
                 
-                safe_actual_qty_for_vrev = max(0, actual_qty - a_qty_for_check)
+                # 🚨 MODIFIED: [본진 0주 오인 패러독스 차단] KIS 실잔고 - 암살자 수량이 음수가 될 경우 방어 락온
+                raw_actual_qty_for_vrev = actual_qty - a_qty_for_check
+                if raw_actual_qty_for_vrev < 0:
+                    logging.warning(f"🚨 [{ticker}] KIS 잔고 불일치 감지: KIS({actual_qty}) - 암살자({a_qty_for_check}) = {raw_actual_qty_for_vrev}주. 유령 잔고(Ghost Balance) 방어를 위해 본진 수량을 0주가 아닌 큐 장부 수량으로 강제 보정합니다.")
+                    safe_actual_qty_for_vrev = vrev_ledger_qty_for_check if is_rev else ledger_qty
+                else:
+                    safe_actual_qty_for_vrev = raw_actual_qty_for_vrev
+
                 diff = safe_actual_qty_for_vrev - ledger_qty
                 price_diff = abs(actual_avg - avg_price)
 
@@ -324,7 +310,6 @@ class TelegramSyncEngine:
                         added_seed = 0.0
                         _vrev_snap_ok = False
                         snapshot = None
-             
                         actual_clear_price = 0.0
                         tot_q = 0
             
@@ -376,7 +361,7 @@ class TelegramSyncEngine:
                             realized_pnl = self._safe_float(snapshot.get('realized_pnl', 0.0))
                             yield_pct = self._safe_float(snapshot.get('realized_pnl_pct', 0.0))
                             compound_rate = self._safe_float(await self._retry_api(self.cfg.get_compound_rate, ticker, default=70.0)) / 100.0
-                            
+                             
                             if realized_pnl > 0 and compound_rate > 0:
                                 added_seed = realized_pnl * compound_rate
                                 current_seed = self._safe_float(await self._retry_api(self.cfg.get_seed, ticker, default=6720.0))
@@ -387,7 +372,7 @@ class TelegramSyncEngine:
                             start_dt_str = str(q_data_before[0].get('date', ''))[:10] if q_data_before and isinstance(q_data_before[0], dict) else cap_dt_str[:10]
                    
                             hist_data = await self._retry_api(self.cfg._load_json, self.cfg.FILES["HISTORY"], [], default=[])
-                            
+                             
                             new_hist = {
                                 "id": int(time.time()), "ticker": ticker, "start_date": start_dt_str, "end_date": cap_dt_str[:10],
                                 "invested": self._safe_float(total_invested), "revenue": self._safe_float(total_invested + realized_pnl),
@@ -428,9 +413,8 @@ class TelegramSyncEngine:
                         else:
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} V-REV 0주 강제 정산 완료]</b>\n▫️ 0주를 확인하여 큐를 안전하게 비웠으나 통신 지연으로 졸업 카드는 생략되었습니다.", parse_mode='HTML')
                  
-                        # 🚨 NEW: 16:05 스냅샷 락온 (0주 상태 팩트 덮어쓰기)
-                        pass # 아래 공통 블록에서 처리
-                  
+                        pass 
+                   
                     if safe_actual_qty_for_vrev == vrev_ledger_qty:
                         pass
                     elif safe_actual_qty_for_vrev > 0 and safe_actual_qty_for_vrev < vrev_ledger_qty:
@@ -475,11 +459,11 @@ class TelegramSyncEngine:
                                 t_amt = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) * self._safe_float(ex.get('ft_ccld_unpr3')) for ex in sell_execs_sync)
                                 t_q = sum(int(self._safe_float(ex.get('ft_ccld_qty'))) for ex in sell_execs_sync)
                                 if t_q > 0: actual_clear_price_for_sync = round(t_amt / t_q, 4)
-                       
+                        
                         calibrated = False
                         if getattr(self, 'queue_ledger', None):
                             calibrated = await self._retry_api(self.queue_ledger.sync_with_broker, ticker, safe_actual_qty_for_vrev, 0.0, actual_clear_price_for_sync, timeout=10.0, default=False)
-                           
+                         
                         if calibrated: await self._safe_send(context, chat_id, f"🔧 <b>[{html.escape(str(ticker))}] V-REV 큐(Queue) 비파괴 보정 및 리앵커링 완료!</b>\n▫️ 수동 매도 물량(<b>{gap_qty}주</b>)을 LIFO 큐에서 안전하게 차감하고, 수익금만큼 잔여 지층의 평단가를 일괄 차감했습니다.", parse_mode='HTML')
                          
                     elif safe_actual_qty_for_vrev > 0 and safe_actual_qty_for_vrev > vrev_ledger_qty:
@@ -531,7 +515,6 @@ class TelegramSyncEngine:
                             await self._retry_api(self.cfg._save_json, self.cfg.FILES["LEDGER"], all_recs, timeout=10.0)
                             await self._safe_send(context, chat_id, f"⚠️ <b>[{html.escape(str(ticker))} 강제 정산 완료]</b>\n잔고가 0주이나 마이너스 수익 상태이므로 명예의 전당 박제 없이 장부를 비우고 새출발 타점을 장전합니다.", parse_mode='HTML')
 
-                # 🚨 NEW: [스냅샷 락온 타임라인 이동] 16:05 EST 장부 정산이 완벽히 끝난 직후, 내일 자 매매를 위한 팩트 지시서를 미리 박제(Forward-Lock)
                 if now_est.time() >= datetime.time(16, 0):
                     try:
                         curr_p_val = await self._retry_api(self.broker.get_current_price, ticker, timeout=10.0)
@@ -558,7 +541,6 @@ class TelegramSyncEngine:
                         final_qty = hold_res_final[0] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 0 else 0
                         final_avg = hold_res_final[1] if isinstance(hold_res_final, tuple) and len(hold_res_final) > 1 else 0.0
                     
-                        # 🚨 0주 새출발 패러독스 방어: 16:05의 현재가는 오염되었을 수 있으므로 0주 상태일 때 YF 공식 종가(prev_c)로 락온하도록 0.0 주입
                         if final_qty == 0:
                             curr_p = 0.0
                          
@@ -625,13 +607,12 @@ class TelegramSyncEngine:
             if not getattr(self, 'queue_ledger', None):
                 from queue_ledger import QueueLedger
                 self.queue_ledger = await asyncio.to_thread(QueueLedger)
-             
+            
             if getattr(self, 'queue_ledger', None):
                 q_data_ui = await self._retry_api(self.queue_ledger.get_queue, ticker, default=[])
                 vrev_inv_ui = sum(int(self._safe_float(item.get('qty'))) * self._safe_float(item.get('price')) for item in q_data_ui if isinstance(item, dict))
                 vrev_q_ui = sum(int(self._safe_float(item.get('qty'))) for item in q_data_ui if isinstance(item, dict))
                 
-                # 🚨 MODIFIED: [수술 2] 큐 장부 수량 절대주의 락온 (KIS 실잔고 무시 및 오버라이드)
                 actual_qty = vrev_q_ui
                 
                 if vrev_q_ui > 0: actual_avg = round(vrev_inv_ui / vrev_q_ui, 4)
@@ -652,10 +633,8 @@ class TelegramSyncEngine:
             report += f"▪️ 총 매수액 : ${total_buy:,.2f}\n"
             report += f"▪️ 총 매도액 : ${total_sell:,.2f}\n"
 
-        # 🚨 NEW: [Phase 4] 암살자 전용 장부(AssassinLedger) 무조건 병렬 렌더링 팩트 삽입 (0주 관망 상태 포함)
         try:
             from assassin_ledger import AssassinLedger
-            # 🚨 MODIFIED: [제1헌법 철저 준수] 샌드박스 래핑 유지
             a_ledger = await asyncio.wait_for(asyncio.to_thread(AssassinLedger), timeout=5.0)
             a_data = await self._retry_api(a_ledger.get_ledger, ticker, default=[])
             
@@ -670,10 +649,8 @@ class TelegramSyncEngine:
                     report += f"▪️ 락온 수량 : <b>{a_qty} 주</b>\n"
                     report += f"▪️ 진입 평단가: <b>${a_avg:,.2f}</b>\n"
                 else:
-                    # 🚨 MODIFIED: [UI 직관성 교정] 암살자 물량이 없을 때 OFF가 아닌 STANDBY 상태로 표출하여 오해 원천 차단
                     report += f"▪️ 진행 상태 : <b>STANDBY (타점 감시 중 / 0주)</b>\n"
             else:
-                # 🚨 MODIFIED: [UI 직관성 교정] 암살자 물량이 없을 때 OFF가 아닌 STANDBY 상태로 표출하여 오해 원천 차단
                 report += f"▪️ 진행 상태 : <b>STANDBY (타점 감시 중 / 0주)</b>\n"
                 
         except Exception as e:

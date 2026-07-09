@@ -1,21 +1,7 @@
 # ==========================================================
 # FILE: scheduler_core.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [본진 졸업 마비 패러독스 수술] 암살자가 오버나이트를 수행하여 계좌에 물량이 남아있더라도, `process_realtime_graduation`에서 KIS 잔고에서 암살자 장부(`AssassinLedger`) 수량을 차감하여 본진 물량만을 정확히 추출, 0주 새출발 졸업망이 정상 가동되도록 팩트 락온.
-# 🚨 MODIFIED: [Phase 4 정산 파이프라인 팩트 롤오버] 순수 리버전 데이 트레이딩 아키텍처에 따라 오버나이트(이연) 개념을 100% 파기했습니다.
-# 🚨 MODIFIED: [애프터 정산망 영구 소각] 20:05 EST 애프터 정산을 담당하던 scheduled_aftermarket_sync 스케줄러 데드코드를 전면 영구 소각했습니다.
-# 🚨 MODIFIED: [16:05 정규 정산망 단일화] scheduled_auto_sync 내 암살자 물량 보유 시 정산을 20:05로 미루던(Skip) 디커플링 로직을 전면 소각하여 15:59 덤핑 후 무조건 당일 100% 정산되도록 팩트 락온했습니다.
-# 🚨 MODIFIED: [SyntaxError 붕괴 수술] process_realtime_graduation 내부에 잔존하던 try-except 들여쓰기 엇갈림(Indentation)을 정밀 교정.
-# 🚨 NEW: [Scenario 2] 15:15 EST 이전 전량 익절 발생 시 즉각 명예의 전당 저장 및 큐 장부 소각을 집행하고, 새 사이클 덫을 강제 장전하는 실시간 조기 졸업망 팩트 유지.
-# 🚨 NEW: [Edge Case 1 방어] 조기 졸업 후 재진입 타점 계산 시 YF 통신 마비로 전일 종가(prev_c) 결측 시 현재가(curr_p)로 강제 폴백하여 ZeroDivision 원천 차단.
-# 🚨 MODIFIED: [제1헌법 완벽 준수] 파일 I/O(JSON), 장부 연산, Config 조회를 담당하는 모든 asyncio.to_thread 호출부를 asyncio.wait_for 샌드박스로 100% 래핑.
-# 🚨 MODIFIED: [Safe Unpacking] get_account_balance 튜플 언패킹 시 ValueError 붕괴를 막기 위한 isinstance 및 len 쉴드 100% 락온.
-# 🚨 MODIFIED: [이벤트 루프 교착 완벽 차단] 텔레그램 send_message 및 edit_text 통신 전역에 asyncio.wait_for(timeout=15.0) 족쇄 래핑 유지.
-# 🚨 MODIFIED: [Double-Spending 붕괴 방어] get_budget_allocation 연산 시 V14 다중 종목 잉여금 중복 할당 차단.
-# 🚨 MODIFIED: [AttributeError 궁극 수술] context.job 객체 파손/결측 시 발생하는 연쇄 속성 접근(get/data/chat_id) 즉사 버그를 스케줄러 전역(force_reset, auto_sync 등)에서 getattr 단락 평가로 완벽 교정 완료.
-# 🚨 MODIFIED: [스냅샷 락온 타임라인 이동] 새벽 4시 스냅샷 강제 생성(is_snapshot_mode=True)을 16:05 EST로 이관함에 따라 해당 로직 전면 영구 소각 (Bypass).
-# 🚨 MODIFIED: [ImportError 붕괴 수술] 렌더링 중 증발했던 scheduled_auto_sync 함수 블록을 100% 팩트 복구 완료.
+# 🚨 MODIFIED: [본진 졸업 마비 패러독스 수술] 암살자가 오버나이트를 수행하여 계좌에 물량이 남아있더라도, `process_realtime_graduation`에서 KIS 잔고에서 암살자 장부(`AssassinLedger`) 수량을 차감하여 본진 물량만을 정확히 추출, 0주 새출발 졸업망이 정상 가동되도록 팩트 락온. 단, 음수가 발생할 경우 큐 장부를 교차 검증하여 조기 졸업을 안전하게 차단(Bypass).
 # ==========================================================
 import logging
 import datetime
@@ -32,7 +18,6 @@ import pandas_market_calendars as mcal
 import html
 
 def _safe_float(val):
-    """ 🚨 [수학 연산 붕괴 방어] NaN, Infinity 및 String-Comma 맹독성 데이터 정밀 필터링 """
     try:
         f_val = float(str(val or 0.0).replace(',', ''))
         if math.isnan(f_val) or math.isinf(f_val): return 0.0
@@ -41,7 +26,6 @@ def _safe_float(val):
         return 0.0
 
 def _read_json_sync(filepath):
-    """ 🚨 [제1헌법 준수] 비동기 격리를 위한 JSON 읽기 헬퍼 (EAFP 기반) """
     try:
         with open(filepath, 'r', encoding='utf-8') as f: return json.load(f)
     except OSError: pass
@@ -49,7 +33,6 @@ def _read_json_sync(filepath):
     return {}
 
 def _atomic_write_json_sync(filepath, data):
-    """ 🚨 [제4헌법 준수] 원자적 쓰기(Atomic Write) 동기 헬퍼 """
     dir_name = os.path.dirname(filepath) or '.'
     try: os.makedirs(dir_name, exist_ok=True)
     except OSError: pass
@@ -75,7 +58,6 @@ def _atomic_write_json_sync(filepath, data):
         raise e
 
 async def async_retry(func, *args, default=None, timeout=10.0, **kwargs):
-    """ 🚨 [통신망 팩트 수호] 3단 지수 백오프 및 비동기 래핑 공용 헬퍼 """
     for attempt in range(3):
         try:
             return await asyncio.wait_for(asyncio.to_thread(func, *args, **kwargs), timeout=timeout)
@@ -87,7 +69,6 @@ async def async_retry(func, *args, default=None, timeout=10.0, **kwargs):
             else: return default
 
 def is_market_open():
-    """ 🚨 [제2헌법 준수] 달력 API(mcal) 기반 실시간 장 운영 검증기 (TPS 캡핑 포함) """
     for attempt in range(3):
         try:
             time.sleep(0.06) 
@@ -106,12 +87,10 @@ def is_market_open():
             time.sleep(1.0 * (2 ** attempt))
 
 def get_budget_allocation(cash, tickers, cfg):
-    """ 🚨 [예산 할당 통제소] 다중 종목 구동 시 가용 현금 팩트 분배 (Double-Spending 원천 차단) """
     sorted_tickers = sorted(tickers or [], key=lambda x: 0 if x == "SOXL" else (1 if x == "TQQQ" else 2))
     allocated = {}
     free_cash = _safe_float(cash)
     
-    # 1차 배분: 고정 예산(Portion) 스펙 산출
     base_portions = {}
     for tx in sorted_tickers:
         version = getattr(cfg, 'get_version', lambda x: "V14")(tx)
@@ -123,21 +102,19 @@ def get_budget_allocation(cash, tickers, cfg):
             seed = _safe_float(getattr(cfg, 'get_seed', lambda x: 0.0)(tx))
             base_portions[tx] = seed / split
 
-    # 2차 배분: 가용 현금 내에서 순차 지급 (V-REV는 무조건 고정값 배정)
     for tx in sorted_tickers:
         req = base_portions[tx]
         version = getattr(cfg, 'get_version', lambda x: "V14")(tx)
         if version == "V_REV":
             allocated[tx] = req
-            free_cash = max(0.0, free_cash - req) # 🚨 [Double-Spending 방어] 현금 차감 팩트 락온
+            free_cash = max(0.0, free_cash - req) 
         else:
             if free_cash >= req:
                 allocated[tx] = req
-                free_cash = max(0.0, free_cash - req) # 🚨 [Double-Spending 방어] 현금 차감 팩트 락온
+                free_cash = max(0.0, free_cash - req) 
             else:
                 allocated[tx] = 0.0
 
-    # 3차 배분: 남은 잉여 현금(Surplus)을 V14 종목들에게 균등 분배 (심해 줍줍용 잔금)
     v14_active = [tx for tx in sorted_tickers if getattr(cfg, 'get_version', lambda x: "V14")(tx) != "V_REV" and allocated.get(tx, 0.0) > 0]
     if v14_active and free_cash > 0:
         surplus = free_cash / len(v14_active)
@@ -147,7 +124,6 @@ def get_budget_allocation(cash, tickers, cfg):
     return sorted_tickers, allocated
 
 def perform_self_cleaning():
-    """ 🚨 [시스템 자정 작업] 7일 초과 낡은 로그/스냅샷 파기 및 메모리 최적화 """
     try:
         now = time.time()
         seven_days = 7 * 24 * 3600
@@ -179,7 +155,6 @@ async def scheduled_self_cleaning(context):
         logging.error(f"🚨 [Self-Cleaning] 가비지 컬렉션(GC) 에러: {e}")
 
 async def scheduled_token_check(context):
-    """ 🚨 [보안망] KIS API 토큰 생명주기 갱신 락온 """
     job = getattr(context, 'job', None)
     app_data = getattr(job, 'data', {}) if job else {}
     if not isinstance(app_data, dict): app_data = {}
@@ -193,7 +168,6 @@ async def scheduled_token_check(context):
     logging.info("🔑 [API 토큰 갱신] 토큰 갱신이 안전하게 완료되었습니다.")
 
 async def scheduled_force_reset(context):
-    """ 🚨 [매매망 롤오버] 04:00 EST 기상 시 시스템 락(Lock) 전면 해제 및 일일 초기화 """
     est = ZoneInfo('America/New_York')
     now_est = datetime.datetime.now(est)
     if not (3 <= now_est.hour <= 5): return
@@ -250,7 +224,7 @@ async def scheduled_force_reset(context):
                 except Exception:
                     if attempt == 2: holdings = {}
                     else: await asyncio.sleep(1.0 * (2 ** attempt))
-                
+                 
         msg_addons = ""
         
         try:
@@ -259,7 +233,6 @@ async def scheduled_force_reset(context):
             active_tickers = []
         if not isinstance(active_tickers, list): active_tickers = []
    
-        # 🚨 MODIFIED: [스냅샷 조기 락온 수술] 예산 할당을 루프 외부로 전진 배치
         alloc_cash_dict = {}
         try:
             alloc_res = await asyncio.wait_for(asyncio.to_thread(get_budget_allocation, cash_val, active_tickers, cfg), timeout=10.0)
@@ -270,7 +243,7 @@ async def scheduled_force_reset(context):
         for t in active_tickers:
             try:
                 await asyncio.sleep(0.06)
-                
+                 
                 version = "V14"
                 try: version = await asyncio.wait_for(asyncio.to_thread(cfg.get_version, t), timeout=5.0)
                 except Exception: pass
@@ -281,7 +254,6 @@ async def scheduled_force_reset(context):
                     rev_state = rev_state_raw if isinstance(rev_state_raw, dict) else {}
                 except Exception: pass
                 
-                # 🚨 MODIFIED: [스냅샷 조기 락온 수술] 모든 종목에 대해 시세와 잔고를 불러오도록 전진 배치
                 safe_h_data = holdings.get(t) if isinstance(holdings.get(t), dict) else {}
                 actual_avg = _safe_float(safe_h_data.get('avg', 0.0))
                 actual_qty = int(_safe_float(safe_h_data.get('qty', 0)))
@@ -338,7 +310,6 @@ async def scheduled_force_reset(context):
                 else:
                     await asyncio.wait_for(asyncio.to_thread(cfg.increment_reverse_day, t), timeout=5.0)
 
-                # 🚨 MODIFIED: [스냅샷 락온 타임라인 이동] 새벽 4시 스냅샷 강제 생성(is_snapshot_mode=True)을 16:05 EST로 이관함에 따라 해당 로직 전면 영구 소각 (Bypass).
                 logging.info(f"📸 [{t}] 04:00 AM 기상 완료. (스냅샷은 전일 16:05 EST에 사전 박제(Forward-Lock)되었으므로 생성을 바이패스합니다.)")
 
             except Exception as e:
@@ -380,11 +351,10 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
             except Exception:
                 if attempt == 2: return
                 await asyncio.sleep(1.0 * (2 ** attempt))
-                
+                 
         safe_holdings_t = holdings.get(ticker) if isinstance(holdings.get(ticker), dict) else {}
         kis_qty = int(_safe_float(safe_holdings_t.get('qty', 0)))
         
-        # 🚨 MODIFIED: [본진 졸업 마비 패러독스 수술] 암살자 오버나이트 물량을 KIS 총잔고에서 차감하여 순수 본진(V-REV) 물량 도출
         a_qty = 0
         try:
             from assassin_ledger import AssassinLedger
@@ -394,7 +364,17 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
         except Exception as e:
             logging.error(f"🚨 [{ticker}] 조기 졸업 스캔 중 암살자 장부 로드 에러: {e}")
             
-        pure_vrev_qty = max(0, kis_qty - a_qty)
+        pure_vrev_qty = kis_qty - a_qty
+        
+        # 🚨 MODIFIED: [본진 0주 오인 방어막] 음수 산출 시 큐 장부를 교차 검증하여 조기 졸업을 강제 차단(Bypass)
+        if pure_vrev_qty <= 0:
+            if pure_vrev_qty < 0:
+                q_ledger_data = await async_retry(queue_ledger.get_queue, ticker, default=[])
+                q_qty = sum(int(_safe_float(item.get("qty"))) for item in (q_ledger_data or []) if isinstance(item, dict))
+                if q_qty > 0:
+                    logging.warning(f"🚨 [{ticker}] 조기 졸업 스캔 우회: KIS 잔고({kis_qty}주) - 암살자({a_qty}주) 연산 시 음수({pure_vrev_qty}주) 발생. 큐 장부({q_qty}주)가 존재하므로 조기 졸업(0주 잭팟) 판정을 강제 차단합니다.")
+                    return
+            pure_vrev_qty = 0
         
         if pure_vrev_qty == 0:
             try:
@@ -434,7 +414,6 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
                             )
                         except Exception: pass
 
-                        # 🚨 NEW: [Phase 1 NEW] 시나리오 2: Same-Day Re-entry 강제 장전망 구축
                         try:
                             job = getattr(context, 'job', None)
                             app_data = {}
@@ -474,7 +453,6 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
                                         if attempt == 2: prev_c = 0.0
                                         else: await asyncio.sleep(1.0 * (2 ** attempt))
 
-                                # 🚨 MODIFIED: Edge Case 1 방어 (YF 서버 마비로 0.0 반환 시 현재가로 강력 폴백하여 ZeroDivision 방어)
                                 if prev_c <= 0.0:
                                     prev_c = curr_p
 
@@ -503,7 +481,7 @@ async def process_realtime_graduation(ticker, cfg, broker, queue_ledger, chat_id
                                             try:
                                                 await asyncio.sleep(0.06)
                                                 if o_type == 'VWAP':
-                                                    o_type = 'LOC'  # 새출발 덫은 LOC로 즉시 고정
+                                                    o_type = 'LOC'  
                                                     
                                                 ord_res = await asyncio.wait_for(
                                                     asyncio.to_thread(broker.send_order, ticker, 'BUY', o_qty, o_price, o_type), 
