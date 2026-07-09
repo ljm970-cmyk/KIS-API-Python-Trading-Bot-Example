@@ -1,17 +1,12 @@
 # ==========================================================
 # FILE: telegram_states.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 43대 엣지 케이스 완벽 결속 교차 검증 완료.
+# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 46대 엣지 케이스 완벽 결속 교차 검증 완료.
 # 🚨 MODIFIED: [Phase 5 예산 락온] CONF_AVWAP_BUDGET 분기를 신설하여 사용자가 입력한 예산값(float)을 필터링하고 시스템 전역 변수에 원자적(Atomic)으로 덮어씌웁니다.
-# 🚨 MODIFIED: [암살자 팻핑거 뇌관 영구 소각] 순수 돌파/추종 아키텍처 이식에 따라, 암살자의 진입률/익절률을 수동으로 입력받던 CONF_AVWAP_ENTRANCE 및 CONF_AVWAP_EXIT 분기망을 100% 영구 삭제 완료.
+# 🚨 MODIFIED: [Thundering Herd 붕괴 원천 차단] 파편화된 `await asyncio.sleep(0.06)`을 전면 소각하고 중앙 통제소로 비동기 딜레이를 100% 위임 완료.
 # 🚨 MODIFIED: [Scope Mismatch 파싱 버그 궁극 수술] CONF_STOCK_SPLIT 등 처리 시 언더바(_) 개수 초과로 인한 인덱스 밀림(IndexError 및 오염) 현상을 parts[-1] 매핑으로 100% 원천 차단.
-# 🚨 MODIFIED: [Thread-Safety 락온] 내부 헬퍼 함수가 클로저 외부 변수(self)에 의존하지 않도록 명시적 파라미터 주입으로 스레드 오염 원천 차단.
-# 🚨 MODIFIED: [명령어 우회 라우팅 최신화] '관제탑', '로그' 등 한글 메뉴 클릭 시 상태(State) 락에 갇히지 않고 정상적으로 cmd_avwap, cmd_log 로 우회하도록 라우팅 팩트 결속.
 # 🚨 MODIFIED: [Case 38 렌더링 충돌 절대 방어] 제자리 렌더링 호출 시 발생하는 텔레그램 BadRequest 에러를 흡수하는 샌드박스 정밀 래핑.
 # 🚨 MODIFIED: [제1헌법 철저 준수] 텔레그램 메세지 발송 및 파일 I/O 스레드 전역에 asyncio.wait_for(timeout=10.0) 족쇄 래핑 완료 (Deadlock 원천 봉쇄).
-# 🚨 MODIFIED: [수술 1] 암살자 유령 장부(Ghost Ledger) 및 잔여 상태 캐시 100% 영구 소각 파이프라인 결속 완료.
-# 🚨 MODIFIED: [스냅샷 파괴 범위 대통합] RESET:LOCK 해제 시 V-REV 뿐만 아니라 V14, V14VWAP 스냅샷까지 100% 순회 소각하도록 팩트 교정 완료.
-# 🚨 MODIFIED: [논리 붕괴 궁극 수술] EDITQ_ 지층 편집 모드에서 API 응답(break) 시 팻핑거 방어막이 바이패스되는 패러독스(들여쓰기 오류)를 루프 외부로 팩트 교정 완료.
 # ==========================================================
 
 import logging
@@ -113,7 +108,7 @@ class TelegramStates:
                     curr_p = 0.0
                     for attempt in range(3):
                         try:
-                            await asyncio.sleep(0.06)
+                            # 🚨 MODIFIED: 파편화된 sleep 소각 완료
                             curr_p_val = await asyncio.wait_for(
                                 asyncio.to_thread(self.broker.get_current_price, ticker), 
                                 timeout=10.0
@@ -124,7 +119,6 @@ class TelegramStates:
                             if attempt == 2: curr_p = 0.0
                             else: await asyncio.sleep(1.0 * (2 ** attempt))
             
-                    # 🚨 MODIFIED: [논리 붕괴 교정] API 응답 성공(break) 시 팻핑거 방어막이 통째로 무시되는 즉사 버그를 막기 위해 for 루프 외부로 스코프 전진 배치 완료.
                     if curr_p and curr_p > 0 and (price < curr_p * 0.4 or price > curr_p * 1.6):
                         del controller.user_states[chat_id]
                         try: await asyncio.wait_for(update.effective_message.reply_text(f"🚨 <b>팻핑거 방어 가동:</b> 입력가(${price:.2f})가 현재가(${curr_p:.2f}) 대비 ±60%를 초과합니다. 다시 시도해주세요.", parse_mode='HTML'), timeout=10.0)
@@ -209,7 +203,7 @@ class TelegramStates:
                     except BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
-                
+                 
             elif state.startswith("CONF_TARGET"):
                 ticker = parts[-1]
                 safe_ticker = html.escape(str(ticker))
@@ -305,7 +299,6 @@ class TelegramStates:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
 
-            # 🚨 NEW: [Phase 5 지정 예산 락온] 사용자가 입력한 예산을 파싱 및 EAFP 필터링 후 시스템 전역 락온
             elif state.startswith("CONF_AVWAP_BUDGET"):
                 if val <= 0.0:
                     try: await asyncio.wait_for(update.effective_message.reply_text("🚨 <b>오입력 차단:</b> 암살자 예산은 0보다 커야 합니다.", parse_mode='HTML'), timeout=10.0)

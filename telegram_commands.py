@@ -1,11 +1,7 @@
 # ==========================================================
 # FILE: telegram_commands.py
 # ==========================================================
-# 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [스냅샷 유령 현상 방어] 16:05 EST 이후 장마감(CLOSE) 및 애프터장(AFTER) 상태일 때 스냅샷 로딩을 강제로 묵살하던 `force_realtime` 맹독성 로직을 100% 영구 소각하여, 언제든 D+1 락온 스냅샷이 최우선 렌더링되도록 팩트 교정 완료.
-# 🚨 MODIFIED: [NameError 즉사 수술] cmd_sync 내부 최상단에 `chat_id = update.effective_chat.id` 선언을 명시적으로 결속.
-# 🚨 MODIFIED: [침묵의 마비(Silent Death) 원천 봉쇄] cmd_record 내부에 locked_tickers 및 error_tickers 추적망 신설.
-# 🚨 MODIFIED: [미래 참조(Look-ahead) 데이터 절단 및 1d 롤오버 지연 소각] YF 1d 캔들 호출 지연 버그를 파기하고 1m 기반 D-1일 공식 MOC 종가 핀셋 추출 락온.
+# 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] `/add_q`, `/clear_q` 수동 조작 시, 기존에 박제되어 있던 오염된 스냅샷(Ghost Snapshot)을 백그라운드에서 자동으로 영구 소각(Nuke)하여 렌더링 모순을 완벽 차단.
 # ==========================================================
 import logging
 import datetime
@@ -259,8 +255,6 @@ class TelegramCommands:
             ver = await self._retry_api(self.cfg.get_version, t) or "V14"
             is_manual_vwap = await self._retry_api(getattr(self.cfg, 'get_manual_vwap_mode', lambda x: False), t, default=False)
             
-            # 🚨 MODIFIED: [스냅샷 유령 현상 방어] 맹독성 force_realtime 플래그 영구 소각.
-            # 장마감(CLOSE) 및 애프터장(AFTER)에도 무조건 D+1 락온 스냅샷을 100% 로드하도록 팩트 교정 완료.
             cached_snap = None
             if ver == "V_REV":
                 cached_snap = await self._retry_api(self.strategy.v_rev_plugin.load_daily_snapshot, t)
@@ -324,7 +318,7 @@ class TelegramCommands:
                 if status_code in ["PRE", "REG"]:
                     df_1min_base = await self._retry_api(self.broker.get_1min_candles_df, avwap_base_ticker)
                     base_curr_p = self._safe_float(await self._retry_api(self.broker.get_current_price, avwap_base_ticker))
-                    
+                   
                     if hasattr(self.strategy, 'v_avwap_plugin'):
                         decision = await self._retry_api(
                             self.strategy.v_avwap_plugin.get_decision,
@@ -450,7 +444,7 @@ class TelegramCommands:
                 err_msg = f"⚠️ <b>[동기화 지연]</b> {', '.join(locked_tickers)} 종목은 백그라운드 작업이 장부를 점유 중입니다. 잠시 후 다시 시도해주세요."
             elif error_tickers:
                 err_msg = f"❌ <b>[동기화 에러]</b> {', '.join(error_tickers)} 종목의 KIS 서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
-                
+                 
             await self._safe_edit(status_msg, err_msg, parse_mode='HTML')
 
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -632,13 +626,24 @@ class TelegramCommands:
         q_data.sort(key=lambda x: str(x.get('date', '')) if isinstance(x, dict) else '', reverse=True)
  
         await self._retry_api(self.queue_ledger.overwrite_queue, ticker, q_data)
+        
+        # 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] 과거 오염된 0주 스냅샷을 백그라운드에서 자동 삭제
+        def _nuke_snapshot():
+            est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
+            today_str = est_now.strftime("%Y-%m-%d")
+            for snap_prefix in ["REV", "V14", "V14VWAP"]:
+                snap_file = f"data/daily_snapshot_{snap_prefix}_{today_str}_{ticker}.json"
+                try: os.remove(snap_file)
+                except OSError: pass
+        await asyncio.to_thread(_nuke_snapshot)
+        
         chat_id = update.effective_chat.id
         if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
         if not self.sync_engine.sync_locks[ticker].locked(): await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=False)
         
         date_str_safe = html.escape(str(date_str))
         ticker_safe = html.escape(str(ticker))
-        await self._safe_reply(update.effective_message, f"✅ <b>[{ticker_safe}] 수동 지층 삽입 완료!</b>\n▫️ {date_str_safe} | {qty}주 | ${price:.2f}", parse_mode='HTML')
+        await self._safe_reply(update.effective_message, f"✅ <b>[{ticker_safe}] 수동 지층 삽입 완료 및 오염 스냅샷 자동 삭제!</b>\n▫️ {date_str_safe} | {qty}주 | ${price:.2f}", parse_mode='HTML')
 
     async def cmd_clear_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args
@@ -654,10 +659,21 @@ class TelegramCommands:
             self.queue_ledger = await asyncio.to_thread(QueueLedger)
             
         await self._retry_api(self.queue_ledger.clear_queue, ticker)
+        
+        # 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] 과거 오염된 0주 스냅샷을 백그라운드에서 자동 삭제
+        def _nuke_snapshot():
+            est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
+            today_str = est_now.strftime("%Y-%m-%d")
+            for snap_prefix in ["REV", "V14", "V14VWAP"]:
+                snap_file = f"data/daily_snapshot_{snap_prefix}_{today_str}_{ticker}.json"
+                try: os.remove(snap_file)
+                except OSError: pass
+        await asyncio.to_thread(_nuke_snapshot)
+        
         chat_id = update.effective_chat.id
         if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
         if not self.sync_engine.sync_locks[ticker].locked(): await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=True)
-        await self._safe_reply(update.effective_message, f"🗑️ <b>[{ticker_safe}] 장부가 완전히 소각되었습니다.</b>\n새로운 지층을 구축할 준비가 완료되었습니다.", parse_mode='HTML')
+        await self._safe_reply(update.effective_message, f"🗑️ <b>[{ticker_safe}] 장부가 완전히 소각되고 오염된 스냅샷이 파기되었습니다.</b>\n새로운 지층을 구축할 준비가 완료되었습니다.", parse_mode='HTML')
 
     async def cmd_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         updater = SystemUpdater()
@@ -724,6 +740,7 @@ class TelegramCommands:
         if error_logs is None:
             await self._safe_edit(status_msg, "📭 <b>[진단 결과]</b> 오늘자 로그 파일이 생성되지 않았습니다.", parse_mode='HTML')
             return
+    
         if not error_logs:
             await self._safe_edit(status_msg, "✅ <b>[진단 결과]</b> 최근 감지된 시스템 결함이 없습니다. 무결점 순항 중!", parse_mode='HTML')
             return
