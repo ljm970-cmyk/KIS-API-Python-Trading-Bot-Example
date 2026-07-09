@@ -2,12 +2,12 @@
 # FILE: callback_config_handler.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 46대 엣지 케이스 완벽 결속 교차 검증 완료
+# 🚨 MODIFIED: [암살자 부활 패러독스 궁극 방어] 수동 삼위일체 소각(/reset) 시 암살자의 상태 파일(avwap_trade_state)을 물리적 삭제하는 맹독성 로직을 영구 소각. 대신 `shutdown: True`와 0주 상태를 강제 주입하여 당일 고점 재진입(Limit-Trap) 대참사를 100% 원천 봉쇄.
 # 🚨 MODIFIED: [Phase 5 암살자 지정 예산 락온] INPUT 라우팅에 `AVWAP_BUDGET` 액션을 추가하여 사용자 예산 설정을 위한 상태(State) 전이를 완벽 매핑.
 # 🚨 MODIFIED: [Phase 5 오버나이트 락온] CONFIG_AVWAP 라우팅에 `TOGGLE_OVERNIGHT` 스위칭 로직을 결속하여 당일청산(MOC)과 오버나이트 모드를 동적으로 제어.
 # 🚨 MODIFIED: [Case 38 UI 렌더링 높이 붕괴 패러독스 차단] 버튼 클릭 시 1줄짜리 텍스트("업데이트 중...")로 중간 갱신하여 기존 화면을 증발시키는 행위를 전면 금지. 로딩은 query.answer() 팝업으로 대체하고 최종 결과로 단 1회 제자리 갱신(In-place Edit) 락온.
 # 🚨 MODIFIED: [Case 08, 16 헌법 사수] os.path.exists 소각, EAFP 디렉토리 생성 및 원자적 쓰기(Atomic Write) 강제 주입 완료.
 # 🚨 MODIFIED: [제1헌법 철저 준수] 파일 I/O 연산 및 텔레그램 통신 전역에 `asyncio.wait_for` 타임아웃 족쇄 100% 강제 래핑 완료 (Deadlock 원천 차단).
-# 🚨 MODIFIED: [수술 1] 삼위일체 소각(Nuke) 격발 시 암살자 유령 장부(Ghost Ledger) 및 잔여 상태 캐시 100% 영구 소각 파이프라인 결속 완료.
 # 🚨 MODIFIED: [Event Loop 교착 수술] AssassinLedger 및 SystemUpdater 인스턴스화 시 발생하는 __init__ 내부의 동기 I/O(파일 체크/생성) 블로킹을 막기 위해 100% 백그라운드 스레드(to_thread) 샌드박스로 래핑 락온.
 # 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] RESET:LOCK 내부 `_hijack_vwap_lock()` 실행 시 V-REV 뿐만 아니라 V14, V14VWAP 스냅샷 파일까지 순회하며 100% 영구 소각하도록 팩트 교정 완료.
 # ==========================================================
@@ -69,7 +69,6 @@ class CallbackConfigHandler:
                     await asyncio.wait_for(query.answer("⏳ 깃허브 코드 동기화 중...", show_alert=False), timeout=5.0)
                 except Exception: pass
                 
-                # 🚨 MODIFIED: [제1헌법] SystemUpdater 내부 load_dotenv 동기 I/O 샌드박스 격리
                 from plugin_updater import SystemUpdater
                 try:
                     updater = await asyncio.wait_for(asyncio.to_thread(SystemUpdater), timeout=5.0)
@@ -175,7 +174,6 @@ class CallbackConfigHandler:
                         except (OSError, json.JSONDecodeError): 
                             pass
                             
-                        # 🚨 MODIFIED: [스냅샷 파괴 범위 대통합] V-REV 뿐만 아니라 V14, V14VWAP 스냅샷 순회 소각 락온
                         try:
                             est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
                             today_str = est_now.strftime("%Y-%m-%d")
@@ -236,7 +234,7 @@ class CallbackConfigHandler:
                                 fd = None
                                 json.dump(b_data, f_out, ensure_ascii=False, indent=4)
                                 f_out.flush()
-                            os.fsync(f_out.fileno())
+                                os.fsync(f_out.fileno())
                             os.replace(tmp_path, backup_file)
                             tmp_path = None
                         except Exception:
@@ -255,7 +253,6 @@ class CallbackConfigHandler:
                     await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.clear_queue, ticker), timeout=10.0)
                     await asyncio.wait_for(asyncio.to_thread(self.queue_ledger.sync_with_broker, ticker, 0, 0.0), timeout=10.0)
 
-                # 🚨 MODIFIED: [제1헌법 결속] 인스턴스 초기화 및 동기 I/O 함수 일체(os.remove 등)를 백그라운드로 100% 밀어내어 이벤트 루프 마비 원천 차단
                 def _nuke_assassin_data():
                     try:
                         from assassin_ledger import AssassinLedger
@@ -263,10 +260,51 @@ class CallbackConfigHandler:
                         a_ledger.clear_ledger(ticker)
                     except Exception as e:
                         logging.error(f"🚨 [{ticker}] 암살자 장부 강제 소각 중 에러: {e}")
+                    
+                    # 🚨 MODIFIED: [암살자 부활 패러독스 궁극 방어] 파일 물리적 삭제(os.remove)를 영구 소각하고, shutdown: True 팩트를 원자적으로 덮어씌워 당일 재진입 원천 차단
+                    state_file = f"data/avwap_trade_state_{ticker}.json"
                     try:
-                        os.remove(f"data/avwap_trade_state_{ticker}.json")
-                    except OSError:
-                        pass
+                        est_now = datetime.datetime.now(ZoneInfo('America/New_York'))
+                        today_str = est_now.strftime('%Y-%m-%d')
+                        state_data = {}
+                        try:
+                            with open(state_file, 'r', encoding='utf-8') as f:
+                                state_data = json.load(f)
+                        except Exception:
+                            pass
+
+                        state_data['date'] = today_str
+                        state_data['qty'] = 0
+                        state_data['buy_odno'] = ""
+                        state_data['sell_odno'] = ""
+                        state_data['shutdown'] = True
+                        state_data['dumped'] = True
+
+                        dir_name = os.path.dirname(state_file) or '.'
+                        try: os.makedirs(dir_name, exist_ok=True)
+                        except OSError: pass
+
+                        fd = None
+                        tmp_path = None
+                        try:
+                            fd, tmp_path = tempfile.mkstemp(dir=dir_name, text=True)
+                            with os.fdopen(fd, 'w', encoding='utf-8') as f_out:
+                                fd = None
+                                json.dump(state_data, f_out, ensure_ascii=False, indent=4)
+                                f_out.flush()
+                                os.fsync(f_out.fileno())
+                            os.replace(tmp_path, state_file)
+                            tmp_path = None
+                        except Exception as inner_e:
+                            if fd is not None:
+                                try: os.close(fd)
+                                except OSError: pass
+                            if tmp_path:
+                                try: os.remove(tmp_path)
+                                except OSError: pass
+                            raise inner_e
+                    except Exception as e:
+                        logging.error(f"🚨 [{ticker}] 암살자 상태 셧다운 주입 에러: {e}")
 
                 await asyncio.wait_for(asyncio.to_thread(_nuke_assassin_data), timeout=10.0)
                 await asyncio.wait_for(asyncio.to_thread(self.cfg.reset_lock_for_ticker, ticker), timeout=10.0)
@@ -323,7 +361,7 @@ class CallbackConfigHandler:
                         logging.error(f"🚨 0주 강제 스냅샷 오버라이드 에러: {e}")
 
                 try:
-                    await asyncio.wait_for(query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 삼위일체 소각(Nuke) 및 초기화 완료!</b>\n▫️ 본장부, 백업장부, 큐(Queue) 찌꺼기 데이터가 100% 영구 삭제되었습니다.\n▫️ KIS 실잔고 동기화, 매매 잠금 해제 및 디커플링 타점 스냅샷 원자적 덮어쓰기가 완벽히 집행되었습니다.", parse_mode='HTML'), timeout=10.0)
+                    await asyncio.wait_for(query.edit_message_text(f"✅ <b>[{html.escape(str(ticker))}] 삼위일체 소각(Nuke) 및 초기화 완료!</b>\n▫️ 본장부, 백업장부, 큐(Queue) 찌꺼기 데이터가 100% 영구 삭제되었습니다.\n▫️ 암살자의 재진입(부활)이 전면 차단되었으며, 매매 잠금 해제 및 디커플링 타점 스냅샷 덮어쓰기가 완벽히 집행되었습니다.", parse_mode='HTML'), timeout=10.0)
                 except telegram.error.BadRequest as e:
                     if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                 except Exception: pass
@@ -402,7 +440,6 @@ class CallbackConfigHandler:
                     except telegram.error.BadRequest as e:
                         if "not modified" not in str(e).lower(): logging.warning(f"⚠️ UI 갱신 예외: {e}")
                     except Exception: pass
-             
             elif sub == "LIST":
                 if hasattr(controller, 'cmd_history'):
                     await controller.cmd_history(update, context)
@@ -596,7 +633,7 @@ class CallbackConfigHandler:
                     return
                 target_tickers = [sub]
                 msg_txt = sub + " 전용"
-                
+                 
             await asyncio.wait_for(asyncio.to_thread(self.cfg.set_active_tickers, target_tickers), timeout=10.0)
             try: 
                 await asyncio.wait_for(query.edit_message_text(f"✅ <b>[운용 종목 락온 완료]</b>\n▫️ <b>{html.escape(str(msg_txt))}</b> 모드로 전환되었습니다.\n▫️ /sync를 눌러 확인하십시오.", parse_mode='HTML'), timeout=10.0)
@@ -643,7 +680,7 @@ class CallbackConfigHandler:
                             logging.error(f"🚨 관제탑 UI 갱신 실패: {e}")
                 except Exception as e:
                     logging.error(f"🚨 [{ticker}] 암살자 오버나이트 토글 실패: {e}")
-            
+             
         elif action == "INPUT":
             if not ticker: return
             controller.user_states[chat_id] = f"CONF_{sub}_{ticker}"
