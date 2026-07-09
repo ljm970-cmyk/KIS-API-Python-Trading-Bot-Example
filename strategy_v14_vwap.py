@@ -1,8 +1,7 @@
 # ==========================================================
 # FILE: strategy_v14_vwap.py
 # ==========================================================
-# 🚨 MODIFIED: [TypeError 런타임 붕괴 궁극 수술] `from datetime import datetime` 선언 환경에서 `datetime.time(16,0)` 호출 시 발생하는 에러를 막기 위해, `now_est.hour >= 16`으로 100% 팩트 교체 완료.
-# 🚨 MODIFIED: [Date Schema Mismatch 방어] 16:05 EST에 스냅샷을 생성할 경우, 내일 자 스냅샷으로 락온(Forward-Lock)되도록 팩트 수술.
+# 🚨 MODIFIED: [메모리 유령화(Ghost Memory) 붕괴 궁극 수술] 디스크 파일의 존재 여부 및 유효성을 100% 교차 검증하여, 파일이 소각되었을 경우 메모리의 당일 매도 수량(SELL_QTY)을 즉각 0으로 원자적 초기화.
 # ==========================================================
 import math
 import logging
@@ -28,12 +27,11 @@ class V14VwapStrategy:
             return 0.0
 
     def _get_logical_date_str(self):
-        """ 🚨 [미래 참조 방어막 100% 수술] 16:00 이후 생성 시 D+1(명일)로 포워드 락온. 주말이면 차주 월요일로 정밀 매핑. """
         now_est = datetime.now(ZoneInfo('America/New_York'))
         
         if now_est.hour < 4 or (now_est.hour == 4 and now_est.minute < 4):
             target_date = now_est - timedelta(days=1)
-        elif now_est.hour >= 16: # 🚨 MODIFIED: [TypeError 즉사 방어] datetime.time 충돌 소각
+        elif now_est.hour >= 16: 
             target_date = now_est + timedelta(days=1)
         else:
             target_date = now_est
@@ -55,10 +53,9 @@ class V14VwapStrategy:
 
     def _load_state_if_needed(self, ticker):
         today_str = self._get_logical_date_str()
-        if self.state_loaded.get(ticker) == today_str:
-            return 
-            
         state_file = self._get_state_file(ticker)
+        
+        is_disk_valid = False
         try:
             with open(state_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -71,15 +68,16 @@ class V14VwapStrategy:
                         safe_sub_dict = sub_dict if isinstance(sub_dict, dict) else {}
                         raw_val = safe_sub_dict.get(ticker, 0)
                         self.executed[k][ticker] = int(self._safe_float(raw_val)) if k == "SELL_QTY" else self._safe_float(raw_val)
-                    self.state_loaded[ticker] = today_str
-                    return
+                    is_disk_valid = True
         except Exception:
             pass
-                
-        self.executed["BUY_BUDGET"][ticker] = 0.0
-        self.executed["SELL_QTY"][ticker] = 0
+            
+        if not is_disk_valid:
+            self.executed["BUY_BUDGET"][ticker] = 0.0
+            self.executed["SELL_QTY"][ticker] = 0
+            self._save_state(ticker)
+            
         self.state_loaded[ticker] = today_str
-        self._save_state(ticker)
 
     def _save_state(self, ticker):
         today_str = self._get_logical_date_str()
