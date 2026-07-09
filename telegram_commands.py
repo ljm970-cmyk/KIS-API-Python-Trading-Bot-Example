@@ -2,8 +2,7 @@
 # FILE: telegram_commands.py
 # ==========================================================
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 48대 엣지 케이스 완벽 결속 교차 검증 완료.
-# 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] 와일드카드(Glob) 기반 진공 청소 로직 도입: `/add_q` 및 `/clear_q` 수동 조작 시, 날짜를 추측하지 않고 해당 종목의 모든 스냅샷 파일을 디스크에서 모조리 찾아내 영구 소각(Nuke)하여 렌더링 모순을 100% 완벽 차단.
-# 🚨 MODIFIED: [V-REV SSOT 렌더링 팩트 교정] 통합 지시서(/sync) 출력 시 KIS 실잔고를 100% 묵살하고 오직 '로컬 큐(Queue) 장부'의 수량과 평단가로 덮어씌움.
+# 🚨 MODIFIED: [중복 매도 패러독스 궁극 수술] `/add_q` 및 `/clear_q` 수동 조작 시, 스냅샷 파일뿐만 아니라 봇이 쥐고 있던 '당일 체결 기억(vwap_state)' 캐시 파일까지 와일드카드(Glob)로 100% 영구 소각하여 이중 매도 락온(Ghost Selling Block) 현상을 원천 봉쇄.
 # ==========================================================
 import logging
 import datetime
@@ -279,7 +278,6 @@ class TelegramCommands:
                 if isinstance(q_data_check, list):
                     vrev_ledger_qty_check = sum(int(self._safe_float(item.get("qty"))) for item in q_data_check if isinstance(item, dict))
                     
-                    # 🚨 MODIFIED: [V-REV SSOT 렌더링 팩트 수술] KIS 실잔고(암살자 포함)를 100% 묵살하고 오직 순수 큐 장부 데이터로 덮어쓰기
                     vrev_ledger_inv = sum(int(self._safe_float(item.get("qty"))) * self._safe_float(item.get("price")) for item in q_data_check if isinstance(item, dict))
                     
                     actual_qty = vrev_ledger_qty_check
@@ -639,12 +637,15 @@ class TelegramCommands:
  
         await self._retry_api(self.queue_ledger.overwrite_queue, ticker, q_data)
         
-        # 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] 와일드카드(Glob) 기반 진공 청소 락온
-        def _nuke_snapshot():
+        # 🚨 MODIFIED: [중복 매도 패러독스 궁극 수술] 와일드카드(Glob) 기반 '당일 체결 기억(vwap_state)' 및 스냅샷 진공 청소 락온
+        def _nuke_snapshot_and_state():
             for f in glob.glob(f"data/daily_snapshot_*_{ticker}.json"):
                 try: os.remove(f)
                 except OSError: pass
-        await asyncio.to_thread(_nuke_snapshot)
+            for f in glob.glob(f"data/vwap_state_*_{ticker}.json"):
+                try: os.remove(f)
+                except OSError: pass
+        await asyncio.to_thread(_nuke_snapshot_and_state)
         
         chat_id = update.effective_chat.id
         if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
@@ -652,7 +653,7 @@ class TelegramCommands:
         
         date_str_safe = html.escape(str(date_str))
         ticker_safe = html.escape(str(ticker))
-        await self._safe_reply(update.effective_message, f"✅ <b>[{ticker_safe}] 수동 지층 삽입 완료 및 오염 스냅샷 자동 삭제!</b>\n▫️ {date_str_safe} | {qty}주 | ${price:.2f}", parse_mode='HTML')
+        await self._safe_reply(update.effective_message, f"✅ <b>[{ticker_safe}] 수동 지층 삽입 완료 및 오염 기억 자동 삭제!</b>\n▫️ {date_str_safe} | {qty}주 | ${price:.2f}", parse_mode='HTML')
 
     async def cmd_clear_q(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args
@@ -669,17 +670,20 @@ class TelegramCommands:
             
         await self._retry_api(self.queue_ledger.clear_queue, ticker)
         
-        # 🚨 MODIFIED: [스냅샷 유령화 붕괴 궁극 수술] 와일드카드(Glob) 기반 진공 청소 락온
-        def _nuke_snapshot():
+        # 🚨 MODIFIED: [중복 매도 패러독스 궁극 수술] 와일드카드(Glob) 기반 '당일 체결 기억(vwap_state)' 및 스냅샷 진공 청소 락온
+        def _nuke_snapshot_and_state():
             for f in glob.glob(f"data/daily_snapshot_*_{ticker}.json"):
                 try: os.remove(f)
                 except OSError: pass
-        await asyncio.to_thread(_nuke_snapshot)
+            for f in glob.glob(f"data/vwap_state_*_{ticker}.json"):
+                try: os.remove(f)
+                except OSError: pass
+        await asyncio.to_thread(_nuke_snapshot_and_state)
         
         chat_id = update.effective_chat.id
         if ticker not in self.sync_engine.sync_locks: self.sync_engine.sync_locks[ticker] = asyncio.Lock()
         if not self.sync_engine.sync_locks[ticker].locked(): await self.sync_engine.process_auto_sync(ticker, chat_id, context, silent_ledger=True)
-        await self._safe_reply(update.effective_message, f"🗑️ <b>[{ticker_safe}] 장부가 완전히 소각되고 오염된 스냅샷이 파기되었습니다.</b>\n새로운 지층을 구축할 준비가 완료되었습니다.", parse_mode='HTML')
+        await self._safe_reply(update.effective_message, f"🗑️ <b>[{ticker_safe}] 장부가 완전히 소각되고 당일 오염 기억이 파기되었습니다.</b>\n새로운 지층을 구축할 준비가 완료되었습니다.", parse_mode='HTML')
 
     async def cmd_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         updater = SystemUpdater()
