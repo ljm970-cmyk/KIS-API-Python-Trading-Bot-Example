@@ -4,6 +4,7 @@
 # 🚨 VERIFIED: [최종 무결점 판정] 5대 헌법 및 38대 엣지 케이스 완벽 결속 교차 검증 완료.
 # 🚨 MODIFIED: [Thundering Herd 영구 소각] 파편화된 await asyncio.sleep(0.06) 땜질을 무려 24개소에서 전면 삭제.
 # 🚨 MODIFIED: [중앙 통제소 위임] 모든 API 지연을 GlobalThrottle(중앙 통제소)로 100% 위임하여 비동기 이벤트 루프 마비 및 교착 상태 완벽 방어.
+# 🚨 MODIFIED: [예약 주문 증발(Ghost Order) 궁극 수술] V14 LOC 장전 시 하드코딩되어 있던 `is_market_active_now = False`를 영구 소각. 현재 시간(EST)을 동적으로 판별하여 프리장 개장 후(서머타임 04:05 EST)에는 실시간 본주문(`send_order`)을, 개장 전(윈터타임 03:05 EST)에는 예약 주문(`send_reservation_order`)을 격발하도록 팩트 락온 완료.
 # ==========================================================
 import logging
 import datetime
@@ -150,7 +151,7 @@ async def scheduled_early_regular_trade(context):
                         is_locked = await asyncio.wait_for(asyncio.to_thread(cfg.check_lock, t, "REG"), timeout=5.0)
                     except Exception:
                         is_locked = False
-                
+                    
                     if is_locked:
                         skip_msg = f"⚠️ <b>[{t}] REG 잠금 미해제 — 스케줄 루프 스킵</b>\n▫️ 수동으로 잠금 해제 후 상태를 확인하십시오."
                         if chat_id:
@@ -207,7 +208,8 @@ async def scheduled_early_regular_trade(context):
                     if version == "V14":
                         msgs[t] += f"💎 <b>[{t}] V14 오리지널 정규장 실전 덫 장전 완료 (17:05 KST 타격망)</b>\n"
                         
-                        is_market_active_now = False 
+                        # 🚨 MODIFIED: [예약 주문 증발(Ghost Order) 궁극 수술] 하드코딩된 False를 파기하고 서머타임(04:05 EST, 프리장 개장) 여부를 동적으로 판별하여 실시간 본주문(True)으로 자동 전환 락온
+                        is_market_active_now = curr_est.hour >= 4
 
                         target_orders = plan.get('core_orders') or plan.get('orders') or []
                         if not isinstance(target_orders, list): target_orders = []
@@ -597,7 +599,7 @@ async def scheduled_regular_trade_delayed(context):
                             await asyncio.wait_for(asyncio.to_thread(cfg.set_lock, t, "REG"), timeout=5.0)
                         except Exception as e:
                             logging.error(f"🚨 락 설정 타임아웃: {e}")
-                            
+                    
                         if is_capital_locked:
                             msgs[t] += "\n🔒 <b>V-REV 플랜 애프터장 이관 완료 (잠금 설정됨)</b>"
                         else:
