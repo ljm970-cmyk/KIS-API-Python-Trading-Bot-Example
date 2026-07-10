@@ -9,6 +9,7 @@
 # 🚨 MODIFIED: [Float 정밀도 붕괴 원천 차단] 뷰어 클래스 내에 `_safe_float` 래퍼를 전격 이식하여 파편화된 인라인 캐스팅을 통합하고 NaN/Inf 맹독성 붕괴 원천 차단.
 # 🚨 MODIFIED: [Case 16 위반 교정] 이미지 렌더링(create_profit_image) 시 원자적 쓰기 실패에 따른 UnboundLocalError 연쇄 붕괴를 막기 위한 temp_path 스코프 최상단 전진 배치.
 # 🚨 MODIFIED: [V14 LOC 전용 수동 제어망 결속] 통합 지시서(create_sync_report) 렌더링 시 V-REV 및 VWAP 모드를 배제하고 오직 V14 LOC 모드에만 수동 전송/취소 버튼이 스위칭 렌더링되도록 팩트 락온.
+# 🚨 NEW: [큐 장부 매뉴얼 이식] get_queue_management_menu 화면에 추가/삭제/수정 등 수동 조작을 위한 명령어 가이드 표출 기능 팩트 결속.
 # ==========================================================
 import os
 import math
@@ -194,6 +195,13 @@ class TelegramView:
                     ])
         
         msg += "-"*30 + "</code>\n\n"
+
+        # 🚨 NEW: 큐 장부 명령어 매뉴얼 (단일 지층 추가, 전체 초기화, 부분 조작) 팩트 주입
+        msg += "🛠️ <b>[ 큐 장부 매뉴얼 (수동 조작 명령어) ]</b>\n"
+        msg += f"▫️ 단일 지층 추가 : <code>/add_q {safe_t} 2026-07-11 55 192.31</code>\n"
+        msg += f"▫️ 전체 장부 초기화 : <code>/clear_q {safe_t}</code>\n"
+        msg += f"▫️ 지층 부분 수정 및 삭제 : 상단 <b>[✏️수정] / [🗑️삭제]</b> 버튼 클릭\n\n"
+
         msg += "🚨 <b>[ 비상 수혈 통제소 ]</b>\n"
         msg += "최근 매수한 <b>1지층</b>을 시장가(MOC)로 강제 덤핑하여 가용 예산을 확보합니다."
         keyboard.append([InlineKeyboardButton("🩸 1지층 수동 긴급 수혈 (MOC)", callback_data=f"EMERGENCY_REQ:{ticker}")])
@@ -323,7 +331,6 @@ class TelegramView:
             is_avwap_hybrid = getattr(config, 'get_avwap_hybrid_mode', lambda x: False)(t)
             fee_rate = self._safe_float(getattr(config, 'get_fee', lambda x: 0.25)(t))
             
-            # 🚨 NEW: [Phase 4] 암살자 지정 예산 및 오버나이트 정보 추출
             avwap_budget = self._safe_float(getattr(config, 'get_avwap_budget', lambda x: 10000.0)(t))
             is_overnight = bool(getattr(config, 'get_avwap_overnight_mode', lambda x: False)(t))
             
@@ -571,7 +578,6 @@ class TelegramView:
                 if is_locked:
                     body_msg += " (✅ 금일 주문 완료/잠금)\n"
                 
-                # 🚨 MODIFIED: [V14 LOC 전용 수동 제어망 결속] V-REV 및 자체 VWAP 슬라이싱 모드를 배제하고, 오직 V14 LOC 모드일 때만 수동 전송/취소 버튼 렌더링 락온.
                 if v_mode != "V_REV" and not is_manual_vwap:
                     if is_locked:
                         keyboard.append([InlineKeyboardButton(f"🛑 {t} 수동 매매 취소", callback_data=f"CANCEL_EXEC:{t}")])
@@ -627,7 +633,6 @@ class TelegramView:
         ]
         return msg, InlineKeyboardMarkup(keyboard)
 
-    # 🚨 MODIFIED: [Phase 4 암살자 장부 상시 렌더링 락온] 
     def create_ledger_dashboard(self, ticker, qty, avg, invested, sold, records, t_val, split, is_history=False, is_reverse=False, history_id=None, assassin_data=None):
         safe_t = html.escape(str(ticker))
         groups = {}
@@ -669,7 +674,6 @@ class TelegramView:
             report += f"▪️ <b>최종수익: {'+' if profit >= 0 else '-'}${abs(profit):,.2f} ({'+' if profit >= 0 else '-'}{abs(pct):.2f}%)</b>\n"
         report += f"▪️ 총 매수액 : ${invested:,.2f}\n▪️ 총 매도액 : ${sold:,.2f}\n"
 
-        # 🚨 [Phase 4] 암살자 전용 장부 병렬 렌더링 팩트 삽입 (0주라도 표출하여 사용자 안심망 가동)
         if not is_history and assassin_data is not None:
             a_qty = sum(int(self._safe_float(r.get('qty'))) for r in (assassin_data or []))
             a_inv = sum(int(self._safe_float(r.get('qty'))) * self._safe_float(r.get('price')) for r in (assassin_data or []))
@@ -681,7 +685,6 @@ class TelegramView:
                 report += f"▪️ 락온 수량 : <b>{a_qty} 주</b>\n"
                 report += f"▪️ 진입 평단가: <b>${a_avg:,.2f}</b>\n"
             else:
-                # 🚨 MODIFIED: [UI 직관성 교정] 암살자 물량이 없을 때 OFF가 아닌 STANDBY 상태로 표출하여 오해 원천 차단
                 report += f"▪️ 진행 상태 : <b>STANDBY (타점 감시 중 / 0주)</b>\n"
 
         if not is_history:
